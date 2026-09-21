@@ -1,0 +1,67 @@
+{
+  "id": "/",
+  "name": "MAHR // Cognitive Ambient OS",
+  "short_name": "MAHR",
+  "description": "Cross-platform cognitive companion with real-time voice, interactive chalkboard, and multi-agent intelligence.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#040711",
+  "theme_color": "#090d16",
+  "categories": ["productivity", "education", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Voice Assistant",
+      "short_name": "Voice",
+      "description": "Start live conversational session with Mahr",
+      "url": "/?action=voice",
+      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Interactive Chalkboard",
+      "short_name": "Board",
+      "description": "Open collaborative whiteboard & diagrams",
+      "url": "/?action=chalkboard",
+      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Simulation Studio",
+      "short_name": "Simulation",
+      "description": "Run digital logic & physics simulations",
+      "url": "/?action=simulation",
+      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+    }
+  ],
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "auto"
+  }
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "test-1",
+    "role": "user",
+    "text": "Hello",
+    "timestamp": "10:00 AM"
+  },
+  {
+    "id": "usr-1789904204396-7r75",
+    "role": "user",
+    "sender": "user",
+    "text": "Say hi!",
+    "timestamp": "11:36 AM"
+  },
+  {
+    "id": "mahr-1789904204396-m0ch",
+    "role": "model",
+    "sender": "mahr",
+    "text": "Hello! I'm **MAHR**, your mentor and companion. It’s great to connect with you today! \n\nHow are you doing, and what's on the agenda for us right now? Are we diving into some physics review, checking out some code, or working through something new? Tell me what you're thinking!",
+    "timestamp": "11:36 AM"
+  }
+]

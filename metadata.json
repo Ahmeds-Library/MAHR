@@ -1,0 +1,11 @@
+{
+  "name": "MAHR // Cognitive Ambient OS",
+  "description": "A real-time, voice-to-voice personal companion named Mahr with dynamic human emotions, reinforcement learning policy adaptation, granular SVG mesh gradient themes, and unified vector intelligence.",
+  "requestFramePermissions": [
+    "microphone",
+    "display-capture"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

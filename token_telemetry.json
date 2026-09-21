@@ -1,0 +1,45 @@
+{
+  "sessionTokens": 199521,
+  "promptTokens": 111120,
+  "candidateTokens": 74312,
+  "requestsCount": 36,
+  "activeContextTokens": 877,
+  "lastUpdated": "2026-09-20T11:36:44.396Z",
+  "modelStats": {
+    "gemini-2.5-flash": {
+      "promptTokens": 2782,
+      "candidateTokens": 3914,
+      "totalTokens": 18183,
+      "requestsCount": 5,
+      "lastUsed": "2026-09-14T06:45:29.736Z"
+    },
+    "gemini-3.1-flash-lite": {
+      "promptTokens": 18163,
+      "candidateTokens": 69884,
+      "totalTokens": 88047,
+      "requestsCount": 18,
+      "lastUsed": "2026-09-20T11:33:15.469Z"
+    },
+    "gemini-3.1-flash-live-preview": {
+      "promptTokens": 53458,
+      "candidateTokens": 0,
+      "totalTokens": 54709,
+      "requestsCount": 5,
+      "lastUsed": "2026-09-20T11:26:42.030Z"
+    },
+    "gemini-3.8-flash": {
+      "promptTokens": 5395,
+      "candidateTokens": 514,
+      "totalTokens": 6879,
+      "requestsCount": 5,
+      "lastUsed": "2026-09-20T11:36:44.396Z"
+    },
+    "gemini-3.8-live": {
+      "promptTokens": 31322,
+      "candidateTokens": 0,
+      "totalTokens": 31703,
+      "requestsCount": 3,
+      "lastUsed": "2026-09-20T11:33:26.564Z"
+    }
+  }
+}
