@@ -3,9 +3,10 @@ import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 import { Memory, MemoryTransaction } from "./src/lib/memoryTypes";
 
-const MEMORY_FILE = path.join(process.cwd(), "memories.json");
-const CHAT_HISTORY_FILE = path.join(process.cwd(), "server_chat_history.json");
-const DELETED_MEMORIES_FILE = path.join(process.cwd(), "deleted_memories.json");
+const DATA_DIR = process.env.MAHR_DATA_DIR || process.cwd();
+const MEMORY_FILE = path.join(DATA_DIR, "memories.json");
+const CHAT_HISTORY_FILE = path.join(DATA_DIR, "server_chat_history.json");
+const DELETED_MEMORIES_FILE = path.join(DATA_DIR, "deleted_memories.json");
 
 // Sequential write queue to prevent race conditions and concurrent write file corruption
 const fileWriteQueues = new Map<string, Promise<any>>();
@@ -136,6 +137,23 @@ export async function saveMemories(memories: Memory[]): Promise<void> {
   try {
     if (!Array.isArray(memories)) return;
     await safeWriteFileAtomic(MEMORY_FILE, memories);
+
+    // Mirror to high-performance SQLite database
+    try {
+      const { dbSaveMemory } = await import("./server_db");
+      for (const m of memories) {
+        dbSaveMemory({
+          id: m.id,
+          text: m.text,
+          category: m.category || "general",
+          tags: m.tags || [],
+          importance: (m as any).importance || 3,
+          created_at: m.createdAt || new Date().toISOString(),
+          updated_at: m.updatedAt || new Date().toISOString(),
+          embedding: (m as any).embedding
+        });
+      }
+    } catch (_) {}
   } catch (error) {
     console.error("[Memory] Error writing memory file:", error);
   }
@@ -157,7 +175,7 @@ export async function loadDeletedMemoryIds(): Promise<string[]> {
   }
 }
 
-const DAILY_TASKS_FILE = path.join(process.cwd(), "daily_tasks.json");
+const DAILY_TASKS_FILE = path.join(DATA_DIR, "daily_tasks.json");
 
 export async function loadDailyTasks(): Promise<any[]> {
   try {
@@ -534,7 +552,7 @@ export interface KnowledgeGraph {
   lastUpdated: string;
 }
 
-const KNOWLEDGE_GRAPH_FILE = path.join(process.cwd(), "knowledge_graph.json");
+const KNOWLEDGE_GRAPH_FILE = path.join(DATA_DIR, "knowledge_graph.json");
 
 export async function loadKnowledgeGraph(): Promise<KnowledgeGraph> {
   const fallback: KnowledgeGraph = { nodes: [], edges: [], lastUpdated: new Date().toISOString() };
@@ -858,7 +876,7 @@ export interface ServerVectorKnowledgeGraph {
   density: number;
 }
 
-const VECTOR_GRAPH_FILE = path.join(process.cwd(), "vector_knowledge_graph.json");
+const VECTOR_GRAPH_FILE = path.join(DATA_DIR, "vector_knowledge_graph.json");
 
 export const SERVER_SEMANTIC_CLUSTERS = [
   { id: 0, name: "Identity & Persona", color: "#38bdf8", baseWords: ["name", "i am", "mirza", "ahmed", "tech", "identity", "student", "user"] },

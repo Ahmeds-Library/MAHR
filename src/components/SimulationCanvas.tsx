@@ -432,7 +432,8 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
 
     try {
       sendPrompt(aiPromptInput);
-      const generated = await generateSimulationWithGemini(aiPromptInput);
+      const result = await generateSimulationWithGemini(aiPromptInput);
+      const generated = result.data;
       if (generated && parserRef.current) {
         parserRef.current.parseAndApplyFrame(generated, 0);
         setCurrentFrameData(generated);

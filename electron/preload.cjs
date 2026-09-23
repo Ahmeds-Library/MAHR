@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('window-maximize-changed', handler);
     return () => ipcRenderer.removeListener('window-maximize-changed', handler);
   },
+  getLoginItemSettings: () => ipcRenderer.invoke('get-login-item-settings'),
+  setLoginItemSettings: (settings) => ipcRenderer.invoke('set-login-item-settings', settings),
   onGlobalShortcut: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('global-shortcut-summon', handler);

@@ -399,6 +399,26 @@ export const HeaderNav = ({
               </div>
             </button>
 
+            {onToggleMunderDifflin && (
+              <button
+                id="mobile-mahr-office-btn"
+                onClick={() => { onToggleMunderDifflin(); setIsMobileMenuOpen(false); }}
+                className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
+                  isMunderDifflinOpen
+                    ? "bg-purple-600/30 border-purple-400 text-purple-100 shadow-[0_0_12px_rgba(168,85,247,0.3)]"
+                    : "bg-purple-950/40 border-purple-500/30 text-purple-200 hover:bg-purple-900/50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Building2 size={14} className={isMunderDifflinOpen ? "text-white animate-pulse" : "text-purple-400"} />
+                  <span className="font-semibold">MAHR Office (Virtual Floor)</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/30 font-bold border border-purple-400/30 text-purple-200">
+                  6 Agents
+                </span>
+              </button>
+            )}
+
             <button
               onClick={() => { onToggleDailyTasks(); setIsMobileMenuOpen(false); }}
               className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs font-mono flex items-center justify-between"
@@ -514,14 +534,18 @@ export const HeaderNav = ({
 
           {/* Core AI Engines Group */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* 🏢 Office Button */}
+            {/* 🏢 MAHR Office Button */}
             <button
-              id="header-munder-difflin-office-btn"
+              id="header-mahr-office-btn"
               onClick={onToggleMunderDifflin || onToggleSubAgents}
-              className="h-9 px-3 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 hover:border-purple-400 text-purple-200 text-xs font-mono font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02]"
-              title="Office"
+              className={`h-9 px-3 rounded-xl border text-xs font-mono font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] ${
+                isMunderDifflinOpen
+                  ? "bg-purple-600 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.45)]"
+                  : "bg-purple-950/40 hover:bg-purple-900/60 border-purple-500/30 hover:border-purple-400 text-purple-200"
+              }`}
+              title="MAHR Office // Multi-Agent Virtual Floor"
             >
-              <Building2 size={14} className="text-purple-300 shrink-0" />
+              <Building2 size={14} className={isMunderDifflinOpen ? "text-white animate-pulse shrink-0" : "text-purple-300 shrink-0"} />
               <span>Office</span>
             </button>
 

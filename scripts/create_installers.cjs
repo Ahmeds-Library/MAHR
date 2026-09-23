@@ -386,134 +386,82 @@ async function buildLinuxDeb(bytecodeTarget, loaderTarget, sealedTarget) {
   };
   fs.writeFileSync(path.join(optDir, 'package.json'), JSON.stringify(optPkg, null, 2), 'utf8');
 
+  // Bundle native Electron runtime binaries into /opt/mahr-desktop
+  const electronDistDir = path.join(ROOT_DIR, 'node_modules', 'electron', 'dist');
+  if (fs.existsSync(electronDistDir)) {
+    console.log('  ⚡ Bundling native Electron runtime binaries into package...');
+    const electronFiles = fs.readdirSync(electronDistDir, { withFileTypes: true });
+    for (const item of electronFiles) {
+      const srcItem = path.join(electronDistDir, item.name);
+      if (item.isDirectory()) {
+        if (item.name === 'resources') {
+          // Keep our custom resources directory which holds authentic app.asar
+          continue;
+        }
+        copyDirSync(srcItem, path.join(optDir, item.name));
+      } else {
+        const destItem = path.join(optDir, item.name === 'electron' ? 'mahr-bin' : item.name);
+        fs.copyFileSync(srcItem, destItem);
+        if (item.name === 'electron') {
+          fs.chmodSync(destItem, 0o755);
+          fs.copyFileSync(srcItem, path.join(optDir, 'electron'));
+          fs.chmodSync(path.join(optDir, 'electron'), 0o755);
+        } else if (item.name === 'chrome-sandbox') {
+          try { fs.chmodSync(destItem, 0o4755); } catch {}
+        } else if (item.name.endsWith('.so') || item.name.includes('.so.')) {
+          fs.chmodSync(destItem, 0o755);
+        }
+      }
+    }
+    console.log('  ✅ Bundled native Electron runtime (mahr-bin) into package');
+  }
+
   // Executable /opt/mahr-desktop/mahr-desktop launcher
   const launcherBinary = `#!/bin/bash
 # MAHR Desktop AI Assistant v2.4.0 Launcher
 # Copyright (C) 2026 MAHR Cognitive Systems
+set -e
+
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/desktop-server.cjs" ]; then
+if [ -f "$SCRIPT_DIR/mahr-bin" ]; then
+    APP_DIR="$SCRIPT_DIR"
+elif [ -f "$SCRIPT_DIR/desktop-server.cjs" ]; then
     APP_DIR="$SCRIPT_DIR"
 else
     APP_DIR="/opt/mahr-desktop"
 fi
 
-PORT=19842
-URL="http://127.0.0.1:$PORT"
-CONFIG_DIR="$HOME/.config/mahr-desktop"
-PROFILE_DIR="$CONFIG_DIR/profile"
-mkdir -p "$PROFILE_DIR"
-
 cd "$APP_DIR" || exit 1
 
-echo "⚡ Starting MAHR Autonomous Desktop AI Assistant v2.4.0..."
+# 1. Prefer bundled native Electron binary
+if [ -x "$APP_DIR/mahr-bin" ]; then
+    if [ -f "$APP_DIR/resources/app.asar" ]; then
+        exec "$APP_DIR/mahr-bin" "$APP_DIR/resources/app.asar" --no-sandbox "$@"
+    elif [ -f "$APP_DIR/main.cjs" ]; then
+        exec "$APP_DIR/mahr-bin" "$APP_DIR" --no-sandbox "$@"
+    fi
+fi
 
-# 1. Prefer native Electron engine with authentic ASAR archive if installed
+# 2. Check system-wide Electron binary
 if command -v electron >/dev/null 2>&1; then
     if [ -f "$APP_DIR/resources/app.asar" ]; then
-        exec electron "$APP_DIR/resources/app.asar" "$@"
+        exec electron "$APP_DIR/resources/app.asar" --no-sandbox "$@"
     elif [ -f "$APP_DIR/main.cjs" ]; then
-        exec electron "$APP_DIR" "$@"
+        exec electron "$APP_DIR" --no-sandbox "$@"
     fi
 elif [ -x "/usr/bin/electron" ]; then
     if [ -f "$APP_DIR/resources/app.asar" ]; then
-        exec /usr/bin/electron "$APP_DIR/resources/app.asar" "$@"
+        exec /usr/bin/electron "$APP_DIR/resources/app.asar" --no-sandbox "$@"
     fi
 fi
 
-# 2. Check if MAHR backend engine is already running
-SERVER_RUNNING=0
-if curl -s -m 1 "$URL/api/health" | grep -q '"ok"'; then
-    SERVER_RUNNING=1
+# 3. Fallback to node execution of main entry point
+if command -v node >/dev/null 2>&1 && [ -f "$APP_DIR/main.cjs" ]; then
+    exec node "$APP_DIR/main.cjs" "$@"
 fi
 
-# 3. If server is not running, start embedded backend engine in background
-if [ "$SERVER_RUNNING" -eq 0 ]; then
-    NODE_BIN=""
-    for n in node /usr/bin/node /usr/local/bin/node /snap/bin/node; do
-        if command -v "$n" >/dev/null 2>&1 || [ -x "$n" ]; then
-            NODE_BIN="$n"
-            break
-        fi
-    done
-
-    if [ -n "$NODE_BIN" ]; then
-        if [ -f "$APP_DIR/desktop-server.cjs" ]; then
-            NODE_ENV=production PORT=$PORT nohup "$NODE_BIN" "$APP_DIR/desktop-server.cjs" > "$CONFIG_DIR/engine.log" 2>&1 &
-        elif [ -f "$APP_DIR/main.cjs" ]; then
-            NODE_ENV=production PORT=$PORT nohup "$NODE_BIN" "$APP_DIR/main.cjs" > "$CONFIG_DIR/engine.log" 2>&1 &
-        else
-            NODE_ENV=production PORT=$PORT nohup "$NODE_BIN" "$APP_DIR/desktop-runner.cjs" > "$CONFIG_DIR/engine.log" 2>&1 &
-        fi
-    elif command -v python3 >/dev/null 2>&1; then
-        cd "$APP_DIR/app" && nohup python3 -m http.server $PORT > "$CONFIG_DIR/engine.log" 2>&1 &
-        cd "$APP_DIR" || true
-    fi
-
-    # Wait for backend engine to respond (up to 4 seconds)
-    for i in 1 2 3 4 5 6 7 8; do
-        if curl -s -m 1 "$URL/api/health" | grep -q '"ok"'; then
-            SERVER_RUNNING=1
-            break
-        fi
-        sleep 0.5
-    done
-
-    # If primary engine had any startup delay, engage resilient standalone runner fallback
-    if [ "$SERVER_RUNNING" -eq 0 ] && [ -n "$NODE_BIN" ] && [ -f "$APP_DIR/desktop-runner.cjs" ]; then
-        echo "⚠️ Engaging MAHR Resilient Standalone Engine..."
-        NODE_ENV=production PORT=$PORT nohup "$NODE_BIN" "$APP_DIR/desktop-runner.cjs" >> "$CONFIG_DIR/engine.log" 2>&1 &
-        for i in 1 2 3 4; do
-            if curl -s -m 1 "$URL/api/health" | grep -q '"ok"' || curl -sI -m 1 "$URL" | grep -q "200 OK"; then
-                SERVER_RUNNING=1
-                break
-            fi
-            sleep 0.5
-        done
-    fi
-fi
-
-if [ "$SERVER_RUNNING" -eq 1 ]; then
-    echo "✅ MAHR Autonomous Engine active on $URL"
-else
-    echo "🚀 Connecting to desktop interface at $URL..."
-fi
-
-# 4. Launch Dedicated Standalone Native-Style Desktop Window
-# Configured with clean Wayland/X11 compatibility, audio autoplay enabled, zero GPU glitches, and silent terminal logging
-echo "🚀 Launching MAHR Native Desktop Window..."
-
-BROWSER_FLAGS=(
-    "--app=$URL"
-    "--user-data-dir=$PROFILE_DIR"
-    "--class=mahr-desktop"
-    "--name=MAHR AI Desktop"
-    "--window-size=1440,900"
-    "--autoplay-policy=no-user-gesture-required"
-    "--disable-vulkan"
-    "--disable-features=Vulkan,OptimizationHints,MediaRouter"
-    "--enable-features=WebRTCPipeWireCapturer"
-    "--ozone-platform-hint=auto"
-    "--disable-background-networking"
-    "--disable-sync"
-    "--disable-breakpad"
-    "--disable-component-update"
-    "--no-pings"
-    "--no-first-run"
-    "--no-default-browser-check"
-)
-
-for b in google-chrome-stable google-chrome chromium-browser chromium brave-browser microsoft-edge microsoft-edge-stable; do
-    if command -v "$b" >/dev/null 2>&1; then
-        exec "$b" "\${BROWSER_FLAGS[@]}" "$@" 2>"$CONFIG_DIR/chrome.log"
-    fi
-done
-
-# Fallback browser launchers
-if command -v xdg-open >/dev/null 2>&1; then
-    exec xdg-open "$URL" >/dev/null 2>&1
-elif command -v firefox >/dev/null 2>&1; then
-    exec firefox --new-window "$URL" >/dev/null 2>&1
-fi
+echo "Fatal: MAHR Native Desktop Runtime not found." >&2
+exit 1
 `;
   fs.writeFileSync(path.join(optDir, 'mahr-desktop'), launcherBinary, { mode: 0o755 });
 
@@ -528,8 +476,8 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: MAHR Cognitive Systems <security@mahr.ai>
-Installed-Size: 148560
-Depends: libc6 (>= 2.31), curl, nodejs (>= 18.0.0) | nodejs-legacy | node
+Installed-Size: 265000
+Depends: libc6 (>= 2.31), libgtk-3-0, libnss3, libasound2
 Description: MAHR Autonomous AI Personal Assistant & Office Engine
  MAHR is a next-generation AI personal assistant with high-frequency voice interaction,
  offline multimodal neural reasoning, dynamic memory graph, and the Munder Difflin
@@ -551,7 +499,9 @@ if [ "$1" = "configure" ]; then
     chmod -R 755 /opt/mahr-desktop
     chmod 755 /usr/bin/mahr
     chmod +x /opt/mahr-desktop/mahr-desktop
+    chmod +x /opt/mahr-desktop/mahr-bin 2>/dev/null || true
     chmod +x /opt/mahr-desktop/desktop-runner.cjs
+    chmod 4755 /opt/mahr-desktop/chrome-sandbox 2>/dev/null || chmod 755 /opt/mahr-desktop/chrome-sandbox 2>/dev/null || true
     chmod 644 /opt/mahr-desktop/resources/app.asar 2>/dev/null || true
     if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q || true; fi
     echo "=========================================================================="

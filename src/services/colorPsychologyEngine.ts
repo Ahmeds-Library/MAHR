@@ -15,6 +15,10 @@ export interface PsychologyProfile {
     position: string;
     blur: string;
   }>;
+  projectorIntensity?: number;
+  valenceScore?: number;
+  beamPulseSpeed?: number;
+  laserGridOpacity?: number;
 }
 
 export const PSYCHOLOGY_PROFILES: Record<string, PsychologyProfile> = {

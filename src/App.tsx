@@ -74,8 +74,9 @@ import { SubAgentsStudio } from "./components/SubAgentsStudio";
 import { DailyTaskManager } from "./components/DailyTaskManager";
 import { HeaderNav } from "./components/HeaderNav";
 import { DesktopAndRemoteModal } from "./components/desktop/DesktopAndRemoteModal";
+import { useDesktopApp } from "./hooks/useDesktopApp";
 import { registerGlobalSummonListener } from "./services/platformAdapter";
-import { MunderDifflinOfficeModal } from "./components/munderdifflin/MunderDifflinOfficeModal";
+import { MAHROfficeModal } from "./office/MAHROfficeModal";
 import { GlobalAlerts } from "./components/GlobalAlerts";
 import { VoiceDialogueToast } from "./components/VoiceDialogueToast";
 import { FooterVisualizer } from "./components/FooterVisualizer";
@@ -219,6 +220,7 @@ export default function App() {
   const [offlineDeletedQueue, setOfflineDeletedQueue] = useState<string[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isDesktopRemoteModalOpen, setIsDesktopRemoteModalOpen] = useState<boolean>(false);
+  const { isBrowser } = useDesktopApp();
 
   // Global Summon Hotkey Listener (Ctrl+Shift+M / Alt+M / Electron)
   useEffect(() => {
@@ -773,8 +775,8 @@ export default function App() {
     };
   }, []);
 
-  const speakNotification = (msg: string | { ur: string; en: string }, overrideEmotion?: MyraaEmotion) => {
-    const textToSpeak = typeof msg === "string" ? msg : msg.en;
+  const speakNotification = (msg: string | { ur?: string; en?: string }, overrideEmotion?: MyraaEmotion) => {
+    const textToSpeak = typeof msg === "string" ? msg : (msg.en || msg.ur || "");
     if (!textToSpeak) return;
 
     speakUtterance({
@@ -1098,7 +1100,7 @@ export default function App() {
       const dataUrl = canvas.toDataURL("image/jpeg", 0.55);
       const base64 = dataUrl.split(",")[1];
 
-      if (sessionRef.current && stateRef.current !== "disconnected") {
+      if (sessionRef.current) {
         sessionRef.current.sendVideoFrame(base64);
       }
     } catch (err) {
@@ -1724,9 +1726,13 @@ export default function App() {
           matchingTask || {
             id: "reminder-" + Date.now(),
             title: reminder.taskTitle,
-            completed: false,
+            timeBlock: "Afternoon",
             priority: "medium",
-            timeCategory: "Afternoon"
+            category: "study",
+            completed: false,
+            date: new Date().toISOString().split("T")[0],
+            reminder: true,
+            createdAt: new Date().toISOString()
           }
         );
         speakNotification(reminder.speechText, reminder.emotion as MyraaEmotion);
@@ -3214,7 +3220,7 @@ export default function App() {
   useEffect(() => {
     if (!autoShiftBackground) return;
     // Guard: only analyze and auto-shift if there is active dialogue or emotional shift
-    if (!userCaption && !modelCaption && (!activeEmotion || activeEmotion === "neutral")) {
+    if (!userCaption && !modelCaption && (!activeEmotion || (activeEmotion as string) === "neutral" || activeEmotion === "idle")) {
       return;
     }
 
@@ -3787,13 +3793,16 @@ export default function App() {
         themeColor={themeColor}
       />
 
-      {/* 🏢 Munder-Difflin Multi-Agent Virtual Office Floor Modal (chaitanyagiri/munder-difflin architecture) */}
-      <MunderDifflinOfficeModal
+      {/* 🏢 MAHR Office — Multi-Agent Virtual Office Floor Modal */}
+      <MAHROfficeModal
         isOpen={isMunderDifflinOpen}
         onClose={() => setIsMunderDifflinOpen(false)}
+        isBrowser={isBrowser}
         activeModelId={activeModelId}
         onSelectModel={handleSelectModel}
-        onSelectSubAgent={handleSelectSubAgent}
+        onUpdateWhiteboardText={(text) => setWhiteboardText(text)}
+        onUpdateStudyPadText={(text) => setStudyPadText(text)}
+        onNotifyUser={(msg) => setWhiteboardStatusAlert(`🏢 ${msg}`)}
       />
 
       {/* Daily Task & Memory Tracker Modal */}
@@ -3877,7 +3886,7 @@ export default function App() {
         isOpen={showKeyboardShortcuts}
         onClose={() => setShowKeyboardShortcuts(false)}
         onToggleSession={handleToggleConnection}
-        isSessionActive={state === "connected" || state === "connecting"}
+        isSessionActive={state !== "disconnected"}
         onToggleAskMyraa={() => setIsAskMyraaOpen(!isAskMyraaOpen)}
         onToggleWhiteboard={() => { closeAllPanels(); setIsWhiteboardOpen(!isWhiteboardOpen); }}
         onToggleStudyPad={() => { closeAllPanels(); setIsStudyPadOpen(!isStudyPadOpen); }}
@@ -3903,7 +3912,7 @@ export default function App() {
         isOpen={isDesktopRemoteModalOpen}
         onClose={() => setIsDesktopRemoteModalOpen(false)}
         activeModelName={activeModelId}
-        isLiveActive={state === "connected" || state === "connecting"}
+        isLiveActive={state !== "disconnected"}
       />
     </div>
   );

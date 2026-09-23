@@ -78,7 +78,16 @@ export function detectPlatform(): PlatformInfo {
   const electronAPI = (window as any).electronAPI;
   const isElectron = Boolean(electronAPI?.isElectron || navigator.userAgent.includes('Electron'));
 
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const isDesktopQuery = urlParams?.get('desktop') === '1' || urlParams?.get('app') === '1';
+  if (isDesktopQuery) {
+    try { localStorage.setItem('mahr_desktop_mode', 'true'); } catch {}
+  }
+  const isStoredDesktop = typeof localStorage !== 'undefined' && localStorage.getItem('mahr_desktop_mode') === 'true';
+
   const isPWA = Boolean(
+    isDesktopQuery ||
+    isStoredDesktop ||
     window.matchMedia('(display-mode: standalone)').matches ||
     (navigator as any).standalone === true ||
     document.referrer.includes('android-app://')

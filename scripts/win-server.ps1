@@ -21,7 +21,7 @@ try {
     $listener.Start()
 }
 
-$url = "http://127.0.0.1:$port/"
+$url = "http://127.0.0.1:$port/?desktop=1"
 
 # Launch Desktop Browser Window
 $browsers = @(

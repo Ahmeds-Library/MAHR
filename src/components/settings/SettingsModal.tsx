@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Sliders, Terminal, Mic, Bot, Palette, Sparkles, ChevronRight, ShieldCheck, Monitor } from "lucide-react";
+import { X, Sliders, Terminal, Mic, Bot, Palette, Sparkles, ChevronRight, ShieldCheck, Monitor, Database } from "lucide-react";
 import { SystemSettingsState } from "../../services/settingsService";
 import { VoiceCommand } from "../../services/voiceCommandService";
 import { CommandMapTab } from "./CommandMapTab";
@@ -8,6 +8,7 @@ import { AudioVoiceTab } from "./AudioVoiceTab";
 import { PersonaAiTab } from "./PersonaAiTab";
 import { StorageThemeTab } from "./StorageThemeTab";
 import { DesktopAppsTab } from "./DesktopAppsTab";
+import { DatabaseSettingsTab } from "./DatabaseSettingsTab";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -18,7 +19,7 @@ interface SettingsModalProps {
   onResetAllSettings: () => void;
   speakNotification?: (text: { ur?: string; en?: string } | string) => void;
   onStatusAlert?: (msg: string) => void;
-  initialTab?: "command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps";
+  initialTab?: "command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync";
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -32,7 +33,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onStatusAlert,
   initialTab = "command_map"
 }) => {
-  const [activeTab, setActiveTab] = useState<"command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps">(
+  const [activeTab, setActiveTab] = useState<"command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync">(
     initialTab
   );
 
@@ -73,6 +74,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       sublabel: "Windows, Linux & Web Sync",
       icon: Monitor,
       badge: "Install"
+    },
+    {
+      id: "database_sync",
+      label: "Database & Cloud",
+      sublabel: "SQLite, PostgreSQL, MongoDB",
+      icon: Database,
+      badge: "DB"
     }
   ] as const;
 
@@ -252,6 +260,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {activeTab === "desktop_apps" && (
                 <DesktopAppsTab
+                  onStatusAlert={onStatusAlert}
+                />
+              )}
+
+              {activeTab === "database_sync" && (
+                <DatabaseSettingsTab
                   onStatusAlert={onStatusAlert}
                 />
               )}

@@ -2,6 +2,7 @@ import express from "express";
 import http from "http";
 import path from "path";
 import fs from "fs";
+import net from "net";
 import { WebSocketServer } from "ws";
 import { GoogleGenAI, Modality, Type, LiveServerMessage } from "@google/genai";
 import dotenv from "dotenv";
@@ -43,8 +44,49 @@ import {
   isVaultKeyAvailable, 
   getVaultStatus 
 } from "./server_vault";
+import {
+  loadOfficeState,
+  saveOfficeState,
+  syncOfficeTasksToDailyTasks,
+  ingestOfficeInsightToMemory,
+  dispatchOfficeAgentCommand,
+  addOfficeGraphEntity,
+  getOfficeKnowledgeSummary,
+  autoDelegateTasksFromMahr,
+  officeEvents,
+  emitOfficeEvent,
+  processMahrOfficeCommand
+} from "./server_office";
+import {
+  initMahrDatabase,
+  getDbStatus,
+  getActiveDbConfig,
+  testDbConnection,
+  migrateAndSwitchDb,
+  dbLogTerminal
+} from "./server_db";
 
 dotenv.config();
+
+function checkPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once("error", () => resolve(false));
+    srv.once("listening", () => {
+      srv.close(() => resolve(true));
+    });
+    srv.listen(port, "0.0.0.0");
+  });
+}
+
+async function getAvailablePort(startPort: number, maxAttempts = 30): Promise<number> {
+  for (let p = startPort; p < startPort + maxAttempts; p++) {
+    if (await checkPortFree(p)) {
+      return p;
+    }
+  }
+  return startPort;
+}
 
 async function startServer() {
   // Prevent unhandled error event crashes and keep the dev server stable
@@ -55,11 +97,29 @@ async function startServer() {
     console.error("[Unhandled Rejection Error]:", reason);
   });
 
+  // Initialize durable SQLite Cognitive Database (WAL Mode)
+  try {
+    initMahrDatabase();
+  } catch (dbErr) {
+    console.warn("[MAHR DB Boot] Notice:", dbErr);
+  }
+
   // Initialize durable real token telemetry
   await loadTokenTelemetry();
 
   const app = express();
-  const PORT = parseInt(process.env.PORT || "3000", 10);
+  const requestedPort = parseInt(process.env.PORT || "3000", 10);
+  const PORT = await getAvailablePort(requestedPort);
+  if (PORT !== requestedPort) {
+    console.warn(`[Port Conflict] Requested port ${requestedPort} is already in use. Automatically shifted server to http://localhost:${PORT}!`);
+  }
+
+  // Calculate matching HMR port to avoid port 24678 collision
+  const requestedHmrPort = 24678 + (PORT - requestedPort);
+  const HMR_PORT = await getAvailablePort(requestedHmrPort);
+  if (HMR_PORT !== 24678) {
+    console.warn(`[HMR Port Conflict] Standard HMR port 24678 was in use. Shifted Vite HMR to port ${HMR_PORT}!`);
+  }
   
   app.set("trust proxy", true);
   app.use(express.json({ limit: "50mb" }));
@@ -515,6 +575,515 @@ async function startServer() {
         return res.json({ success: true, count: tasks.length });
       }
       res.status(400).json({ error: "Invalid tasks payload. Expected array." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 🏢 MAHR Virtual Office Floor Database & Orchestration Routes
+  app.get("/api/office/state", async (req, res) => {
+    try {
+      const state = await loadOfficeState();
+      res.json(state);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/office/state", async (req, res) => {
+    try {
+      const updated = await saveOfficeState(req.body);
+      res.json({ success: true, state: updated });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/office/dispatch", async (req, res) => {
+    try {
+      const { agentName, agentRole, prompt, userContext } = req.body;
+      if (!prompt || !agentName) {
+        return res.status(400).json({ error: "Missing prompt or agentName" });
+      }
+      const result = await dispatchOfficeAgentCommand({
+        agentName,
+        agentRole: agentRole || "AI Specialist",
+        prompt,
+        userContext
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/office/sync-tasks", async (req, res) => {
+    try {
+      const added = await syncOfficeTasksToDailyTasks();
+      res.json({ success: true, added });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/office/memory-ingest", async (req, res) => {
+    try {
+      const { agentName, text, category } = req.body;
+      if (!agentName || !text) {
+        return res.status(400).json({ error: "Missing agentName or text" });
+      }
+      const success = await ingestOfficeInsightToMemory(agentName, text, category);
+      res.json({ success });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/office/graph-entity", async (req, res) => {
+    try {
+      const { name, type, description, importance } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Missing entity name" });
+      }
+      const result = await addOfficeGraphEntity({ name, type, description, importance });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/office/knowledge-summary", async (req, res) => {
+    try {
+      const summary = await getOfficeKnowledgeSummary();
+      res.json(summary);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ⚡ Real-time Server-Sent Events stream for Virtual Office Floor
+  app.get("/api/office/stream", async (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+
+    // Send immediate initial handshake and current state
+    try {
+      const initialState = await loadOfficeState();
+      res.write(`event: connected\ndata: ${JSON.stringify({ status: "online", time: Date.now() })}\n\n`);
+      res.write(`event: state-update\ndata: ${JSON.stringify(initialState)}\n\n`);
+    } catch (_) {}
+
+    const onEvent = (ev: { type: string; data: any; timestamp: number }) => {
+      try {
+        res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+      } catch (err) {
+        console.warn("[OfficeSSE] Client write error:", err);
+      }
+    };
+
+    officeEvents.on("event", onEvent);
+
+    // Keepalive ping every 15s
+    const pingInterval = setInterval(() => {
+      try {
+        res.write(`event: ping\ndata: ${JSON.stringify({ time: Date.now() })}\n\n`);
+      } catch (_) {}
+    }, 15000);
+
+    req.on("close", () => {
+      clearInterval(pingInterval);
+      officeEvents.off("event", onEvent);
+    });
+  });
+
+  // 🤖 MAHR Orchestrator Command — Natural language prompt -> Office agent delegation & execution
+  app.post("/api/office/mahr-command", async (req, res) => {
+    try {
+      const { command, userMessage } = req.body || {};
+      if (!command && !userMessage) {
+        return res.status(400).json({ error: "command or userMessage is required" });
+      }
+      const result = await processMahrOfficeCommand({ command, userMessage });
+      res.json(result);
+    } catch (e: any) {
+      console.error("[MahrCommand] Error handling office command:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 🗄️ MAHR Cognitive Database Status Route
+  app.get("/api/db/status", (req, res) => {
+    try {
+      const status = getDbStatus();
+      res.json(status);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 🗄️ MAHR Database Config — returns active engine, masked URL, and stats
+  app.get("/api/db/config", (req, res) => {
+    try {
+      const cfg = getActiveDbConfig();
+      const status = getDbStatus();
+      res.json({ ...cfg, stats: status.stats, status: status.status, lastCheck: status.lastCheck });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 🔌 Test a remote database connection URI without switching (non-destructive)
+  app.post("/api/db/test", async (req, res) => {
+    try {
+      const { engine, url } = req.body || {};
+      if (!engine || !url) return res.status(400).json({ error: "engine and url are required" });
+      if (engine !== "postgres" && engine !== "mongodb") {
+        return res.status(400).json({ error: "engine must be 'postgres' or 'mongodb'" });
+      }
+      const result = await testDbConnection(engine, url);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // 🔄 Switch active database engine — tests connection, migrates data, activates new engine
+  app.post("/api/db/switch", async (req, res) => {
+    try {
+      const { engine, url } = req.body || {};
+      if (!engine) return res.status(400).json({ error: "engine is required" });
+      if (engine !== "sqlite" && engine !== "postgres" && engine !== "mongodb") {
+        return res.status(400).json({ error: "engine must be 'sqlite', 'postgres', or 'mongodb'" });
+      }
+      if (engine !== "sqlite" && !url) {
+        return res.status(400).json({ error: "url is required for postgres and mongodb" });
+      }
+      const result = await migrateAndSwitchDb(engine, url);
+      if (result.success) {
+        res.json({ success: true, engine, migratedCounts: result.migratedCounts, config: getActiveDbConfig() });
+      } else {
+        res.status(500).json({ success: false, error: result.error });
+      }
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // 📁 Real Project Files — serves actual workspace source files for Office IDE viewer
+  app.get("/api/office/project-files", async (req, res) => {
+    try {
+      const cwd = process.cwd();
+      const targetFiles = [
+        { name: "package.json", path: "package.json", language: "json" },
+        { name: "server.ts", path: "server.ts", language: "typescript" },
+        { name: "server_db.ts", path: "server_db.ts", language: "typescript" },
+        { name: "server_office.ts", path: "server_office.ts", language: "typescript" },
+        { name: "vite.config.ts", path: "vite.config.ts", language: "typescript" },
+        { name: "App.tsx", path: "src/App.tsx", language: "typescript" },
+        { name: "OfficeFloor.tsx", path: "src/office/scene/office/OfficeFloor.tsx", language: "typescript" },
+        { name: "MAHROfficeFloorView.tsx", path: "src/office/MAHROfficeFloorView.tsx", language: "typescript" }
+      ];
+
+      const files = [];
+      for (const f of targetFiles) {
+        const fullPath = path.join(cwd, f.path);
+        try {
+          if (fs.existsSync(fullPath)) {
+            const stat = fs.statSync(fullPath);
+            // Limit file size sent to UI to 60KB per file
+            const maxBytes = 60 * 1024;
+            let content: string;
+            if (stat.size > maxBytes) {
+              const fd = fs.openSync(fullPath, 'r');
+              const buf = Buffer.alloc(maxBytes);
+              fs.readSync(fd, buf, 0, maxBytes, 0);
+              fs.closeSync(fd);
+              content = buf.toString('utf-8') + `\n\n// ... (file truncated at 60KB — ${Math.round(stat.size / 1024)} KB total)`;
+            } else {
+              content = fs.readFileSync(fullPath, 'utf-8');
+            }
+            files.push({ name: f.name, path: f.path, language: f.language, content, sizeBytes: stat.size });
+          }
+        } catch (_) { /* skip unreadable files */ }
+      }
+      res.json({ files, cwd, count: files.length });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 📂 Office File System API: list-dir, read-file, write-file, raw-file
+  app.get("/api/office/list-dir", async (req, res) => {
+    try {
+      const workspaceRoot = (req.query.root as string) || process.cwd();
+      const rel = (req.query.rel as string) || "";
+      const targetDir = path.resolve(workspaceRoot, rel);
+
+      if (!targetDir.startsWith(path.resolve(workspaceRoot))) {
+        return res.status(403).json({ ok: false, error: "Access denied outside workspace" });
+      }
+
+      if (!fs.existsSync(targetDir)) {
+        return res.json({ ok: false, error: "Directory not found", entries: [] });
+      }
+
+      const rawEntries = fs.readdirSync(targetDir, { withFileTypes: true });
+      const entries = rawEntries.map(e => {
+        let size = 0;
+        let mtime = 0;
+        try {
+          const s = fs.statSync(path.join(targetDir, e.name));
+          size = s.size;
+          mtime = s.mtimeMs;
+        } catch {}
+        return {
+          name: e.name,
+          isDir: e.isDirectory(),
+          size,
+          mtime
+        };
+      });
+
+      res.json({ ok: true, path: rel, entries });
+    } catch (e: any) {
+      res.json({ ok: false, error: e.message, entries: [] });
+    }
+  });
+
+  app.get("/api/office/read-file", async (req, res) => {
+    try {
+      const workspaceRoot = (req.query.root as string) || process.cwd();
+      const rel = (req.query.rel as string) || "";
+      const fullPath = path.resolve(workspaceRoot, rel);
+
+      if (!fullPath.startsWith(path.resolve(workspaceRoot))) {
+        return res.status(403).json({ ok: false, error: "Access denied outside workspace" });
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        return res.json({ ok: false, error: "File not found" });
+      }
+
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) {
+        return res.json({ ok: false, error: "Path is a directory" });
+      }
+
+      const content = fs.readFileSync(fullPath, "utf-8");
+      res.json({ ok: true, path: rel, content, size: stat.size });
+    } catch (e: any) {
+      res.json({ ok: false, error: e.message });
+    }
+  });
+
+  app.get("/api/office/raw-file", async (req, res) => {
+    try {
+      const workspaceRoot = (req.query.root as string) || process.cwd();
+      const rel = (req.query.rel as string) || "";
+      const fullPath = path.resolve(workspaceRoot, rel);
+
+      if (!fullPath.startsWith(path.resolve(workspaceRoot))) {
+        return res.status(403).send("Access denied outside workspace");
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).send("File not found");
+      }
+
+      res.sendFile(fullPath);
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
+
+  app.post("/api/office/write-file", async (req, res) => {
+    try {
+      const { root, rel, content } = req.body || {};
+      const workspaceRoot = root || process.cwd();
+      if (!rel) {
+        return res.status(400).json({ ok: false, error: "No file path provided" });
+      }
+      const fullPath = path.resolve(workspaceRoot, rel);
+
+      if (!fullPath.startsWith(path.resolve(workspaceRoot))) {
+        return res.status(403).json({ ok: false, error: "Access denied outside workspace" });
+      }
+
+      const dir = path.dirname(fullPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(fullPath, content ?? "", "utf-8");
+      res.json({ ok: true, path: rel });
+    } catch (e: any) {
+      res.json({ ok: false, error: e.message });
+    }
+  });
+
+  // 💻 Real Terminal Execution for Office
+  app.post("/api/office/exec", async (req, res) => {
+    try {
+      const { command, cwd } = req.body || {};
+      if (!command) {
+        return res.status(400).json({ ok: false, error: "No command provided" });
+      }
+
+      const execCwd = cwd || process.cwd();
+      const child_process = await import("child_process");
+
+      child_process.exec(command, { cwd: execCwd, timeout: 30000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+        const out = stdout || stderr || (err ? err.message : "Command executed with no output.");
+        const cleanOut = out.trim();
+        const exitCode = err ? (err.code || 1) : 0;
+
+        // Log to terminal stream & SQLite
+        const logItem = {
+          id: `exec_${Date.now()}`,
+          time: new Date().toLocaleTimeString(),
+          agent: "Terminal ($)",
+          text: `$ ${command}\n${cleanOut}`,
+          kind: "tool" as const
+        };
+        dbLogTerminal(logItem);
+        emitOfficeEvent("terminal-log", logItem);
+
+        res.json({
+          ok: exitCode === 0,
+          exitCode,
+          stdout: (stdout || "").trim(),
+          stderr: (stderr || "").trim(),
+          output: cleanOut
+        });
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // 🐙 Real Git Endpoints for Office
+  app.get("/api/office/git/status", async (req, res) => {
+    try {
+      const cwd = (req.query.cwd as string) || process.cwd();
+      const child_process = await import("child_process");
+
+      try {
+        child_process.execSync("git rev-parse --is-inside-work-tree", { cwd, stdio: "ignore" });
+      } catch {
+        return res.json({ ok: true, isRepo: false, branch: null, staged: [], unstaged: [], untracked: [] });
+      }
+
+      const raw = child_process.execSync("git status --porcelain", { cwd, encoding: "utf-8" });
+      const staged: Array<{ path: string; index: string; worktree: string }> = [];
+      const unstaged: Array<{ path: string; index: string; worktree: string }> = [];
+      const untracked: string[] = [];
+
+      for (const line of raw.split("\n")) {
+        if (!line || line.length < 3) continue;
+        const x = line[0];
+        const y = line[1];
+        const p = line.slice(3).trim();
+
+        if (x === "?" && y === "?") {
+          untracked.push(p);
+        } else {
+          if (x !== " " && x !== "?") {
+            staged.push({ path: p, index: x, worktree: y });
+          }
+          if (y !== " " && y !== "?") {
+            unstaged.push({ path: p, index: x, worktree: y });
+          }
+        }
+      }
+
+      let branch = "main";
+      try {
+        branch = child_process.execSync("git rev-parse --abbrev-ref HEAD", { cwd, encoding: "utf-8" }).trim();
+      } catch {}
+
+      res.json({ ok: true, isRepo: true, branch, staged, unstaged, untracked });
+    } catch (e: any) {
+      res.json({ ok: false, error: e.message, isRepo: false, staged: [], unstaged: [], untracked: [] });
+    }
+  });
+
+  app.get("/api/office/git/log", async (req, res) => {
+    try {
+      const cwd = (req.query.cwd as string) || process.cwd();
+      const limit = parseInt((req.query.limit as string) || "50", 10);
+      const child_process = await import("child_process");
+
+      const format = "%H|%h|%P|%s|%an|%at|%D";
+      const raw = child_process.execSync(`git log -n ${limit} --pretty=format:"${format}"`, { cwd, encoding: "utf-8" });
+      const commits = [];
+
+      for (const line of raw.split("\n")) {
+        if (!line.trim()) continue;
+        const parts = line.split("|");
+        if (parts.length >= 6) {
+          const sha = parts[0];
+          const shortSha = parts[1];
+          const parents = parts[2] ? parts[2].split(" ") : [];
+          const subject = parts[3];
+          const author = parts[4];
+          const time = parseInt(parts[5], 10) * 1000;
+          const refs = parts[6] ? parts[6].split(",").map(r => r.trim()) : [];
+          commits.push({ sha, shortSha, parents, subject, author, time, refs });
+        }
+      }
+
+      res.json({ ok: true, commits });
+    } catch (e: any) {
+      res.json({ ok: false, error: e.message, commits: [] });
+    }
+  });
+
+  app.get("/api/office/git/branches", async (req, res) => {
+    try {
+      const cwd = (req.query.cwd as string) || process.cwd();
+      const child_process = await import("child_process");
+
+      const raw = child_process.execSync("git branch -a", { cwd, encoding: "utf-8" });
+      const local: string[] = [];
+      const remote: string[] = [];
+
+      for (let b of raw.split("\n")) {
+        b = b.replace(/^[\*\s]+/, "").trim();
+        if (!b || b.includes("->")) continue;
+        if (b.startsWith("remotes/")) {
+          remote.push(b.replace(/^remotes\//, ""));
+        } else {
+          local.push(b);
+        }
+      }
+
+      res.json({ ok: true, branches: { local, remote } });
+    } catch (e: any) {
+      res.json({ ok: false, branches: { local: ["main"], remote: [] } });
+    }
+  });
+
+  app.get("/api/office/git/ahead-behind", async (req, res) => {
+    try {
+      const cwd = (req.query.cwd as string) || process.cwd();
+      const child_process = await import("child_process");
+      const raw = child_process.execSync("git rev-list --left-right --count HEAD...@{u}", { cwd, encoding: "utf-8" }).trim();
+      const [ahead, behind] = raw.split(/\s+/).map(Number);
+      res.json({ ok: true, ahead: ahead || 0, behind: behind || 0 });
+    } catch {
+      res.json({ ok: true, ahead: 0, behind: 0 });
+    }
+  });
+
+  // ⚡ MAHR Autonomous Task Delegation Route
+  app.post("/api/office/auto-delegate", async (req, res) => {
+    try {
+      const { topicHint } = req.body || {};
+      const result = await autoDelegateTasksFromMahr(topicHint);
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -1670,6 +2239,19 @@ ${userContext || "None"}
               name: "open_sim_engine",
               description: "Open Sub-Agents Studio and simulation engine.",
               parameters: { type: "OBJECT", properties: {} }
+            },
+            {
+              name: "delegate_office_task",
+              description: "Delegate or dispatch a real mission to the Virtual Office Floor team (Jim: UI/UX & Frontend, Dwight: Security & Code Review, Pam: Notes & Whiteboard Diagrams, Ryan: APIs & Real-time WebSockets, Stanley: Database & Performance Optimizations).",
+              parameters: {
+                type: "OBJECT",
+                properties: {
+                  agentName: { type: "STRING", description: "Target agent: Jim, Dwight, Pam, Ryan, or Stanley" },
+                  taskTitle: { type: "STRING", description: "Short title of the task" },
+                  prompt: { type: "STRING", description: "Exact task or problem statement for the agent" }
+                },
+                required: ["taskTitle", "prompt"]
+              }
             }
           ]
         }
@@ -1725,10 +2307,28 @@ ${userContext || "None"}
 
           if (response?.functionCalls && response.functionCalls.length > 0) {
             for (const fc of response.functionCalls) {
-              executedActions.push({
-                type: fc.name,
-                args: fc.args || {}
-              });
+              if (fc.name === "delegate_office_task") {
+                const cmdArgs = fc.args || {};
+                try {
+                  const officeResult = await processMahrOfficeCommand({
+                    command: `${cmdArgs.agentName ? `Tell ${cmdArgs.agentName}: ` : ""}${cmdArgs.prompt || cmdArgs.taskTitle}`
+                  });
+                  executedActions.push({
+                    type: "delegate_office_task",
+                    args: { ...cmdArgs, officeResult }
+                  });
+                  if (!responseText) {
+                    responseText = `⚡ I have assigned "${cmdArgs.taskTitle}" to ${officeResult.agentName}! Their solution has been transmitted live to the Classroom Chalkboard.`;
+                  }
+                } catch (e: any) {
+                  console.warn("[SubAgent Chat] Failed to auto-delegate office task:", e.message);
+                }
+              } else {
+                executedActions.push({
+                  type: fc.name,
+                  args: fc.args || {}
+                });
+              }
             }
           }
 
@@ -3836,7 +4436,35 @@ Output ONLY valid JSON matching this schema:
     app.use("/assets", express.static(path.join(process.cwd(), "assets")));
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: {
+          port: HMR_PORT,
+          clientPort: HMR_PORT
+        },
+        watch: {
+          ignored: [
+            '**/*.tmp',
+            '**/*.tmp.*',
+            '**/*.db',
+            '**/*.db-*',
+            '**/*.sqlite',
+            '**/*.sqlite-*',
+            '**/mahr_brain.db*',
+            '**/server_chat_history*.json',
+            '**/deleted_memories*.json',
+            '**/memories*.json',
+            '**/daily_tasks*.json',
+            '**/knowledge_graph*.json',
+            '**/vector_knowledge_graph*.json',
+            '**/token_telemetry*.json',
+            '**/office_state*.json',
+            '**/office_*.json',
+            '**/*.log',
+            '**/.system_generated/**'
+          ]
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -3885,6 +4513,18 @@ Output ONLY valid JSON matching this schema:
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      const nextPort = PORT + 1;
+      console.warn(`[Server] Port ${PORT} unexpectedly in use. Shifting to http://localhost:${nextPort}...`);
+      setTimeout(() => {
+        server.listen(nextPort, "0.0.0.0");
+      }, 250);
+    } else {
+      console.error("[Server Error]:", err);
+    }
+  });
 
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`[Server] Running on http://localhost:${PORT}`);

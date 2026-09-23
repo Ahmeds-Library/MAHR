@@ -454,17 +454,17 @@ export class MyraaAudioSession {
           } catch (e) {}
         }
 
-        // Fallback 7: Last resort, use localhost or location.hostname
+        // Fallback 7: Last resort, use window.location.host (includes dynamic port) or localhost:3000
         if (!host) {
           let defaultHost = "";
           try {
-            defaultHost = window.location.hostname;
+            defaultHost = window.location.host || window.location.hostname;
           } catch (e) {}
           host = isValidHost(defaultHost) ? defaultHost : "localhost:3000";
           try {
             protocol = window.location.protocol === "http:" ? "ws:" : "wss:";
           } catch (e) {}
-          console.log("[Myraa WS] Falling back to location.hostname or default:", host);
+          console.log("[Myraa WS] Falling back to location.host or default:", host);
         }
       }
       

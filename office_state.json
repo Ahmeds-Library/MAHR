@@ -1,0 +1,160 @@
+{
+  "agents": [
+    {
+      "id": "agent_boss",
+      "name": "MAHR",
+      "character": "michael",
+      "role": "The Boss & Lead Learning Architect",
+      "provider": "gemini",
+      "status": "idle",
+      "action": "Ready to orchestrate floor & guide student",
+      "currentStation": "desk",
+      "contextTokens": 32000
+    },
+    {
+      "id": "agent_jim",
+      "name": "Jim",
+      "character": "jim",
+      "role": "Frontend Architect & PixiJS Engineer",
+      "provider": "claude",
+      "status": "thinking",
+      "action": "Assigned: Architect a modular dashboard layout in PixiJS for visualizing real-time system metrics",
+      "currentStation": "desk",
+      "contextTokens": 24000
+    },
+    {
+      "id": "agent_dwight",
+      "name": "Dwight",
+      "character": "dwight",
+      "role": "Assistant (to the) RM & Strict Code Auditor",
+      "provider": "claude",
+      "status": "thinking",
+      "action": "Assigned: Audit existing codebase for TypeScript strict-mode compliance and memory leak vulnerabilities",
+      "currentStation": "terminal",
+      "contextTokens": 38000
+    },
+    {
+      "id": "agent_pam",
+      "name": "Pam",
+      "character": "pam",
+      "role": "Classroom Whiteboard & Visual Synthesis",
+      "provider": "openai",
+      "status": "thinking",
+      "action": "Assigned: Create a Feynman-style visual flowchart explaining Microservices vs Serverless architecture",
+      "currentStation": "board",
+      "contextTokens": 16000
+    },
+    {
+      "id": "agent_ryan",
+      "name": "Ryan",
+      "character": "ryan",
+      "role": "Fullstack Temp & WebSocket Streaming",
+      "provider": "deepmind",
+      "status": "thinking",
+      "action": "Assigned: Implement a real-time WebSocket data stream to simulate live AI inference responses",
+      "currentStation": "web",
+      "contextTokens": 11000
+    },
+    {
+      "id": "agent_stanley",
+      "name": "Stanley",
+      "character": "stanley",
+      "role": "Backend Quality Assurance & Crossword Champion",
+      "provider": "gemini",
+      "status": "thinking",
+      "action": "Assigned: Develop an automated integration test suite to verify zero-hallucination outputs in API responses",
+      "currentStation": "desk",
+      "contextTokens": 28000
+    }
+  ],
+  "tasks": [],
+  "terminal": [
+    {
+      "id": "log_1790081028901_start",
+      "time": "5:43:48 PM",
+      "agent": "Pam",
+      "text": "▶ Received task dispatch: \"Explain the concept of asynchronous queues using the Feynman Technique. Break it down into simple, intuitive terms as if teaching a beginner. Provide a clear analogy (like a grocery store checkout or a kitchen ticket system) and include a conceptual whiteboard structure that helps the student visualize how tasks are offloaded, buffered, and processed without blocking the main thread.\"",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081038785_done",
+      "time": "5:43:58 PM",
+      "agent": "Pam",
+      "text": "✔ Completed task: \"Explain the concept of asynchronous queues us...\". Insights synced with Classroom Chalkboard.",
+      "kind": "tool"
+    },
+    {
+      "id": "log_1790081038831",
+      "time": "5:43:58 PM",
+      "agent": "Pam",
+      "text": "🧠 Ingested new milestone memory into Cognitive Brain: \"Executed task \"Explain the concept of asynchronous queues using the Fe...\"",
+      "kind": "tool"
+    },
+    {
+      "id": "log_1790081081620_0",
+      "time": "5:44:41 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Pam: \"Design a Distributed RAG (Retrieval-Augmented Generation) Architecture Blueprint with Urdu Concept Explanations\" [Prio: HIGH]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081081629_1",
+      "time": "5:44:41 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Ryan: \"Implement an Asynchronous Streaming Pipeline with WebSockets for Real-Time LLM Token Output\" [Prio: HIGH]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081081630_2",
+      "time": "5:44:41 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Dwight: \"Audit Asynchronous Task Payloads for Type-Safety and Input Sanitization against Prompt Injection\" [Prio: MED]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081081631_3",
+      "time": "5:44:41 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Stanley: \"Construct a Stress-Testing and Latency Benchmark Suite for Message Broker Queue Throughput\" [Prio: MED]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081694130_0",
+      "time": "5:54:54 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Jim: \"Architect a modular dashboard layout in PixiJS for visualizing real-time system metrics\" [Prio: HIGH]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081694135_1",
+      "time": "5:54:54 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Dwight: \"Audit existing codebase for TypeScript strict-mode compliance and memory leak vulnerabilities\" [Prio: HIGH]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081694136_2",
+      "time": "5:54:54 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Pam: \"Create a Feynman-style visual flowchart explaining Microservices vs Serverless architecture\" [Prio: MED]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081694139_3",
+      "time": "5:54:54 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Ryan: \"Implement a real-time WebSocket data stream to simulate live AI inference responses\" [Prio: HIGH]",
+      "kind": "dispatch"
+    },
+    {
+      "id": "log_1790081694141_4",
+      "time": "5:54:54 PM",
+      "agent": "MAHR (Boss)",
+      "text": "⚡ Delegated mission to Stanley: \"Develop an automated integration test suite to verify zero-hallucination outputs in API responses\" [Prio: MED]",
+      "kind": "dispatch"
+    }
+  ],
+  "activeTheme": "office",
+  "autoMode": false,
+  "lastSaved": "2026-09-22T12:55:23.498Z"
+}

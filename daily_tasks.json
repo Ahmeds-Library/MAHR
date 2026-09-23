@@ -1,0 +1,74 @@
+[
+  {
+    "id": "task_1790081081615_0",
+    "text": "[Pam] Design a Distributed RAG (Retrieval-Augmented Generation) Architecture Blueprint with Urdu Concept Explanations",
+    "completed": false,
+    "priority": "high",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:44:41.615Z"
+  },
+  {
+    "id": "task_1790081081628_1",
+    "text": "[Ryan] Implement an Asynchronous Streaming Pipeline with WebSockets for Real-Time LLM Token Output",
+    "completed": false,
+    "priority": "high",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:44:41.628Z"
+  },
+  {
+    "id": "task_1790081081630_2",
+    "text": "[Dwight] Audit Asynchronous Task Payloads for Type-Safety and Input Sanitization against Prompt Injection",
+    "completed": false,
+    "priority": "medium",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:44:41.630Z"
+  },
+  {
+    "id": "task_1790081081631_3",
+    "text": "[Stanley] Construct a Stress-Testing and Latency Benchmark Suite for Message Broker Queue Throughput",
+    "completed": false,
+    "priority": "medium",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:44:41.631Z"
+  },
+  {
+    "id": "task_1790081694118_0",
+    "text": "[Jim] Architect a modular dashboard layout in PixiJS for visualizing real-time system metrics",
+    "completed": false,
+    "priority": "high",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:54:54.118Z"
+  },
+  {
+    "id": "task_1790081694134_1",
+    "text": "[Dwight] Audit existing codebase for TypeScript strict-mode compliance and memory leak vulnerabilities",
+    "completed": false,
+    "priority": "high",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:54:54.134Z"
+  },
+  {
+    "id": "task_1790081694135_2",
+    "text": "[Pam] Create a Feynman-style visual flowchart explaining Microservices vs Serverless architecture",
+    "completed": false,
+    "priority": "medium",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:54:54.135Z"
+  },
+  {
+    "id": "task_1790081694138_3",
+    "text": "[Ryan] Implement a real-time WebSocket data stream to simulate live AI inference responses",
+    "completed": false,
+    "priority": "high",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:54:54.138Z"
+  },
+  {
+    "id": "task_1790081694140_4",
+    "text": "[Stanley] Develop an automated integration test suite to verify zero-hallucination outputs in API responses",
+    "completed": false,
+    "priority": "medium",
+    "category": "Office Task",
+    "createdAt": "2026-09-22T12:54:54.140Z"
+  }
+]

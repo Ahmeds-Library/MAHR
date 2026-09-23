@@ -168,7 +168,6 @@ var require_lib = __commonJS({
           "v8.setFlagsFromString('--no-flush-bytecode');",
           // No renderer/window is created, so the Chromium sandbox is irrelevant here.
           // Disabling it avoids failures when Electron is launched as root in CI containers.
-          "if (app.commandLine && app.commandLine.appendSwitch) app.commandLine.appendSwitch('no-sandbox');",
           'if (typeof app.disableHardwareAcceleration === "function") app.disableHardwareAcceleration();',
           "function run () {",
           "  try {",
@@ -176,12 +175,14 @@ var require_lib = __commonJS({
           "    const script = new vm.Script(code, { produceCachedData: true });",
           "    const buf = (script.createCachedData && script.createCachedData.call) ? script.createCachedData() : script.cachedData;",
           "    fs.writeFileSync(" + JSON.stringify(outFile) + ", buf);",
-          "    process.exitCode = 0;",
+          // Use app.exit(code) rather than `process.exitCode = code; app.quit()`:
+          // app.quit() runs the graceful-shutdown path and does NOT propagate
+          // process.exitCode, so a failed compile would otherwise exit 0 and the
+          // parent would misreport the real error as a missing-output-file ENOENT.
+          "    app.exit(0);",
           "  } catch (err) {",
           '    process.stderr.write(String((err && err.stack) || err) + "\\n");',
-          "    process.exitCode = 1;",
-          "  } finally {",
-          "    app.quit();",
+          "    app.exit(1);",
           "  }",
           "}",
           "app.whenReady().then(run);"
@@ -193,19 +194,47 @@ var require_lib = __commonJS({
           } catch (_) {
           }
         };
-        const child = spawn(electronPath, [compilerScript], {
+        const child = spawn(electronPath, ["--no-sandbox", compilerScript], {
           // Deliberately NOT setting ELECTRON_RUN_AS_NODE: we want the browser/main process.
           env: process.env,
-          stdio: ["ignore", "inherit", "inherit"]
+          // Capture (don't inherit) the child's streams. A real Electron browser
+          // process prints benign startup noise (GPU/Vulkan/deprecation warnings) to
+          // stderr; inheriting it pollutes the caller's output and makes a genuine
+          // compile error indistinguishable from chatter. We buffer both streams and
+          // surface them only when they matter: folded into the rejection on failure,
+          // or printed when BYTENODE_DEBUG is set.
+          stdio: ["ignore", "pipe", "pipe"]
         });
+        let stdout = "";
+        let stderr = "";
+        if (child.stdout) {
+          child.stdout.setEncoding("utf8");
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+          });
+        }
+        if (child.stderr) {
+          child.stderr.setEncoding("utf8");
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk;
+          });
+        }
         child.on("error", (err) => {
           cleanup();
           reject(err);
         });
-        child.on("exit", (code) => {
+        child.on("close", (code, signal) => {
+          if (DEBUG && (stdout || stderr)) {
+            console.error("[bytenode] electronMain stdout:\n" + stdout);
+            console.error("[bytenode] electronMain stderr:\n" + stderr);
+          }
           if (code !== 0) {
             cleanup();
-            reject(new Error("Electron main-process bytecode compilation failed (exit code " + code + ")"));
+            const detail = stderr.trim() || stdout.trim();
+            const how = signal ? "signal " + signal : "exit code " + code;
+            reject(new Error(
+              "Electron main-process bytecode compilation failed (" + how + ")" + (detail ? ":\n" + detail : "")
+            ));
             return;
           }
           try {
@@ -216,6 +245,101 @@ var require_lib = __commonJS({
           } catch (err) {
             cleanup();
             reject(err);
+          }
+        });
+      });
+    };
+    var compileElectronRendererCode = function(javascriptCode, options) {
+      return new Promise((resolve, reject) => {
+        options = options || {};
+        const os = require("node:os");
+        const electronPath = options.electronPath ? path2.normalize(options.electronPath) : (
+          /** @type {string} */
+          require("electron")
+        );
+        if (!fs2.existsSync(electronPath)) {
+          throw new Error("Electron not found");
+        }
+        const tmpDir = fs2.mkdtempSync(path2.join(os.tmpdir(), "bytenode-electron-renderer-"));
+        const inFile = path2.join(tmpDir, "input.js");
+        const outFile = path2.join(tmpDir, "output.jsc");
+        const mainScript = path2.join(tmpDir, "main.js");
+        const preloadScript = path2.join(tmpDir, "preload.js");
+        const userDataDir = path2.join(tmpDir, "user-data");
+        fs2.writeFileSync(inFile, javascriptCode);
+        const mainSource = [
+          "const { app, BrowserWindow, ipcMain } = require('electron');",
+          "app.disableHardwareAcceleration();",
+          "ipcMain.on('bytenode-done', (_event, err) => {",
+          '  if (err) process.stderr.write(err + "\\n");',
+          "  app.exit(err ? 1 : 0);",
+          "});",
+          "app.whenReady().then(() => {",
+          "  const win = new BrowserWindow({",
+          "    show: false,",
+          "    webPreferences: {",
+          "      preload: " + JSON.stringify(preloadScript) + ",",
+          "      nodeIntegration: true,",
+          "      contextIsolation: false,",
+          "      sandbox: false",
+          "    }",
+          "  });",
+          "  win.webContents.on('render-process-gone', (_event, details) => {",
+          "    process.stderr.write('renderer process gone: ' + details.reason + '\\n');",
+          "    app.exit(2);",
+          "  });",
+          "  win.loadURL('about:blank');",
+          "});"
+        ].join("\n");
+        const preloadSource = [
+          "const { ipcRenderer } = require('electron');",
+          "try {",
+          "  require(" + JSON.stringify(__filename) + ");",
+          "  const fs = require('fs');",
+          "  const vm = require('vm');",
+          "  const code = fs.readFileSync(" + JSON.stringify(inFile) + ", 'utf-8');",
+          "  const script = new vm.Script(code, { produceCachedData: true });",
+          "  fs.writeFileSync(" + JSON.stringify(outFile) + ", script.createCachedData());",
+          "  ipcRenderer.send('bytenode-done');",
+          "} catch (err) {",
+          "  ipcRenderer.send('bytenode-done', String((err && err.stack) || err));",
+          "}"
+        ].join("\n");
+        fs2.writeFileSync(mainScript, mainSource);
+        fs2.writeFileSync(preloadScript, preloadSource);
+        const cleanup = () => {
+          try {
+            fs2.rmSync(tmpDir, { recursive: true, force: true });
+          } catch (_) {
+          }
+        };
+        const args = [mainScript, "--no-sandbox", "--user-data-dir=" + userDataDir];
+        const env = Object.assign({}, process.env);
+        delete env.ELECTRON_RUN_AS_NODE;
+        const child = spawn(electronPath, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+        let output = "";
+        child.stdout.on("data", (chunk) => {
+          output += chunk;
+        });
+        child.stderr.on("data", (chunk) => {
+          output += chunk;
+        });
+        child.on("error", (err) => {
+          cleanup();
+          reject(err);
+        });
+        child.on("close", (code) => {
+          try {
+            if (code !== 0) {
+              throw new Error("Electron renderer bytecode compilation failed (exit code " + code + ")" + (output.trim() ? ":\n" + output.trim() : ""));
+            }
+            let data = fs2.readFileSync(outFile);
+            if (options.compress) data = brotliCompressSync(data);
+            resolve(data);
+          } catch (err) {
+            reject(err);
+          } finally {
+            cleanup();
           }
         });
       });
@@ -257,7 +381,7 @@ var require_lib = __commonJS({
       return script.runInThisContext();
     };
     var compileFile = async function(args, output) {
-      let filename, compileAsModule, compress, electron, electronMain, createLoader, loaderFilename, electronPath;
+      let filename, compileAsModule, compress, electron, electronMain, electronRenderer, createLoader, loaderFilename, electronPath;
       if (typeof args === "string") {
         filename = args;
         compileAsModule = true;
@@ -271,6 +395,7 @@ var require_lib = __commonJS({
         compress = args.compress;
         electron = args.electron || !!args.electronPath;
         electronMain = args.electronMain;
+        electronRenderer = args.electronRenderer;
         electronPath = args.electronPath;
         createLoader = args.createLoader;
         loaderFilename = args.loaderFilename;
@@ -293,7 +418,12 @@ var require_lib = __commonJS({
         code = Module2.wrap(code);
       }
       let bytecodeBuffer;
-      if (electronMain) {
+      if (electronMain && electronRenderer) {
+        throw new Error("electronMain and electronRenderer are mutually exclusive: bytecode for one context is rejected in the other.");
+      }
+      if (electronRenderer) {
+        bytecodeBuffer = await compileElectronRendererCode(code, { compress, electronPath });
+      } else if (electronMain) {
         bytecodeBuffer = await compileElectronMainCode(code, { compress, electronPath });
       } else if (electron) {
         bytecodeBuffer = await compileElectronCode(code, { compress, electronPath });
@@ -410,6 +540,7 @@ var require_lib = __commonJS({
       compileFile,
       compileElectronCode,
       compileElectronMainCode,
+      compileElectronRendererCode,
       runBytecode,
       runBytecodeFile,
       addLoaderFile,

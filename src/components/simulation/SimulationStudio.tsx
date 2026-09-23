@@ -245,11 +245,9 @@ export const SimulationStudio: React.FC<SimulationStudioProps> = ({
 
       {/* Top Left Telemetry HUD */}
       <SimulationTelemetry
-        data={currentData}
+        metrics={currentData?.metrics}
+        formulas={currentData?.formulas}
         fps={fps}
-        timeElapsed={timeElapsed}
-        prompt={prompt}
-        isStreaming={isStreaming}
       />
 
       {/* Top Right Controls Toolbar */}
@@ -298,7 +296,7 @@ export const SimulationStudio: React.FC<SimulationStudioProps> = ({
           if (engineRef.current) engineRef.current.setGridVisible(next);
         }}
         onResetCamera={() => engineRef.current?.setCameraView("reset")}
-        onSetCameraView={(view) => engineRef.current?.setCameraView(view)}
+        onSetCameraView={(view) => engineRef.current?.setCameraView(view === "perspective" ? "reset" : view)}
         onAskMyraaAboutSimulation={() => {
           if (onAskMyraa) {
             const summary = currentData 

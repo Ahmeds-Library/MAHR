@@ -64,7 +64,7 @@ export const ProactiveTaskReminderToast: React.FC<ProactiveTaskReminderToastProp
                 {task.priority} Priority
               </span>
               <span className="text-[9px] font-mono text-slate-400">
-                Category: {task.timeCategory}
+                Category: {task.category}
               </span>
             </div>
           </div>

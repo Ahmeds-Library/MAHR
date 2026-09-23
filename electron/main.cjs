@@ -45,6 +45,7 @@ function resolveAppDir() {
     path.join(__dirname, '../app'),
     path.join(process.resourcesPath || '', 'app'),
     path.join(process.resourcesPath || '', 'app.asar', 'app'),
+    path.join(path.dirname(process.execPath || ''), 'app'),
     __dirname
   ];
 
@@ -149,6 +150,8 @@ function startLocalServer(appDir) {
       path.join(__dirname, '../dist/desktop-server.cjs'),
       path.join(__dirname, '../dist/server.cjs'),
       path.join(process.resourcesPath || '', 'desktop-server.cjs'),
+      path.join(process.resourcesPath || '', '..', 'desktop-server.cjs'),
+      path.join(path.dirname(process.execPath || ''), 'desktop-server.cjs'),
       path.join(process.resourcesPath || '', 'app.asar', 'desktop-server.cjs'),
       '/opt/mahr-desktop/desktop-server.cjs'
     ];
@@ -157,11 +160,15 @@ function startLocalServer(appDir) {
     if (fullServerPath) {
       console.log(`[MAHR Desktop] Starting embedded backend engine: ${fullServerPath} on port ${port}`);
       const nodeBin = isElectronRuntime ? process.execPath : (process.argv[0] || 'node');
+      const dataDir = isElectronRuntime ? electron.app.getPath('userData') : (process.env.MAHR_DATA_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '.', '.mahr'));
+      try { fs.mkdirSync(dataDir, { recursive: true }); } catch (_) {}
+      
       const childEnv = {
         ...process.env,
         PORT: String(port),
         NODE_ENV: 'production',
         APP_DIST_PATH: appDir,
+        MAHR_DATA_DIR: dataDir,
         ...(isElectronRuntime ? { ELECTRON_RUN_AS_NODE: '1' } : {})
       };
 
@@ -174,12 +181,31 @@ function startLocalServer(appDir) {
       childBackendProcess = srv;
 
       let started = false;
+
+      // Active healthcheck poll for immediate startup
+      const checkHealth = () => {
+        if (started) return;
+        const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
+          if (res.statusCode === 200 && !started) {
+            started = true;
+            clearTimeout(readyTimeout);
+            resolve({ port, server: null, url: `http://127.0.0.1:${port}` });
+          } else if (!started) {
+            setTimeout(checkHealth, 120);
+          }
+        });
+        req.on('error', () => {
+          if (!started) setTimeout(checkHealth, 120);
+        });
+      };
+      setTimeout(checkHealth, 80);
+
       const readyTimeout = setTimeout(() => {
         if (!started) {
           started = true;
           resolve({ port, server: null, url: `http://127.0.0.1:${port}` });
         }
-      }, 1800);
+      }, 3500);
 
       srv.stdout.on('data', (d) => {
         const text = d.toString();
@@ -211,15 +237,39 @@ if (isElectronRuntime) {
   // ==========================================================================
   const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, Notification } = electron;
 
+  // Enforce single instance lock — opening a second time focuses existing window
+  const gotTheLock = app.requestSingleInstanceLock();
+  if (!gotTheLock) {
+    app.quit();
+    process.exit(0);
+  }
+
   let mainWindow = null;
   let tray = null;
   let localServerInstance = null;
+
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 
   const isDev = process.env.NODE_ENV === 'development' && !app.isPackaged;
   const DEV_PORT = process.env.PORT || 3000;
   const DEV_URL = `http://localhost:${DEV_PORT}`;
 
   async function createWindow() {
+    const userDataPath = app.getPath('userData');
+    try { fs.mkdirSync(userDataPath, { recursive: true }); } catch (_) {}
+    const stateFile = path.join(userDataPath, 'window-state.json');
+    let windowState = { width: 1440, height: 920, x: undefined, y: undefined, isMaximized: false };
+    try {
+      if (fs.existsSync(stateFile)) {
+        windowState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+      }
+    } catch (_) {}
     const iconCandidates = [
       path.join(__dirname, 'icon-512.png'),
       path.join(__dirname, 'app', 'icon-512.png'),
@@ -248,8 +298,10 @@ if (isElectronRuntime) {
     }
 
     mainWindow = new BrowserWindow({
-      width: 1440,
-      height: 920,
+      width: windowState.width || 1440,
+      height: windowState.height || 920,
+      x: windowState.x,
+      y: windowState.y,
       minWidth: 980,
       minHeight: 640,
       title: 'MAHR // Cognitive Ambient OS',
@@ -267,6 +319,29 @@ if (isElectronRuntime) {
       },
     });
 
+    if (windowState.isMaximized) {
+      mainWindow.maximize();
+    }
+
+    const saveWindowState = () => {
+      if (!mainWindow) return;
+      try {
+        const bounds = mainWindow.getBounds();
+        const isMaximized = mainWindow.isMaximized();
+        fs.writeFileSync(stateFile, JSON.stringify({
+          width: bounds.width,
+          height: bounds.height,
+          x: bounds.x,
+          y: bounds.y,
+          isMaximized
+        }), 'utf8');
+      } catch (_) {}
+    };
+
+    mainWindow.on('resize', saveWindowState);
+    mainWindow.on('move', saveWindowState);
+    mainWindow.on('close', saveWindowState);
+
     if (isDev) {
       mainWindow.loadURL(DEV_URL).catch(() => {
         setTimeout(() => mainWindow && mainWindow.loadURL(DEV_URL), 2000);
@@ -274,8 +349,9 @@ if (isElectronRuntime) {
     } else {
       const appDir = resolveAppDir();
       localServerInstance = await startLocalServer(appDir);
-      mainWindow.loadURL(localServerInstance.url).catch(() => {
-        mainWindow && mainWindow.loadFile(path.join(appDir, 'index.html'));
+      const desktopUrl = `${localServerInstance.url}?desktop=1`;
+      mainWindow.loadURL(desktopUrl).catch(() => {
+        mainWindow && mainWindow.loadFile(path.join(appDir, 'index.html'), { query: { desktop: '1' } });
       });
     }
 
@@ -404,6 +480,21 @@ if (isElectronRuntime) {
     }
   });
 
+  ipcMain.handle('get-login-item-settings', () => {
+    return app.getLoginItemSettings();
+  });
+
+  ipcMain.handle('set-login-item-settings', (event, settings) => {
+    const opts = typeof settings === 'boolean' ? { openAtLogin: settings } : (settings || {});
+    app.setLoginItemSettings(opts);
+    return app.getLoginItemSettings();
+  });
+
+  app.on('before-quit', () => {
+    app.isQuitting = true;
+    cleanupChildServer();
+  });
+
   app.whenReady().then(() => {
     createWindow();
     setupTray();
@@ -474,12 +565,13 @@ if (isElectronRuntime) {
         path.join(process.env.LOCALAPPDATA || '', 'Microsoft\\Edge\\Application\\msedge.exe')
       ];
 
+      const appLaunchUrl = url.includes('?') ? `${url}&desktop=1` : `${url}?desktop=1`;
       for (const b of winBrowsers) {
         if (fs.existsSync(b)) {
           const child = spawn(b, [
-            `--app=${url}`,
+            `--app=${appLaunchUrl}`,
             `--user-data-dir=${winUserData}`,
-            '--window-size=1366,850',
+            '--window-size=1440,900',
             '--no-first-run',
             '--no-default-browser-check'
           ], { stdio: 'ignore' });
@@ -487,7 +579,7 @@ if (isElectronRuntime) {
           return;
         }
       }
-      const child = spawn('cmd.exe', ['/c', 'start', url], { stdio: 'ignore' });
+      const child = spawn('cmd.exe', ['/c', 'start', appLaunchUrl], { stdio: 'ignore' });
       child.on('exit', shutdown);
       return;
     }
@@ -497,18 +589,19 @@ if (isElectronRuntime) {
     const linuxUserData = path.join(userHome, '.config', 'mahr-desktop', 'profile');
     try { fs.mkdirSync(linuxUserData, { recursive: true }); } catch {}
 
+    const appLaunchUrl = url.includes('?') ? `${url}&desktop=1` : `${url}?desktop=1`;
     const browsers = ['google-chrome-stable', 'google-chrome', 'chromium-browser', 'chromium', 'brave-browser', 'microsoft-edge', 'microsoft-edge-stable', 'xdg-open'];
     for (const b of browsers) {
       try {
         execSync(`which ${b}`, { stdio: 'ignore' });
         const args = b === 'xdg-open'
-          ? [url]
+          ? [appLaunchUrl]
           : [
-              `--app=${url}`,
+              `--app=${appLaunchUrl}`,
               `--user-data-dir=${linuxUserData}`,
               '--class=mahr-desktop',
               '--name=MAHR AI Desktop',
-              '--window-size=1366,850',
+              '--window-size=1440,900',
               '--no-first-run',
               '--no-default-browser-check'
             ];

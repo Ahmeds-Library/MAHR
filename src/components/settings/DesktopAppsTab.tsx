@@ -2,7 +2,7 @@
 // Dedicated Settings section for Native Installers (Windows .exe, Linux .deb) and Mobile/Web Sync
 // Focuses purely on user consumption without any exposed source code or developer commands
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Monitor, 
   Terminal, 
@@ -15,7 +15,10 @@ import {
   QrCode, 
   Share2, 
   Sparkles,
-  Lock
+  Lock,
+  Power,
+  HardDrive,
+  Cpu
 } from "lucide-react";
 import { useDesktopApp } from "../../hooks/useDesktopApp";
 
@@ -36,6 +39,36 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
   const [isInstallingPwa, setIsInstallingPwa] = useState(false);
+  const [autoLaunch, setAutoLaunch] = useState<boolean>(false);
+  const [isNativeElectron, setIsNativeElectron] = useState<boolean>(false);
+
+  useEffect(() => {
+    const electronAPI = (window as any)?.electronAPI;
+    if (electronAPI?.isElectron) {
+      setIsNativeElectron(true);
+      if (typeof electronAPI.getLoginItemSettings === "function") {
+        electronAPI.getLoginItemSettings().then((settings: any) => {
+          if (settings && typeof settings.openAtLogin === "boolean") {
+            setAutoLaunch(settings.openAtLogin);
+          }
+        }).catch(() => {});
+      }
+    }
+  }, []);
+
+  const handleToggleAutoLaunch = async () => {
+    const electronAPI = (window as any)?.electronAPI;
+    if (electronAPI?.setLoginItemSettings) {
+      const nextState = !autoLaunch;
+      try {
+        await electronAPI.setLoginItemSettings({ openAtLogin: nextState });
+        setAutoLaunch(nextState);
+        onStatusAlert?.(nextState ? "Launch on system startup enabled" : "Launch on system startup disabled");
+      } catch (err) {
+        onStatusAlert?.("Failed to update startup settings");
+      }
+    }
+  };
 
   const originUrl = typeof window !== "undefined" ? window.location.origin : "https://mahr.ai";
   const linuxInstallCmd = `sudo dpkg -i mahr-desktop_2.4.0_amd64.deb`;
@@ -103,6 +136,74 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
           )}
         </div>
       </div>
+
+      {/* Native Desktop Integration & Settings */}
+      {(isNativeElectron || isDesktopShell) && (
+        <div className="p-4 rounded-2xl bg-slate-900/90 border border-cyan-500/30 shadow-lg shadow-cyan-950/20 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <h4 className="font-bold text-xs text-white uppercase tracking-wider">
+                Native Desktop Runtime Active
+              </h4>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-500/30 text-cyan-300 font-mono">
+              Single-Instance Locked
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Auto-Launch on Startup Toggle */}
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-indigo-400">
+                  <Power size={15} />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-white">Launch at Startup</div>
+                  <div className="text-[10px] text-slate-400">Auto-start MAHR when your computer boots</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleAutoLaunch}
+                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  autoLaunch ? "bg-emerald-500" : "bg-slate-700"
+                }`}
+                role="switch"
+                aria-checked={autoLaunch}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    autoLaunch ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Local Storage & Engine Info */}
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-400">
+                  <HardDrive size={15} />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-white">OS User Storage</div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate max-w-[170px]">
+                    {osName.toLowerCase().includes("win") ? "%APPDATA%\\MAHR" : "~/.config/MAHR"}
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-500/20">
+                Safe &amp; Isolated
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {downloadSuccess && (
         <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center gap-2">

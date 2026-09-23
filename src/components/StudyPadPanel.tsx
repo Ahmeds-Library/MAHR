@@ -15,7 +15,7 @@ import {
   GitFork,
   Highlighter
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, type Variants } from "motion/react";
 import { formatMathText } from "../lib/mathFormatter";
 import { MahrCollaborationSuite } from "./MahrCollaborationSuite";
 
@@ -44,7 +44,7 @@ interface StudyPadPanelProps {
   onConvertToMindMap?: (selectedText?: string) => void;
 }
 
-const studyTabVariants = {
+const studyTabVariants: Variants = {
   initial: { opacity: 0, x: 15 },
   animate: { opacity: 1, x: 0, transition: { duration: 0.25, ease: "easeOut" } },
   exit: { opacity: 0, x: -15, transition: { duration: 0.2, ease: "easeIn" } }
