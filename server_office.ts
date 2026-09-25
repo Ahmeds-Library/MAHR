@@ -9,8 +9,8 @@ import {
   loadDailyTasks, 
   saveDailyTasks,
   loadChatHistory
-} from "./server_memory";
-import { getSafeGeminiApiKey } from "./server_vault";
+} from "./server_memory.ts";
+import { getSafeGeminiApiKey } from "./server_vault.ts";
 import {
   dbGetOfficeAgents,
   dbGetOfficeTasks,
@@ -25,7 +25,7 @@ import {
   dbGetKnowledgeGraph,
   dbAddKnowledgeNode,
   getDbStatus
-} from "./server_db";
+} from "./server_db.ts";
 
 export const officeEvents = new EventEmitter();
 officeEvents.setMaxListeners(100);

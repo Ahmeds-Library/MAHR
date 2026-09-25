@@ -13,9 +13,9 @@
   "categories": ["productivity", "education", "utilities"],
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon.jpeg",
+      "sizes": "2048x2048",
+      "type": "image/jpeg",
       "purpose": "any"
     },
     {
@@ -43,21 +43,21 @@
       "short_name": "Voice",
       "description": "Start live conversational session with Mahr",
       "url": "/?action=voice",
-      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+      "icons": [{ "src": "/icon.jpeg", "sizes": "any" }]
     },
     {
       "name": "Interactive Chalkboard",
       "short_name": "Board",
       "description": "Open collaborative whiteboard & diagrams",
       "url": "/?action=chalkboard",
-      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+      "icons": [{ "src": "/icon.jpeg", "sizes": "any" }]
     },
     {
       "name": "Simulation Studio",
       "short_name": "Simulation",
       "description": "Run digital logic & physics simulations",
       "url": "/?action=simulation",
-      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+      "icons": [{ "src": "/icon.jpeg", "sizes": "any" }]
     }
   ],
   "handle_links": "preferred",

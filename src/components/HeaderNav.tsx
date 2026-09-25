@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Cpu, Bot, Calendar, Brain, MessageSquare, BookOpen, PenTool, Compass, Settings, Monitor, Menu, X, Sparkles, Keyboard, Palette, Network, Orbit, Check, BrainCircuit, Building2, Globe, Download } from "lucide-react";
+import { Cpu, Bot, Calendar, Brain, MessageSquare, BookOpen, PenTool, Compass, Settings, Monitor, Menu, X, Sparkles, Keyboard, Palette, Network, Orbit, Check, BrainCircuit, Building2, Globe, Download, Presentation } from "lucide-react";
 import { SUPPORTED_AI_MODELS, AIModelConfig, SubAgent, DailyTask } from "../lib/subagentTypes";
 import { ChatMessage } from "../lib/memoryTypes";
 import { PsychologyProfile } from "../services/colorPsychologyEngine";
 import { formatTokenCount, estimateActiveContextTokens } from "../lib/tokenUtils";
 import { THEME_COLOR_CONFIGS, getThemeConfig } from "../services/themeService";
 import { HumanMoodType, HUMAN_MOOD_CONFIGS } from "../services/humanEmotionEngine";
+import { MahrEmblemLogo } from "./brand/MahrEmblemLogo";
 
 interface HeaderNavProps {
   activeModelId: string;
@@ -26,12 +27,14 @@ interface HeaderNavProps {
   isSubAgentsStudioOpen: boolean;
   isDailyTaskManagerOpen: boolean;
   isMunderDifflinOpen?: boolean;
+  isSlidesStudioOpen?: boolean;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   onToggleModelSwitcher: () => void;
   onToggleSubAgents: () => void;
   onToggleDailyTasks: () => void;
   onToggleMunderDifflin?: () => void;
+  onToggleSlidesStudio?: () => void;
   onToggleMemory: () => void;
   onToggleKnowledgeGraph?: () => void;
   onToggleJournal: () => void;
@@ -76,12 +79,14 @@ export const HeaderNav = ({
   isSubAgentsStudioOpen,
   isDailyTaskManagerOpen,
   isMunderDifflinOpen = false,
+  isSlidesStudioOpen = false,
   isMobileMenuOpen,
   setIsMobileMenuOpen,
   onToggleModelSwitcher,
   onToggleSubAgents,
   onToggleDailyTasks,
   onToggleMunderDifflin,
+  onToggleSlidesStudio,
   onToggleMemory,
   onToggleKnowledgeGraph,
   onToggleJournal,
@@ -306,15 +311,13 @@ export const HeaderNav = ({
         
         {/* Mobile Navbar Header */}
         <div className="flex md:hidden items-center justify-between w-full">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300">
-              <Sparkles size={16} className="animate-spin-slow" />
-            </div>
+          <div className="flex items-center gap-2.5">
+            <MahrEmblemLogo size={32} showText={false} showStatusIndicator={true} />
             <div>
-              <h1 className="text-sm font-bold tracking-wider font-mono bg-clip-text text-transparent bg-gradient-to-r from-purple-300 via-indigo-200 to-cyan-300">
+              <h1 className="text-sm font-bold tracking-wider font-mono bg-clip-text text-transparent bg-gradient-to-r from-amber-200 via-amber-400 to-amber-100">
                 MAHR AI
               </h1>
-              <p className="text-[9px] text-purple-300/70 font-mono tracking-widest uppercase">
+              <p className="text-[9px] text-amber-300/70 font-mono tracking-widest uppercase">
                 {activeSubAgent.name.split(" ")[0]}
               </p>
             </div>
@@ -415,6 +418,26 @@ export const HeaderNav = ({
                 </div>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/30 font-bold border border-purple-400/30 text-purple-200">
                   6 Agents
+                </span>
+              </button>
+            )}
+
+            {onToggleSlidesStudio && (
+              <button
+                id="mobile-slides-studio-btn"
+                onClick={() => { onToggleSlidesStudio(); setIsMobileMenuOpen(false); }}
+                className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
+                  isSlidesStudioOpen
+                    ? "bg-amber-500/30 border-amber-400 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+                    : "bg-amber-950/40 border-amber-500/30 text-amber-200 hover:bg-amber-900/50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Presentation size={14} className="text-amber-400" />
+                  <span className="font-semibold">Google Slides Studio</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 font-bold border border-amber-400/30 text-amber-200">
+                  AI Keynote
                 </span>
               </button>
             )}
@@ -524,12 +547,7 @@ export const HeaderNav = ({
         <div className="hidden md:flex items-center justify-between gap-2 lg:gap-3 w-full overflow-x-auto scrollbar-none py-0.5">
           {/* Brand Logo */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-500/15 to-indigo-500/15 border border-purple-500/30 shadow-inner">
-              <Sparkles size={16} className="text-purple-400 animate-spin-slow" />
-              <span className="text-sm font-extrabold font-mono tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-purple-200 via-indigo-100 to-cyan-200">
-                MAHR
-              </span>
-            </div>
+            <MahrEmblemLogo size={36} showText={true} showStatusIndicator={true} />
           </div>
 
           {/* Core AI Engines Group */}
@@ -546,8 +564,27 @@ export const HeaderNav = ({
               title="MAHR Office // Multi-Agent Virtual Floor"
             >
               <Building2 size={14} className={isMunderDifflinOpen ? "text-white animate-pulse shrink-0" : "text-purple-300 shrink-0"} />
-              <span>Office</span>
+              <span className="hidden sm:inline">MAHR Office</span>
+              <span className="sm:hidden">Office</span>
             </button>
+
+            {/* 📊 Google Slides Studio Button */}
+            {onToggleSlidesStudio && (
+              <button
+                id="header-slides-studio-btn"
+                onClick={onToggleSlidesStudio}
+                className={`h-9 px-3 rounded-xl border text-xs font-mono font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] ${
+                  isSlidesStudioOpen
+                    ? "bg-amber-500 border-amber-300 text-zinc-950 font-bold shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+                    : "bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 hover:border-amber-400 text-amber-200"
+                }`}
+                title="Google Slides Studio // AI Presentation Architect"
+              >
+                <Presentation size={14} className={isSlidesStudioOpen ? "text-zinc-950 shrink-0" : "text-amber-400 shrink-0"} />
+                <span className="hidden sm:inline">Google Slides</span>
+                <span className="sm:hidden">Slides</span>
+              </button>
+            )}
 
             <button
               onClick={onToggleDailyTasks}

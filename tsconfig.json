@@ -26,6 +26,7 @@
         "./public/brand/*"
       ]
     },
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true
   },

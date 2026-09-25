@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
-import { Memory, MemoryTransaction } from "./src/lib/memoryTypes";
+import type { Memory, MemoryTransaction } from "./src/lib/memoryTypes.ts";
 
 const DATA_DIR = process.env.MAHR_DATA_DIR || process.cwd();
 const MEMORY_FILE = path.join(DATA_DIR, "memories.json");

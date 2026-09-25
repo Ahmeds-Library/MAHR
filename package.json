@@ -3,12 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "main": "dist_electron/main.cjs",
   "scripts": {
     "dev": "NODE_OPTIONS=\"--max-old-space-size=4096\" tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild electron/main.cjs --bundle --platform=node --format=cjs --packages=external --target=node20 --outfile=dist_electron/main.cjs && node scripts/create_installers.cjs",
+    "build": "vite build",
+    "build:desktop": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild electron/main.cjs --bundle --platform=node --format=cjs --packages=external --target=node20 --outfile=dist_electron/main.cjs && node scripts/create_installers.cjs",
     "build:electron": "esbuild electron/main.cjs --bundle --platform=node --format=cjs --packages=external --target=node20 --outfile=dist_electron/main.cjs",
-    "start": "node dist/server.cjs",
+    "start": "node server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
@@ -17,33 +17,6 @@
     "electron:build:win": "electron-builder --win",
     "electron:build:linux": "electron-builder --linux AppImage deb",
     "electron:build:all": "electron-builder -wl"
-  },
-  "build": {
-    "appId": "com.mahr.ai",
-    "productName": "MAHR",
-    "directories": {
-      "output": "dist_electron"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "public/**/*"
-    ],
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "public/icon-512.png"
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "category": "Utility",
-      "icon": "public/icon-512.png"
-    }
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -55,6 +28,7 @@
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "firebase": "^12.19.0",
     "gsap": "^3.15.0",
     "i18next": "^26.4.2",
     "jszip": "^3.10.1",

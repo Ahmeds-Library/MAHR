@@ -37,8 +37,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     initialTab
   );
 
-  if (!isOpen) return null;
-
   const sidebarTabs = [
     {
       id: "command_map",
@@ -88,16 +86,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[300] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 15 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-          className="rounded-3xl border border-white/15 bg-[#090a14]/95 backdrop-blur-3xl w-full max-w-4xl shadow-2xl flex flex-col md:flex-row h-[90vh] md:h-[560px] max-h-[620px] overflow-hidden font-sans text-left"
-          style={{ boxShadow: `0 25px 70px -10px rgba(0,0,0,0.9), 0 0 40px rgba(139,92,246,0.18)` }}
-        >
-          {/* LEFT SIDEBAR NAVIGATION */}
+      {isOpen && (
+        <>
+          {/* Backdrop Overlay - Click outside to close */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onClose}
+            className="fixed inset-0 z-[299] bg-black/60 backdrop-blur-sm"
+          />
+
+          {/* Slide-in Right Side Panel */}
+          <motion.div
+            initial={{ x: "100%", opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0 }}
+            transition={{ type: "spring", damping: 28, stiffness: 260 }}
+            className="fixed inset-y-0 right-0 z-[300] w-full sm:w-[580px] md:w-[680px] lg:w-[740px] max-w-full bg-[#080914]/98 border-l border-white/15 backdrop-blur-3xl shadow-[-25px_0_70px_rgba(0,0,0,0.85)] flex flex-col md:flex-row h-full overflow-hidden font-sans text-left"
+          >
+            {/* LEFT SIDEBAR NAVIGATION */}
           <div className="w-full md:w-64 bg-slate-950/80 border-b md:border-b-0 md:border-r border-white/10 flex flex-col shrink-0 p-3.5 sm:p-4 justify-between select-none">
             {/* Sidebar Brand Header */}
             <div className="flex flex-col gap-3">
@@ -272,7 +281,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
         </motion.div>
-      </div>
-    </AnimatePresence>
-  );
+      </>
+    )}
+  </AnimatePresence>
+);
 };

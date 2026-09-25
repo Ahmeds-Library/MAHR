@@ -34,6 +34,7 @@ export interface UniversalSimulationStudioProps {
   onAskMyraa?: (question: string) => void;
   initialMode?: "2d-liquid" | "3d-webgl" | "dld-logic";
   initialPrompt?: string;
+  embedded?: boolean;
 }
 
 export const UniversalSimulationStudio: React.FC<UniversalSimulationStudioProps> = ({
@@ -42,7 +43,8 @@ export const UniversalSimulationStudio: React.FC<UniversalSimulationStudioProps>
   onAskMahr,
   onAskMyraa,
   initialMode = "3d-webgl",
-  initialPrompt = "3D Projectile Motion Laboratory & Vector Field"
+  initialPrompt = "3D Projectile Motion Laboratory & Vector Field",
+  embedded = false
 }) => {
   const askHandler = onAskMahr || onAskMyraa;
   const [activeEngineMode, setActiveEngineMode] = useState<"2d-liquid" | "3d-webgl" | "dld-logic">(initialMode);
@@ -135,7 +137,11 @@ export const UniversalSimulationStudio: React.FC<UniversalSimulationStudioProps>
   return (
     <div 
       id="universal-simulation-studio-modal"
-      className="fixed inset-0 z-50 bg-[#020617]/95 backdrop-blur-2xl text-slate-100 flex flex-col overflow-hidden animate-in fade-in duration-200"
+      className={
+        embedded
+          ? "relative w-full h-full text-slate-100 flex flex-col overflow-hidden"
+          : "fixed inset-0 z-50 bg-[#020617]/95 backdrop-blur-2xl text-slate-100 flex flex-col overflow-hidden animate-in fade-in duration-200"
+      }
     >
       {/* Universal Engine Master Header Bar */}
       <header className="flex items-center justify-between px-4 py-2.5 bg-slate-950/90 border-b border-white/10 z-30 shrink-0">

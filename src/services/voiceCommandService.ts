@@ -133,6 +133,15 @@ export const VOICE_COMMANDS_LIST: VoiceCommand[] = [
     badgeText: "Whiteboard"
   },
   {
+    id: "open_slides_studio",
+    phrase: "Open Presentation Slides",
+    keywords: ["presentation", "ppt", "slides", "slide deck", "make presentation", "create ppt", "google slides"],
+    category: "study",
+    description: "Opens the presentation and Google Slides studio right on the Classroom Whiteboard.",
+    example: "MAHR, make a presentation or open slides",
+    badgeText: "Slides Studio"
+  },
+  {
     id: "open_memory",
     phrase: "Open memory dashboard",
     keywords: ["memory", "history", "dashboard", "lessons"],

@@ -12,12 +12,15 @@ export default defineConfig(() => {
         { find: /^@\/(.*)/, replacement: path.resolve(__dirname, 'src/office/$1') },
         { find: /^@shared\/(.*)/, replacement: path.resolve(__dirname, 'src/office/shared/$1') },
         { find: /^@brand\/(.*)/, replacement: path.resolve(__dirname, 'public/brand/$1') },
-        { find: 'react', replacement: path.resolve(__dirname, 'node_modules/react') },
-        { find: 'react-dom', replacement: path.resolve(__dirname, 'node_modules/react-dom') },
       ],
     },
     optimizeDeps: {
       include: ['react', 'react-dom', 'motion/react'],
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      sourcemap: false,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

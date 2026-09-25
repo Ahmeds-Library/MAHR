@@ -4,7 +4,7 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/icon.svg',
+  '/icon.jpeg',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-maskable-512.png'

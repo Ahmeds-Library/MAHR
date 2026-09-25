@@ -39,7 +39,7 @@ export function MAHROfficeModal({
   onUpdateStudyPadText,
   onNotifyUser
 }: MAHROfficeModalProps) {
-  const [bypassToSimulation, setBypassToSimulation] = useState<boolean>(true);
+  const [bypassToSimulation, setBypassToSimulation] = useState<boolean>(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
   const [hasEverOpened, setHasEverOpened] = useState(isOpen);
@@ -59,11 +59,23 @@ export function MAHROfficeModal({
   // If user has not opened the office floor yet, do not mount to preserve resources
   if (!hasEverOpened && !isOpen) return null;
 
-  // If running in browser and user has not clicked bypass/preview:
+  // On website (browser), redirect user to desktop app with installer links and deep-link launcher
   if (isBrowser && !bypassToSimulation && isOpen) {
     const handleInstall = async () => {
       setInstalling(true);
-      await installDesktopApp();
+      // Try launching protocol deep-link first
+      try {
+        window.location.href = "mahr://office";
+      } catch {}
+
+      const installed = await installDesktopApp();
+      if (!installed) {
+        // Fallback: Enable desktop shell mode directly
+        try {
+          localStorage.setItem('mahr_desktop_mode', 'true');
+        } catch {}
+        setBypassToSimulation(true);
+      }
       setInstalling(false);
     };
 

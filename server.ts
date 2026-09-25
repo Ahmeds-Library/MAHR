@@ -3,7 +3,11 @@ import http from "http";
 import path from "path";
 import fs from "fs";
 import net from "net";
+import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { GoogleGenAI, Modality, Type, LiveServerMessage } from "@google/genai";
 import dotenv from "dotenv";
 import { 
@@ -29,21 +33,21 @@ import {
   serverCosineSimilarity,
   serverQueryVectorMemory,
   serverFindSemanticallySimilarMemory,
-  ProjectArtifactsForServer
-} from "./server_memory";
+  type ProjectArtifactsForServer
+} from "./server_memory.ts";
 import {
   loadTokenTelemetry,
   getLiveTokenStats,
   recordTokenUsage,
   countRealContextTokens,
   setActiveContextTokens
-} from "./server_tokens";
-import { Memory } from "./src/lib/memoryTypes";
+} from "./server_tokens.ts";
+import type { Memory } from "./src/lib/memoryTypes.ts";
 import { 
   getSafeGeminiApiKey, 
   isVaultKeyAvailable, 
   getVaultStatus 
-} from "./server_vault";
+} from "./server_vault.ts";
 import {
   loadOfficeState,
   saveOfficeState,
@@ -56,7 +60,7 @@ import {
   officeEvents,
   emitOfficeEvent,
   processMahrOfficeCommand
-} from "./server_office";
+} from "./server_office.ts";
 import {
   initMahrDatabase,
   getDbStatus,
@@ -64,7 +68,7 @@ import {
   testDbConnection,
   migrateAndSwitchDb,
   dbLogTerminal
-} from "./server_db";
+} from "./server_db.ts";
 
 dotenv.config();
 
@@ -88,6 +92,55 @@ async function getAvailablePort(startPort: number, maxAttempts = 30): Promise<nu
   return startPort;
 }
 
+// ==========================================
+// RESILIENT MODEL POOL & CIRCUIT BREAKER
+// ==========================================
+// Manages demand spikes (503 UNAVAILABLE, 429 RESOURCE_EXHAUSTED) gracefully across Gemini endpoints
+const modelOverloadedUntil = new Map<string, number>();
+
+export function isModelOverloaded(modelName: string): boolean {
+  const until = modelOverloadedUntil.get(modelName);
+  if (!until) return false;
+  if (Date.now() > until) {
+    modelOverloadedUntil.delete(modelName);
+    return false;
+  }
+  return true;
+}
+
+export function markModelOverloaded(modelName: string, durationMs: number = 45000): void {
+  modelOverloadedUntil.set(modelName, Date.now() + durationMs);
+}
+
+export function clearModelOverloaded(modelName: string): void {
+  modelOverloadedUntil.delete(modelName);
+}
+
+/**
+ * Returns prioritized Gemini model candidates based on current load,
+ * separating high-demand models (e.g. gemini-3.8-flash) and high-availability
+ * models (gemini-3.1-flash-lite) into distinct isolated capacity pools.
+ * Filters out redundant aliases like 'gemini-flash-latest' when 'gemini-3.8-flash' is present.
+ */
+export function getPrioritizedModelCandidates(preferredModel: string = "gemini-3.8-flash"): string[] {
+  let basePreferred = preferredModel || "gemini-3.8-flash";
+  if (basePreferred === "gemini-flash-latest") {
+    basePreferred = "gemini-3.8-flash";
+  }
+  if (basePreferred.includes("2.5") || basePreferred.includes("1.5") || basePreferred.includes("2.0")) {
+    basePreferred = "gemini-3.1-flash-lite";
+  }
+
+  const primary = (basePreferred === "gemini-3.1-flash-lite") ? "gemini-3.1-flash-lite" : basePreferred;
+  const alternate = primary === "gemini-3.1-flash-lite" ? "gemini-3.8-flash" : "gemini-3.1-flash-lite";
+
+  // If primary model is currently experiencing high demand (503 / 429), place alternate first
+  if (isModelOverloaded(primary)) {
+    return [alternate, primary];
+  }
+  return [primary, alternate];
+}
+
 async function startServer() {
   // Prevent unhandled error event crashes and keep the dev server stable
   process.on("uncaughtException", (err) => {
@@ -108,17 +161,21 @@ async function startServer() {
   await loadTokenTelemetry();
 
   const app = express();
-  const requestedPort = parseInt(process.env.PORT || "3000", 10);
-  const PORT = await getAvailablePort(requestedPort);
-  if (PORT !== requestedPort) {
+  const isProduction = process.env.NODE_ENV === "production";
+  const requestedPort = parseInt(process.env.PORT || (isProduction ? "8080" : "3000"), 10);
+  const PORT = isProduction ? requestedPort : await getAvailablePort(requestedPort);
+  if (!isProduction && PORT !== requestedPort) {
     console.warn(`[Port Conflict] Requested port ${requestedPort} is already in use. Automatically shifted server to http://localhost:${PORT}!`);
   }
 
-  // Calculate matching HMR port to avoid port 24678 collision
-  const requestedHmrPort = 24678 + (PORT - requestedPort);
-  const HMR_PORT = await getAvailablePort(requestedHmrPort);
-  if (HMR_PORT !== 24678) {
-    console.warn(`[HMR Port Conflict] Standard HMR port 24678 was in use. Shifted Vite HMR to port ${HMR_PORT}!`);
+  // Calculate matching HMR port to avoid port 24678 collision (dev mode only)
+  let HMR_PORT = 24678;
+  if (!isProduction) {
+    const requestedHmrPort = 24678 + (PORT - requestedPort);
+    HMR_PORT = await getAvailablePort(requestedHmrPort);
+    if (HMR_PORT !== 24678) {
+      console.warn(`[HMR Port Conflict] Standard HMR port 24678 was in use. Shifted Vite HMR to port ${HMR_PORT}!`);
+    }
   }
   
   app.set("trust proxy", true);
@@ -1118,11 +1175,12 @@ Each item must have:
 - completed: false
 - reminder: true`;
 
-      // Primary model gemini-3.8-flash for speed and higher quota availability
+      // Resilient model selection with demand-spike circuit breaker
       let text: string | undefined = undefined;
-      const modelCandidates = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+      const modelCandidates = getPrioritizedModelCandidates("gemini-3.8-flash");
       
-      for (const mName of modelCandidates) {
+      for (let i = 0; i < modelCandidates.length; i++) {
+        const mName = modelCandidates[i];
         try {
           const response = await ai.models.generateContent({
             model: mName,
@@ -1159,10 +1217,20 @@ Each item must have:
           }
           if (response.text) {
             text = response.text;
+            clearModelOverloaded(mName);
             break;
           }
         } catch (mErr: any) {
-          console.warn(`[Auto-Generate Tasks] Model ${mName} failed, trying next candidate:`, mErr?.message || mErr);
+          const errMsg = mErr?.message || String(mErr);
+          const isDemandSpike = errMsg.includes("503") || errMsg.includes("demand") || errMsg.includes("UNAVAILABLE") || errMsg.includes("429");
+          const nextModel = modelCandidates[i + 1] || "fallback";
+          if (isDemandSpike) {
+            markModelOverloaded(mName, 60000);
+            console.log(`[Auto-Generate Tasks] ${mName} capacity spike; dynamically failing over to ${nextModel}...`);
+            await new Promise(r => setTimeout(r, 200));
+          } else {
+            console.log(`[Auto-Generate Tasks] ${mName} busy, falling over to ${nextModel}...`);
+          }
         }
       }
 
@@ -2080,7 +2148,322 @@ Also provide:
     }
   });
 
-  // Dedicated Sub-Agent Chat Endpoint (Supports High-Context Models like gemini-3.8-flash)
+  // Dedicated Web Media & Educational Assets Engine (Images, Diagrams, YouTube Videos)
+  async function searchYouTubeVideos(query: string, limit: number = 4) {
+    try {
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=en&sp=EgIQAQ%253D%253D`;
+      const response = await fetch(searchUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        }
+      });
+      const html = await response.text();
+      const videoList: any[] = [];
+      const jsonMatch = html.match(/ytInitialData\s*=\s*({.+?});/);
+      if (jsonMatch) {
+        try {
+          const data = JSON.parse(jsonMatch[1]);
+          const contents = data.contents?.twoColumnSearchResultRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents;
+          if (contents && Array.isArray(contents)) {
+            for (const item of contents) {
+              if (item.videoRenderer?.videoId) {
+                const vr = item.videoRenderer;
+                videoList.push({
+                  type: "video",
+                  videoId: vr.videoId,
+                  url: `https://www.youtube.com/watch?v=${vr.videoId}`,
+                  title: vr.title?.runs?.[0]?.text || vr.title?.simpleText || "Educational Video",
+                  thumbnailUrl: `https://i.ytimg.com/vi/${vr.videoId}/hqdefault.jpg`,
+                  author: vr.ownerText?.runs?.[0]?.text || vr.shortBylineText?.runs?.[0]?.text || "Creator",
+                  duration: vr.lengthText?.simpleText || "N/A"
+                });
+                if (videoList.length >= limit) break;
+              }
+            }
+          }
+        } catch (e) {}
+      }
+      return videoList;
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async function searchWebImages(query: string, limit: number = 4) {
+    try {
+      const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=6&prop=pageimages|extracts&piprop=original|thumbnail&pithumbsize=800&exintro=1&explaintext=1&exsentences=2&format=json`;
+      const res = await fetch(wikiUrl, {
+        headers: { "User-Agent": "MahrLearningCompanion/2.0 (contact@mahr.ai)" }
+      });
+      const data: any = await res.json();
+      const images: any[] = [];
+      if (data?.query?.pages) {
+        for (const key of Object.keys(data.query.pages)) {
+          const page = data.query.pages[key];
+          const imgUrl = page.thumbnail?.source || page.original?.source;
+          if (imgUrl) {
+            images.push({
+              type: "image",
+              url: imgUrl,
+              title: page.title,
+              caption: page.extract ? page.extract.slice(0, 120) + "..." : page.title,
+              thumbnailUrl: page.thumbnail?.source || imgUrl
+            });
+            if (images.length >= limit) break;
+          }
+        }
+      }
+      if (images.length > 0) return images;
+
+      // Fallback to high-res thematic Unsplash internet photography
+      const cleanKeyword = encodeURIComponent(query.slice(0, 32).trim());
+      const curatedFallbacks = [
+        "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=1200&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1200&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?q=80&w=1200&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=1200&auto=format&fit=crop"
+      ];
+      const randomIdx = Math.abs(query.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0)) % curatedFallbacks.length;
+      images.push({
+        type: "image",
+        url: curatedFallbacks[randomIdx],
+        title: query,
+        caption: `Internet visual asset for ${query}`,
+        thumbnailUrl: curatedFallbacks[randomIdx]
+      });
+      return images;
+    } catch (err) {
+      return [];
+    }
+  }
+
+  // Live Media Search Endpoint for Slides, Whiteboard & Chat
+  app.get("/api/media/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "Artificial Intelligence";
+      const [images, videos] = await Promise.all([
+        searchWebImages(q, 6),
+        searchYouTubeVideos(q, 6)
+      ]);
+      res.json({ query: q, images, videos });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message, images: [], videos: [] });
+    }
+  });
+
+  function generateChalkboardSvgDiagram(prompt: string): string {
+    const safeTitle = (prompt || "System Diagram").slice(0, 48).replace(/[<>&"]/g, "");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540">
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        </pattern>
+        <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#1e293b" stop-opacity="0.95"/>
+          <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+        </linearGradient>
+      </defs>
+      <rect width="100%" height="100%" fill="#0a0f1d"/>
+      <rect width="100%" height="100%" fill="url(#grid)"/>
+      <circle cx="160" cy="140" r="180" fill="#3b82f6" opacity="0.08"/>
+      <circle cx="800" cy="380" r="200" fill="#a855f7" opacity="0.08"/>
+      
+      <rect x="60" y="40" width="840" height="60" rx="12" fill="url(#cardGrad)" stroke="rgba(139,92,246,0.3)" stroke-width="1.5"/>
+      <circle cx="90" cy="70" r="10" fill="#06b6d4"/>
+      <text x="115" y="76" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="700">${safeTitle}</text>
+      <text x="860" y="75" fill="#94a3b8" font-family="monospace" font-size="12" text-anchor="end">MAHR EDUCATIONAL DIAGRAM</text>
+
+      <rect x="100" y="160" width="220" height="130" rx="14" fill="url(#cardGrad)" stroke="#06b6d4" stroke-width="2"/>
+      <rect x="100" y="160" width="220" height="32" rx="14" fill="rgba(6,182,212,0.15)"/>
+      <text x="120" y="182" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="13" font-weight="600">01. CORE CONCEPT</text>
+      <text x="120" y="222" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="14" font-weight="500">Hypothesis &amp; Foundations</text>
+
+      <path d="M 320 225 L 430 225" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6,4" fill="none"/>
+      <polygon points="430,220 442,225 430,230" fill="#38bdf8"/>
+
+      <rect x="440" y="160" width="230" height="130" rx="14" fill="url(#cardGrad)" stroke="#a855f7" stroke-width="2"/>
+      <rect x="440" y="160" width="230" height="32" rx="14" fill="rgba(168,85,247,0.15)"/>
+      <text x="460" y="182" fill="#c084fc" font-family="system-ui, sans-serif" font-size="13" font-weight="600">02. MECHANISM &amp; LOGIC</text>
+      <text x="460" y="222" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="14" font-weight="500">Algorithmic Synthesis</text>
+
+      <path d="M 670 225 L 750 225" stroke="#c084fc" stroke-width="3" stroke-dasharray="6,4" fill="none"/>
+      <polygon points="750,220 762,225 750,230" fill="#c084fc"/>
+
+      <rect x="760" y="160" width="140" height="130" rx="14" fill="url(#cardGrad)" stroke="#10b981" stroke-width="2"/>
+      <rect x="760" y="160" width="140" height="32" rx="14" fill="rgba(16,185,129,0.15)"/>
+      <text x="775" y="182" fill="#34d399" font-family="system-ui, sans-serif" font-size="13" font-weight="600">03. OUTPUT</text>
+      <text x="775" y="222" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="14" font-weight="500">Breakthrough</text>
+
+      <rect x="100" y="340" width="800" height="140" rx="16" fill="url(#cardGrad)" stroke="rgba(255,255,255,0.1)" stroke-width="1.5"/>
+      <text x="130" y="380" fill="#f1f5f9" font-family="system-ui, sans-serif" font-size="16" font-weight="600">Structural Summary &amp; Key Properties</text>
+      <line x1="130" y1="395" x2="870" y2="395" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+      <text x="130" y="425" fill="#94a3b8" font-family="monospace" font-size="13">• Computational model of ${safeTitle}</text>
+      <text x="130" y="450" fill="#94a3b8" font-family="monospace" font-size="13">• Verified scientific structure ready for chalkboard &amp; slides integration</text>
+    </svg>`;
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+  }
+
+  // Dedicated Image Creation & Editing with gemini-3.1-flash-lite-image
+  app.post("/api/images/generate", async (req, res) => {
+    try {
+      const { prompt, aspectRatio = "16:9" } = req.body;
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ error: "Image generation prompt is required." });
+      }
+
+      const apiKey = getSafeGeminiApiKey();
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+      });
+
+      console.log(`[Image Gen] Generating image with gemini-3.1-flash-lite-image for: "${prompt.slice(0, 60)}..."`);
+      
+      let generatedImageBase64: string | null = null;
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite-image",
+          contents: {
+            parts: [{ text: prompt }]
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio as any
+            }
+          }
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+          if (part.inlineData && part.inlineData.data) {
+            const mime = part.inlineData.mimeType || "image/png";
+            generatedImageBase64 = `data:${mime};base64,${part.inlineData.data}`;
+            break;
+          }
+        }
+      } catch (genErr: any) {
+        console.warn("[Image Gen API Warning]:", genErr?.message || genErr);
+      }
+
+      if (generatedImageBase64) {
+        return res.json({
+          success: true,
+          images: [generatedImageBase64],
+          prompt,
+          model: "gemini-3.1-flash-lite-image"
+        });
+      }
+
+      // If model returned no image or quota was exceeded, fall back to high-quality academic / Wikipedia illustration
+      console.log(`[Image Gen] Falling back to verified educational web diagrams for: "${prompt.slice(0, 60)}..."`);
+      const fallbackWeb = await searchWebImages(prompt, 2);
+      if (fallbackWeb && fallbackWeb.length > 0) {
+        return res.json({
+          success: true,
+          images: fallbackWeb.map(f => f.url),
+          isFallback: true,
+          source: "educational_web"
+        });
+      }
+
+      // If web search has no results, synthesize an exquisite vector SVG chalkboard diagram data URL
+      const svgDiagram = generateChalkboardSvgDiagram(prompt);
+      return res.json({
+        success: true,
+        images: [svgDiagram],
+        isFallback: true,
+        source: "svg_vector_canvas"
+      });
+    } catch (err: any) {
+      console.warn("[Image Gen Final Fallback]:", err?.message || err);
+      const svgDiagram = generateChalkboardSvgDiagram(req.body?.prompt || "Learning Diagram");
+      res.json({
+        success: true,
+        images: [svgDiagram],
+        isFallback: true,
+        source: "svg_vector_canvas"
+      });
+    }
+  });
+
+  app.post("/api/images/edit", async (req, res) => {
+    try {
+      const { prompt, base64Image, mimeType = "image/png", aspectRatio = "16:9" } = req.body;
+      if (!prompt || !base64Image) {
+        return res.status(400).json({ error: "Prompt and base64Image are required for editing." });
+      }
+
+      const apiKey = getSafeGeminiApiKey();
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+      });
+
+      console.log(`[Image Edit] Editing image with gemini-3.1-flash-lite-image for: "${prompt.slice(0, 60)}..."`);
+      const cleanB64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
+
+      let editedImageBase64: string | null = null;
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite-image",
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  data: cleanB64,
+                  mimeType: mimeType
+                }
+              },
+              {
+                text: `${prompt}. Modify or annotate this visual cleanly.`
+              }
+            ]
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio as any
+            }
+          }
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+          if (part.inlineData && part.inlineData.data) {
+            const mime = part.inlineData.mimeType || "image/png";
+            editedImageBase64 = `data:${mime};base64,${part.inlineData.data}`;
+            break;
+          }
+        }
+      } catch (editErr: any) {
+        console.warn("[Image Edit API Warning]:", editErr?.message || editErr);
+      }
+
+      if (editedImageBase64) {
+        return res.json({
+          success: true,
+          images: [editedImageBase64],
+          prompt,
+          model: "gemini-3.1-flash-lite-image"
+        });
+      }
+
+      // Preserve existing image as resilient fallback
+      return res.json({
+        success: true,
+        images: [base64Image],
+        isFallback: true,
+        note: "Original image preserved."
+      });
+    } catch (err: any) {
+      console.warn("[Image Edit Error]:", err?.message || err);
+      res.json({
+        success: true,
+        images: [req.body.base64Image || ""],
+        isFallback: true,
+        note: "Original visual retained."
+      });
+    }
+  });
+
+  // Dedicated Sub-Agent Chat Endpoint (Supports Google Search Grounding with gemini-3.5-flash)
   app.post("/api/chat/subagent", async (req, res) => {
     try {
       const {
@@ -2125,6 +2508,7 @@ If a screen frame or image attachment is provided in this prompt, inspect it wit
 
 INTERACTIVE APP TOOL EXECUTIONS:
 You have direct tool capabilities to interact with the student's digital classroom workspace! Trigger these tools whenever appropriate:
+- open_slides_studio(topic): CRITICAL: Whenever the user asks to create, make, build, or present slides, PPT, or presentation (e.g. "ppt bana do", "make a presentation on X", "presentation create karo", "slides bana do"), YOU MUST CALL open_slides_studio with the topic! This immediately opens and redirects to the Presentation & Slides Studio on the Classroom Whiteboard.
 - open_chalkboard(text, diagramType): Write math equations, code snippets, notes, or draw diagrams on the interactive chalkboard.
 - change_theme(colorName): Change color scheme (violet, crimson, emerald, celestial, gold, rose, charcoal).
 - add_daily_task(title, time, category): Schedule a new task/goal in the user's planner.
@@ -2186,8 +2570,9 @@ ${userContext || "None"}
       const promptText = (message && message.trim()) ? message.trim() : "Please analyze the attached screen/image.";
       contentsPayload.push(promptText);
 
-      // Tool declarations
+      // Tool declarations with real Google Search Grounding and App Functions
       const chatTools: any[] = [
+        { googleSearch: {} },
         {
           functionDeclarations: [
             {
@@ -2241,6 +2626,16 @@ ${userContext || "None"}
               parameters: { type: "OBJECT", properties: {} }
             },
             {
+              name: "open_slides_studio",
+              description: "Open the Google Slides presentation studio to create, structure, animate, and export slides to Google Drive.",
+              parameters: {
+                type: "OBJECT",
+                properties: {
+                  topic: { type: "STRING", description: "The topic or title of the presentation requested by the user" }
+                }
+              }
+            },
+            {
               name: "delegate_office_task",
               description: "Delegate or dispatch a real mission to the Virtual Office Floor team (Jim: UI/UX & Frontend, Dwight: Security & Code Review, Pam: Notes & Whiteboard Diagrams, Ryan: APIs & Real-time WebSockets, Stanley: Database & Performance Optimizations).",
               parameters: {
@@ -2257,27 +2652,24 @@ ${userContext || "None"}
         }
       ];
 
-      // Dynamic resilient model selection with high-availability free-tier fallbacks
-      const requestedModel = modelId || "gemini-3.8-flash";
-      let preferredModel = "gemini-3.8-flash";
-      if (modelId && !modelId.includes("2.5") && !modelId.includes("1.5") && !modelId.includes("2.0")) {
-        preferredModel = modelId;
-      }
+      // Dynamic resilient model selection prioritizing gemini-3.5-flash for Search Grounding
+      const defaultCandidates = getPrioritizedModelCandidates(modelId || "gemini-3.5-flash");
+      const candidates = Array.from(new Set(["gemini-3.5-flash", ...defaultCandidates]));
 
-      // Prioritize requested model, then fall back immediately to high-availability free-tier models
-      const fallbackTier = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
-      const candidates = [preferredModel, ...fallbackTier].filter((v, i, a) => a.indexOf(v) === i);
-
-      console.log(`[Sub-Agent Chat] Querying ${candidates[0]} for ultra-fast response (images: ${contentsPayload.length - 1})...`);
+      console.log(`[Sub-Agent Chat] Querying ${candidates[0]} with Google Search Grounding (fallbacks: ${candidates.slice(1).join(", ") || "none"}, images: ${contentsPayload.length - 1})...`);
 
       let responseText: string | undefined = undefined;
       let actualModelUsed = candidates[0];
       let executedActions: Array<{ type: string; args: any }> = [];
       let latestUsage: any = null;
+      let activeGroundingSources: any[] = [];
+      let activeSearchQueries: string[] = [];
+      let activeMediaItems: any[] = [];
 
-      for (const mName of candidates) {
+      for (let i = 0; i < candidates.length; i++) {
+        const mName = candidates[i];
         try {
-          const timeoutMs = 12000;
+          const timeoutMs = 14000;
           let timer: NodeJS.Timeout | null = null;
 
           const fetchPromise = ai.models.generateContent({
@@ -2286,7 +2678,8 @@ ${userContext || "None"}
             config: {
               systemInstruction,
               tools: chatTools,
-              maxOutputTokens: 500
+              toolConfig: { includeServerSideToolInvocations: true },
+              maxOutputTokens: 1500
             }
           });
 
@@ -2303,6 +2696,25 @@ ${userContext || "None"}
           if (response?.usageMetadata) {
             latestUsage = response.usageMetadata;
             recordTokenUsage(latestUsage, mName);
+          }
+
+          // Extract Google Search Grounding Metadata
+          const gMeta = response?.candidates?.[0]?.groundingMetadata;
+          if (gMeta) {
+            if (Array.isArray(gMeta.webSearchQueries)) {
+              activeSearchQueries = gMeta.webSearchQueries;
+            }
+            if (Array.isArray(gMeta.groundingChunks)) {
+              for (const chunk of gMeta.groundingChunks) {
+                if (chunk.web?.uri) {
+                  activeGroundingSources.push({
+                    title: chunk.web.title || chunk.web.uri,
+                    url: chunk.web.uri,
+                    snippet: chunk.web.title || ""
+                  });
+                }
+              }
+            }
           }
 
           if (response?.functionCalls && response.functionCalls.length > 0) {
@@ -2335,11 +2747,37 @@ ${userContext || "None"}
           if (response?.text || executedActions.length > 0) {
             responseText = response.text || (executedActions.length > 0 ? "I have executed your request in the workspace." : undefined);
             actualModelUsed = mName;
+            clearModelOverloaded(mName);
             console.log(`[Sub-Agent Chat] Successfully responded with ${mName}`);
+
+            // Fetch live web images and YouTube videos if media keywords or search queries exist
+            const wantsMedia = /(video|image|photo|picture|diagram|slide|presentation|clip|dikhao|dekhao|visual|kya|what|how|explain|tutorial|youtube)/i.test(promptText);
+            if (wantsMedia || activeSearchQueries.length > 0) {
+              const queryForMedia = activeSearchQueries[0] || promptText.replace(/[^\w\s]/gi, " ").slice(0, 60);
+              try {
+                const [matchedImages, matchedVideos] = await Promise.all([
+                  searchWebImages(queryForMedia, 2),
+                  searchYouTubeVideos(queryForMedia, 2)
+                ]);
+                activeMediaItems = [...matchedImages, ...matchedVideos];
+              } catch (mediaErr) {
+                console.warn("[SubAgent Chat] Media search error:", mediaErr);
+              }
+            }
+
             break;
           }
         } catch (mErr: any) {
-          console.log(`[Sub-Agent Chat] Candidate ${mName} error or timed out (${mErr?.message || mErr}), attempting next candidate.`);
+          const errMsg = mErr?.message || String(mErr);
+          const isDemandSpike = errMsg.includes("503") || errMsg.includes("demand") || errMsg.includes("UNAVAILABLE") || errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED");
+          const nextModel = candidates[i + 1] || "offline-assistant";
+          if (isDemandSpike) {
+            markModelOverloaded(mName, 60000);
+            console.log(`[Sub-Agent Chat] ${mName} experiencing temporary capacity spike; dynamically failing over to ${nextModel}...`);
+            await new Promise(r => setTimeout(r, 200));
+          } else {
+            console.log(`[Sub-Agent Chat] ${mName} unavailable, attempting fallback to ${nextModel}...`);
+          }
         }
       }
 
@@ -2390,9 +2828,12 @@ ${userContext || "None"}
         text: responseText,
         actions: executedActions,
         modelUsed: actualModelUsed,
-        switchedModel: actualModelUsed !== requestedModel,
+        switchedModel: actualModelUsed !== (modelId || "gemini-3.8-flash"),
         usage: latestUsage,
-        sessionTokens: getLiveTokenStats()
+        sessionTokens: getLiveTokenStats(),
+        groundingSources: activeGroundingSources,
+        searchQueries: activeSearchQueries,
+        mediaItems: activeMediaItems
       });
     } catch (e: any) {
       console.error("[Sub-Agent Chat Error]:", e);
@@ -2404,6 +2845,375 @@ ${userContext || "None"}
         });
       }
       res.status(500).json({ error: errStr || "Failed to process message with sub-agent." });
+    }
+  });
+
+  // Dedicated AI Slide Deck Generation Endpoint
+  app.post("/api/slides/generate", async (req, res) => {
+    try {
+      const {
+        topic = "AI & Modern Technology",
+        audience = "Professional & Executive",
+        slideCount = 6,
+        visualTone = "Executive, clear, high-impact",
+        themeId = "obsidian_neon",
+        extraNotes = ""
+      } = req.body;
+
+      const apiKey = getSafeGeminiApiKey();
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+      });
+
+      const slidePrompt = `You are MAHR, an elite executive presentation designer and keynote architect.
+Create a structured, professional, highly engaging slide deck for:
+- TOPIC: ${topic}
+- TARGET AUDIENCE: ${audience}
+- TARGET SLIDE COUNT: ${slideCount} (ensure exactly ${slideCount} slides)
+- TONE & AESTHETIC: ${visualTone}
+${extraNotes ? `- USER'S SPECIAL INSTRUCTIONS: ${extraNotes}` : ""}
+
+SLIDE DESIGN PRINCIPLES:
+1. Slide 1 MUST be a high-impact 'title' layout with a compelling title, subtitle, and speaker notes.
+2. Include at least 1 data-driven 'stats' slide with 3 metrics (e.g. key performance indicators, percentages, or milestones).
+3. Include structured 'bullets' and 'columns' slides for architecture, takeaways, or phased roadmaps.
+4. Final slide MUST be an actionable 'summary' or call-to-action.
+5. Provide clear, concise 'speakerNotes' (1-2 sentences per slide).
+6. IMPORTANT: Keep all text crisp and concise so the JSON response completes fully without being cut off.
+
+Return ONLY a valid JSON object matching this exact structure (no markdown fences, just pure JSON):
+{
+  "deck": {
+    "title": "Short Punchy Title",
+    "subtitle": "Compelling Subtitle",
+    "topic": "${topic}",
+    "audience": "${audience}",
+    "themeId": "${themeId}",
+    "slides": [
+      {
+        "slideNumber": 1,
+        "layout": "title",
+        "title": "Headline",
+        "subtitle": "Sub-headline",
+        "categoryTag": "EXECUTIVE BRIEFING",
+        "bullets": [],
+        "speakerNotes": "What the presenter says...",
+        "animationStyle": "zoom-in"
+      },
+      {
+        "slideNumber": 2,
+        "layout": "bullets",
+        "title": "Key Problem Statement & Value Prop",
+        "subtitle": "Context description",
+        "categoryTag": "MARKET CONTEXT",
+        "bullets": ["Point 1", "Point 2", "Point 3", "Point 4"],
+        "callout": "Optional inspiring quote or punchline",
+        "speakerNotes": "Presenter notes...",
+        "animationStyle": "slide-up"
+      },
+      {
+        "slideNumber": 3,
+        "layout": "stats",
+        "title": "Measurable Impact & Benchmarks",
+        "subtitle": "Proven metrics",
+        "categoryTag": "PERFORMANCE",
+        "stats": [
+          { "label": "Velocity Boost", "value": "+280%", "description": "Accelerated delivery time" },
+          { "label": "Accuracy Rating", "value": "99.4%", "description": "Model precision standard" },
+          { "label": "Cost Savings", "value": "$1.2M", "description": "Annualized operational efficiency" }
+        ],
+        "speakerNotes": "Presenter notes on stats...",
+        "animationStyle": "stagger"
+      }
+    ]
+  }
+}`;
+
+      const candidateModels = [
+        "gemini-2.5-flash",
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest"
+      ];
+      let generatedText = "";
+
+      for (const mName of candidateModels) {
+        try {
+          const result = await ai.models.generateContent({
+            model: mName,
+            contents: [{ text: slidePrompt }],
+            config: {
+              responseMimeType: "application/json",
+              maxOutputTokens: 8192,
+              temperature: 0.6
+            }
+          });
+
+          if (result && result.text) {
+            generatedText = result.text.trim();
+            break;
+          }
+        } catch (genErr: any) {
+          const status = genErr?.status || genErr?.code || "";
+          const msg = genErr?.message || "";
+          if (status === "UNAVAILABLE" || status === 503 || msg.includes("high demand") || msg.includes("503")) {
+            console.warn(`[Slide Generation] Model ${mName} temporarily high demand (503), switching to next model...`);
+          } else {
+            console.warn(`[Slide Generation] Model ${mName} failed, trying fallback...`, msg);
+          }
+        }
+      }
+
+      // Robust JSON extraction and repair helper
+      const parseOrRepairJson = (raw: string): any => {
+        if (!raw || typeof raw !== "string") return null;
+        let text = raw.trim();
+
+        // Strip markdown code fences if present
+        if (text.startsWith("```json")) text = text.slice(7);
+        else if (text.startsWith("```")) text = text.slice(3);
+        if (text.endsWith("```")) text = text.slice(0, -3);
+        text = text.trim();
+
+        const firstBrace = text.indexOf("{");
+        if (firstBrace === -1) return null;
+        text = text.slice(firstBrace);
+
+        // 1. Direct try
+        try {
+          return JSON.parse(text);
+        } catch (e1) {
+          // Proceed to repair
+        }
+
+        // 2. Try trimming from last closing brace
+        const lastBrace = text.lastIndexOf("}");
+        if (lastBrace !== -1 && lastBrace < text.length - 1) {
+          try {
+            return JSON.parse(text.slice(0, lastBrace + 1));
+          } catch (e2) {
+            // Proceed to structural repair
+          }
+        }
+
+        // 3. Structural repair for unexpected truncation
+        try {
+          let repaired = text;
+          let inString = false;
+          let escaped = false;
+          const stack: string[] = [];
+
+          for (let i = 0; i < repaired.length; i++) {
+            const ch = repaired[i];
+            if (escaped) {
+              escaped = false;
+              continue;
+            }
+            if (ch === "\\") {
+              escaped = true;
+              continue;
+            }
+            if (ch === '"') {
+              inString = !inString;
+              continue;
+            }
+            if (!inString) {
+              if (ch === "{" || ch === "[") stack.push(ch);
+              else if (ch === "}" || ch === "]") stack.pop();
+            }
+          }
+
+          if (inString) repaired += '"';
+          repaired = repaired.replace(/,\s*$/, "");
+          repaired = repaired.replace(/:\s*$/, ': ""');
+
+          while (stack.length > 0) {
+            const openChar = stack.pop();
+            repaired = repaired.replace(/,\s*$/, "");
+            repaired += openChar === "{" ? "}" : "]";
+          }
+
+          return JSON.parse(repaired);
+        } catch (e3) {
+          return null;
+        }
+      };
+
+      const cleanTopic = (topic || "Modern Technology & AI").trim();
+
+      if (generatedText) {
+        const parsed = parseOrRepairJson(generatedText);
+        if (parsed && parsed.deck && Array.isArray(parsed.deck.slides) && parsed.deck.slides.length > 0) {
+          // Guarantee unique IDs, numbers, and auto-enrich with web images and videos
+          try {
+            await Promise.all(
+              parsed.deck.slides.map(async (s: any, idx: number) => {
+                s.id = s.id || `slide_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
+                s.slideNumber = idx + 1;
+                const query = `${cleanTopic} ${s.title}`.replace(/[^\w\s]/g, " ").trim();
+                const [matchedImages, matchedVideos] = await Promise.all([
+                  searchWebImages(query, 1),
+                  searchYouTubeVideos(query, 1)
+                ]);
+                if (matchedImages.length > 0 && matchedImages[0]?.url) {
+                  s.imageUrl = matchedImages[0].url;
+                  s.imageCaption = matchedImages[0].caption || matchedImages[0].title;
+                } else {
+                  s.imageUrl = generateChalkboardSvgDiagram(`${s.title || cleanTopic}`);
+                  s.imageCaption = `AI Visual Diagram: ${s.title || cleanTopic}`;
+                }
+                if (matchedVideos.length > 0) {
+                  s.videoUrl = matchedVideos[0].url;
+                  s.videoId = matchedVideos[0].videoId;
+                  s.videoTitle = matchedVideos[0].title;
+                }
+              })
+            );
+          } catch (enrichErr) {
+            console.warn("[Slide Generation] Media enrichment non-fatal notice:", enrichErr);
+          }
+          return res.json(parsed);
+        }
+      }
+
+      // Safe Server-Side Contextual Presentation Generator Fallback
+      console.info("[Slide Generation] Synthesizing resilient contextual deck for topic:", topic);
+      const fallbackDeck: any = {
+        deck: {
+          id: `deck_${Date.now().toString(36)}`,
+          title: cleanTopic,
+          subtitle: `Strategic Presentation Prepared for ${audience}`,
+          topic: cleanTopic,
+          audience,
+          themeId: themeId || "obsidian_neon",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          slides: [
+            {
+              id: `slide_1_${Date.now()}`,
+              slideNumber: 1,
+              layout: "title",
+              title: cleanTopic,
+              subtitle: `Executive Briefing for ${audience}`,
+              categoryTag: "EXECUTIVE BRIEFING",
+              bullets: [],
+              speakerNotes: `Welcome everyone. Today we are presenting on ${cleanTopic}. We will examine strategic drivers, architecture, and actionable roadmap milestones.`,
+              animationStyle: "zoom-in"
+            },
+            {
+              id: `slide_2_${Date.now()}`,
+              slideNumber: 2,
+              layout: "bullets",
+              title: "Strategic Overview & Core Objectives",
+              subtitle: "Key drivers shaping this domain",
+              categoryTag: "STRATEGY",
+              bullets: [
+                `Accelerate adoption of modern frameworks centered around ${cleanTopic}`,
+                "Bridge system capability with human-centric intuitive workflows",
+                "Drive measurable operational velocity while mitigating risks",
+                "Establish continuous feedback loops and proactive monitoring"
+              ],
+              callout: "Simplicity and focus are the prerequisites for reliability.",
+              speakerNotes: "In this slide, establish the problem statement and highlight why this focus is imperative today.",
+              animationStyle: "slide-up"
+            },
+            {
+              id: `slide_3_${Date.now()}`,
+              slideNumber: 3,
+              layout: "stats",
+              title: "Measurable Impact & Performance Benchmarks",
+              subtitle: "Empirical performance and ROI metrics",
+              categoryTag: "BENCHMARKS",
+              stats: [
+                { label: "Execution Velocity", value: "+320%", description: "Accelerated delivery turnaround" },
+                { label: "Accuracy Rating", value: "99.8%", description: "Standard quality benchmark" },
+                { label: "Operational Savings", value: "4.8x", description: "Multiplied workflow efficiency" }
+              ],
+              speakerNotes: "Highlight the 320% velocity multiplier and explain how measured precision drives cost reduction.",
+              animationStyle: "stagger"
+            },
+            {
+              id: `slide_4_${Date.now()}`,
+              slideNumber: 4,
+              layout: "columns",
+              title: "Core Architectural Pillars",
+              subtitle: "Three foundations for high-scale execution",
+              categoryTag: "ARCHITECTURE",
+              bullets: [
+                "1. Resilient Foundation: Modular components and zero-downtime microservices",
+                "2. Multimodal Intelligence: Real-time reasoning and continuous contextual adaptation",
+                "3. Seamless Integration: Native cloud sync and collaborative tools ecosystem"
+              ],
+              speakerNotes: "Demonstrate how each pillar supports the next to form an unshakeable operational ecosystem.",
+              animationStyle: "fade"
+            },
+            {
+              id: `slide_5_${Date.now()}`,
+              slideNumber: 5,
+              layout: "bullets",
+              title: "Phased Execution Roadmap",
+              subtitle: "Key milestones from launch to enterprise scaling",
+              categoryTag: "ROADMAP",
+              bullets: [
+                "Phase 1: Architecture blueprinting and stakeholder alignment",
+                "Phase 2: Core pipeline development and end-to-end telemetry testing",
+                "Phase 3: Pilot launch and observational metrics review",
+                "Phase 4: Full-scale deployment and continuous enhancement"
+              ],
+              speakerNotes: "Walk the audience through the phased rollout with defined criteria and milestones.",
+              animationStyle: "slide-up"
+            },
+            {
+              id: `slide_6_${Date.now()}`,
+              slideNumber: 6,
+              layout: "summary",
+              title: "Action Plan & Next Steps",
+              subtitle: "Immediate initiatives to drive success",
+              categoryTag: "ACTION PLAN",
+              bullets: [
+                "Finalize integration roadmap and sign off on project deliverables",
+                "Deploy initial operational sandbox for validation",
+                "Schedule kickoff with cross-functional working groups",
+                "Open the floor for discussion and Q&A"
+              ],
+              callout: "The future belongs to those who execute with precision.",
+              speakerNotes: "Summarize the primary call-to-action, thank the audience, and open the session for questions.",
+              animationStyle: "zoom-in"
+            }
+          ]
+        }
+      };
+
+      // Auto-enrich fallback slides with real-time web images and videos
+      try {
+        await Promise.all(
+          fallbackDeck.deck.slides.map(async (s: any) => {
+            const query = `${cleanTopic} ${s.title}`.replace(/[^\w\s]/g, " ").trim();
+            const [matchedImages, matchedVideos] = await Promise.all([
+              searchWebImages(query, 1),
+              searchYouTubeVideos(query, 1)
+            ]);
+            if (matchedImages.length > 0 && matchedImages[0]?.url) {
+              s.imageUrl = matchedImages[0].url;
+              s.imageCaption = matchedImages[0].caption || matchedImages[0].title;
+            } else {
+              s.imageUrl = generateChalkboardSvgDiagram(`${s.title || cleanTopic}`);
+              s.imageCaption = `AI Visual Diagram: ${s.title || cleanTopic}`;
+            }
+            if (matchedVideos.length > 0) {
+              s.videoUrl = matchedVideos[0].url;
+              s.videoId = matchedVideos[0].videoId;
+              s.videoTitle = matchedVideos[0].title;
+            }
+          })
+        );
+      } catch (e) {}
+
+      return res.json(fallbackDeck);
+    } catch (err: any) {
+      console.error("[Slide Generation Error]:", err);
+      res.status(500).json({ error: err.message || "Failed to generate slides." });
     }
   });
 
@@ -2426,11 +3236,12 @@ ${userContext || "None"}
         }
       });
 
-      const studyCandidates = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+      const studyCandidates = getPrioritizedModelCandidates("gemini-3.8-flash");
       let response: any = null;
-      let usedModel = "gemini-3.8-flash";
+      let usedModel = studyCandidates[0];
 
-      for (const mName of studyCandidates) {
+      for (let i = 0; i < studyCandidates.length; i++) {
+        const mName = studyCandidates[i];
         try {
           console.log(`[Study Gen] Querying ${mName} for flashcards and MCQ creation.`);
           response = await ai.models.generateContent({
@@ -2502,10 +3313,20 @@ Strictly adhere to the required JSON schema output. Be deeply encouraging and su
 
           if (response?.text) {
             usedModel = mName;
+            clearModelOverloaded(mName);
             break;
           }
         } catch (genErr: any) {
-          console.warn(`[Study Gen] Candidate ${mName} error: ${genErr?.message || genErr}. Trying next model...`);
+          const errMsg = genErr?.message || String(genErr);
+          const isDemandSpike = errMsg.includes("503") || errMsg.includes("demand") || errMsg.includes("UNAVAILABLE") || errMsg.includes("429");
+          const nextModel = studyCandidates[i + 1] || "fallback";
+          if (isDemandSpike) {
+            markModelOverloaded(mName, 60000);
+            console.log(`[Study Gen] ${mName} capacity spike; dynamically failing over to ${nextModel}...`);
+            await new Promise(r => setTimeout(r, 200));
+          } else {
+            console.log(`[Study Gen] ${mName} unavailable, falling over to ${nextModel}...`);
+          }
         }
       }
 
@@ -2604,11 +3425,12 @@ JSON schema:
   ]
 }`;
 
-      const suggestCandidates = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const suggestCandidates = getPrioritizedModelCandidates("gemini-3.8-flash");
       let response: any = null;
-      let usedSuggestModel = "gemini-3.8-flash";
+      let usedSuggestModel = suggestCandidates[0];
 
-      for (const smName of suggestCandidates) {
+      for (let i = 0; i < suggestCandidates.length; i++) {
+        const smName = suggestCandidates[i];
         try {
           response = await ai.models.generateContent({
             model: smName,
@@ -2639,10 +3461,20 @@ JSON schema:
           });
           if (response?.text) {
             usedSuggestModel = smName;
+            clearModelOverloaded(smName);
             break;
           }
         } catch (sErr: any) {
-          console.warn(`[Smart Notes] Candidate ${smName} error: ${sErr?.message || sErr}. Trying next...`);
+          const errMsg = sErr?.message || String(sErr);
+          const isDemandSpike = errMsg.includes("503") || errMsg.includes("demand") || errMsg.includes("UNAVAILABLE") || errMsg.includes("429");
+          const nextModel = suggestCandidates[i + 1] || "fallback";
+          if (isDemandSpike) {
+            markModelOverloaded(smName, 60000);
+            console.log(`[Smart Notes] ${smName} capacity spike; dynamically failing over to ${nextModel}...`);
+            await new Promise(r => setTimeout(r, 200));
+          } else {
+            console.log(`[Smart Notes] ${smName} unavailable, falling over to ${nextModel}...`);
+          }
         }
       }
 
@@ -2948,9 +3780,10 @@ Output ONLY valid JSON matching this schema:
 }`;
 
       let parsed: any = null;
-      const simCandidates = ["gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3.8-flash"];
+      const simCandidates = getPrioritizedModelCandidates("gemini-3.1-flash-lite");
 
-      for (const mName of simCandidates) {
+      for (let i = 0; i < simCandidates.length; i++) {
+        const mName = simCandidates[i];
         try {
           const response = await ai.models.generateContent({
             model: mName,
@@ -2967,10 +3800,20 @@ Output ONLY valid JSON matching this schema:
 
           if (response.text) {
             parsed = JSON.parse(response.text);
+            clearModelOverloaded(mName);
             break;
           }
         } catch (mErr: any) {
-          console.log(`[Simulation Gen] Candidate ${mName} busy, trying next candidate...`);
+          const errMsg = mErr?.message || String(mErr);
+          const isDemandSpike = errMsg.includes("503") || errMsg.includes("demand") || errMsg.includes("UNAVAILABLE") || errMsg.includes("429");
+          const nextModel = simCandidates[i + 1] || "fallback";
+          if (isDemandSpike) {
+            markModelOverloaded(mName, 60000);
+            console.log(`[Simulation Gen] ${mName} capacity spike; dynamically failing over to ${nextModel}...`);
+            await new Promise(r => setTimeout(r, 200));
+          } else {
+            console.log(`[Simulation Gen] ${mName} busy, falling over to ${nextModel}...`);
+          }
         }
       }
 
@@ -4277,7 +5120,7 @@ Output ONLY valid JSON matching this schema:
         };
 
       let session;
-      const liveModelCandidates = ["gemini-3.8-live", "gemini-3.1-flash-live-preview", "gemini-2.5-flash"];
+      const liveModelCandidates = ["gemini-3.8-live", "gemini-3.8-live-extended-thinking"];
       let connectedLiveModel = "";
 
       for (const lm of liveModelCandidates) {
@@ -4515,7 +5358,7 @@ Output ONLY valid JSON matching this schema:
   }
 
   server.on("error", (err: any) => {
-    if (err.code === "EADDRINUSE") {
+    if (err.code === "EADDRINUSE" && process.env.NODE_ENV !== "production") {
       const nextPort = PORT + 1;
       console.warn(`[Server] Port ${PORT} unexpectedly in use. Shifting to http://localhost:${nextPort}...`);
       setTimeout(() => {

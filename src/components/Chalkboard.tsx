@@ -54,7 +54,8 @@ import {
   VolumeX,
   Grid,
   FileDown,
-  Brain
+  Brain,
+  Presentation
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { formatMathText } from "../lib/mathFormatter";
@@ -81,9 +82,18 @@ import { SimulationCanvas } from "./SimulationCanvas";
 import { UniversalSimulationStudio } from "./simulation/UniversalSimulationStudio";
 import { FlowchartCanvas } from "./flowchart/FlowchartCanvas";
 import { InteractiveMindMapCanvas } from "./mindmap/InteractiveMindMapCanvas";
+import { SlideStudioWhiteboard } from "./slides/SlideStudioWhiteboard";
 import { deduplicateDrawingsState, DeduplicationReport } from "../services/slateDeduplicationService";
 import { SlateDeduplicatorModal } from "./SlateDeduplicatorModal";
 import { FLOWCHART_PRESETS } from "../lib/flowchartPresets";
+import { WhiteboardHeader } from "./whiteboard/WhiteboardHeader";
+import { WhiteboardFloatingDock } from "./whiteboard/WhiteboardFloatingDock";
+import { WhiteboardUtilityDrawer } from "./whiteboard/WhiteboardUtilityDrawer";
+import { WhiteboardAIImageModal } from "./whiteboard/WhiteboardAIImageModal";
+import { MahrVoiceCompanion } from "./whiteboard/MahrVoiceCompanion";
+import { WhiteboardZoomBar } from "./whiteboard/WhiteboardZoomBar";
+import { WhiteboardStylusHUD } from "./whiteboard/WhiteboardStylusHUD";
+import { WhiteboardVoiceAction } from "../services/whiteboard/whiteboardVoiceIntentEngine";
 
 interface Point {
   x: number;
@@ -800,6 +810,7 @@ interface ChalkboardProps {
   onAskMyraa?: (question: string) => void;
   onVoiceToMindMap?: (spokenText: string) => void;
   onUpdateDrawings?: (newDrawings: any[]) => void;
+  initialSlidesTopic?: string;
 }
 
 const CHALK_COLORS = [
@@ -2096,7 +2107,8 @@ export function Chalkboard({
   onAskMahr,
   onAskMyraa,
   onVoiceToMindMap,
-  onUpdateDrawings
+  onUpdateDrawings,
+  initialSlidesTopic
 }: ChalkboardProps) {
   const handleAskTutor = onAskMahr || onAskMyraa;
   // Visual Slate Auto-Deduplication Background Tool State
@@ -2113,10 +2125,13 @@ export function Chalkboard({
   const [slateDeduplicationToast, setSlateDeduplicationToast] = useState<string | null>(null);
   const lastDeduplicatedFingerprintRef = useRef<string>("");
 
-  const isMindMapInitial = diagramType.toLowerCase().includes("mind") || diagramType.toLowerCase().includes("map");
-  const isFlowchartInitial = !isMindMapInitial && (diagramType === "flowchart");
+  const isSlidesInitial = diagramType.toLowerCase().includes("slide") || diagramType.toLowerCase().includes("presentation") || diagramType.toLowerCase().includes("ppt");
+  const isMindMapInitial = !isSlidesInitial && (diagramType.toLowerCase().includes("mind") || diagramType.toLowerCase().includes("map"));
+  const isFlowchartInitial = !isSlidesInitial && !isMindMapInitial && (diagramType === "flowchart");
   const [chalkboardEngineMode, setChalkboardEngineMode] = useState<string>(
-    isMindMapInitial
+    isSlidesInitial
+      ? "slides"
+      : isMindMapInitial
       ? "mindmap"
       : isFlowchartInitial
       ? "flowchart"
@@ -2138,33 +2153,51 @@ export function Chalkboard({
   );
   const [showFlowchartCanvas, setShowFlowchartCanvas] = useState<boolean>(isFlowchartInitial);
   const [showMindMapCanvas, setShowMindMapCanvas] = useState<boolean>(isMindMapInitial);
+  const [showSlidesCanvas, setShowSlidesCanvas] = useState<boolean>(isSlidesInitial);
   const [activeFlowchartPresetId, setActiveFlowchartPresetId] = useState<string>("order-fraud-trigger");
+  const [activeSlidesTopic, setActiveSlidesTopic] = useState<string>(initialSlidesTopic || "");
 
   useEffect(() => {
-    if (diagramType.toLowerCase().includes("mind") || diagramType.toLowerCase().includes("map")) {
+    if (diagramType.toLowerCase().includes("slide") || diagramType.toLowerCase().includes("presentation") || diagramType.toLowerCase().includes("ppt")) {
+      setChalkboardEngineMode("slides");
+      setShowSlidesCanvas(true);
+      setShowMindMapCanvas(false);
+      setShowFlowchartCanvas(false);
+      setShowAiSimulation(false);
+    } else if (diagramType.toLowerCase().includes("mind") || diagramType.toLowerCase().includes("map")) {
       setChalkboardEngineMode("mindmap");
       setShowMindMapCanvas(true);
       setShowFlowchartCanvas(false);
       setShowAiSimulation(false);
+      setShowSlidesCanvas(false);
     } else if (diagramType === "simulation" || diagramType === "ai-simulation" || diagramType === "runtime-engine") {
       setChalkboardEngineMode("3d-simulation");
       setSimulationInitialMode("3d-webgl");
       setShowAiSimulation(true);
       setShowFlowchartCanvas(false);
       setShowMindMapCanvas(false);
+      setShowSlidesCanvas(false);
     } else if (diagramType === "dld" || diagramType === "logic" || diagramType === "digital-logic") {
       setChalkboardEngineMode("dld-logic");
       setSimulationInitialMode("dld-logic");
       setShowAiSimulation(true);
       setShowFlowchartCanvas(false);
       setShowMindMapCanvas(false);
+      setShowSlidesCanvas(false);
     } else if (diagramType === "flowchart") {
       setChalkboardEngineMode("flowchart");
       setShowFlowchartCanvas(true);
       setShowAiSimulation(false);
       setShowMindMapCanvas(false);
+      setShowSlidesCanvas(false);
     }
   }, [diagramType]);
+
+  useEffect(() => {
+    if (initialSlidesTopic) {
+      setActiveSlidesTopic(initialSlidesTopic);
+    }
+  }, [initialSlidesTopic]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -2176,6 +2209,48 @@ export function Chalkboard({
   const setActiveBrushProfile = useCallback((prof: BrushProfile) => {
     activeBrushProfileRef.current = prof;
     setActiveBrushProfileState(prof);
+  }, []);
+
+  const [showUtilityDrawer, setShowUtilityDrawer] = useState<boolean>(false);
+  const [showAIImageModal, setShowAIImageModal] = useState<boolean>(false);
+  const [isMahrVoiceCompanionOpen, setIsMahrVoiceCompanionOpen] = useState<boolean>(false);
+
+  const handleSelectEngineMode = useCallback((mode: string) => {
+    setChalkboardEngineMode(mode);
+    if (mode === "slides") {
+      setShowSlidesCanvas(true);
+      setShowMindMapCanvas(false);
+      setShowFlowchartCanvas(false);
+      setShowAiSimulation(false);
+    } else if (mode === "mindmap") {
+      setShowMindMapCanvas(true);
+      setShowSlidesCanvas(false);
+      setShowFlowchartCanvas(false);
+      setShowAiSimulation(false);
+    } else if (mode === "flowchart") {
+      setShowFlowchartCanvas(true);
+      setShowSlidesCanvas(false);
+      setShowMindMapCanvas(false);
+      setShowAiSimulation(false);
+    } else if (mode === "3d-simulation" || mode === "2d-fluid") {
+      setShowAiSimulation(true);
+      setSimulationInitialMode(mode === "2d-fluid" ? "2d-liquid" : "3d-webgl");
+      setShowSlidesCanvas(false);
+      setShowMindMapCanvas(false);
+      setShowFlowchartCanvas(false);
+    } else if (mode === "dld") {
+      setShowAiSimulation(true);
+      setSimulationInitialMode("dld-logic");
+      setShowSlidesCanvas(false);
+      setShowMindMapCanvas(false);
+      setShowFlowchartCanvas(false);
+    } else {
+      // "chalkboard"
+      setShowSlidesCanvas(false);
+      setShowMindMapCanvas(false);
+      setShowFlowchartCanvas(false);
+      setShowAiSimulation(false);
+    }
   }, []);
 
   const [gridType, setGridType] = useState<"none" | "dot-grid" | "graph-paper" | "isometric" | "blueprint">("dot-grid");
@@ -2706,6 +2781,25 @@ export function Chalkboard({
     activeLayerIdRef.current = snapshot.activeLayerId;
     compositeLayers();
   }, [compositeLayers]);
+
+  const handleStampImageToCanvas = useCallback((imageUrl: string) => {
+    const active = ensureActiveLayer();
+    const lCtx = active.canvas.getContext("2d");
+    if (!lCtx) return;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      pushHistorySnapshot();
+      const targetW = Math.min(active.canvas.width * 0.65, 520);
+      const targetH = (img.height / img.width) * targetW;
+      const posX = (active.canvas.width - targetW) / 2;
+      const posY = (active.canvas.height - targetH) / 2;
+      lCtx.drawImage(img, posX, posY, targetW, targetH);
+      compositeLayers();
+      playChalkTap();
+    };
+    img.src = imageUrl;
+  }, [ensureActiveLayer, pushHistorySnapshot, compositeLayers]);
 
   // Robust Undo handler
   const undo = useCallback(() => {
@@ -4276,6 +4370,48 @@ export function Chalkboard({
     dbRemove("myraa_chalkboard_strokes");
   };
 
+  const handleExecuteMahrVoiceAction = useCallback((action: WhiteboardVoiceAction) => {
+    if (action.type === "switch_studio" && action.targetStudio) {
+      handleSelectEngineMode(action.targetStudio);
+      if (action.presetId) {
+        setActiveFlowchartPresetId(action.presetId);
+      }
+      if (action.diagramTopic) {
+        if (action.targetStudio === "slides") {
+          setActiveSlidesTopic(action.diagramTopic);
+        } else if (action.targetStudio === "mindmap") {
+          onVoiceToMindMap?.(action.diagramTopic);
+        }
+      }
+    } else if (action.type === "generate_slides") {
+      if (action.diagramTopic) {
+        setActiveSlidesTopic(action.diagramTopic);
+      }
+      handleSelectEngineMode("slides");
+    } else if (action.type === "present_slides") {
+      handleSelectEngineMode("slides");
+    } else if (action.type === "sketch_diagram") {
+      handleSelectEngineMode("chalkboard");
+      if (action.diagramTopic) {
+        handleLocalVoiceSketch(action.diagramTopic);
+      }
+    } else if (action.type === "clear_canvas") {
+      clearCanvas();
+    } else if (action.type === "toggle_split") {
+      setActiveMode(activeMode === "canvas" ? "split" : "canvas");
+    } else if (action.type === "change_color" && action.color) {
+      setColor(action.color);
+    } else if (action.type === "change_tool" && action.tool) {
+      setTool(action.tool);
+    } else if (action.type === "undo") {
+      undo();
+    } else if (action.type === "redo") {
+      redo();
+    } else if (action.type === "ask_tutor" && action.diagramTopic) {
+      handleAskTutor?.(action.diagramTopic);
+    }
+  }, [handleSelectEngineMode, activeMode, setActiveMode, clearCanvas, undo, redo, handleAskTutor, onVoiceToMindMap]);
+
   const exportCanvasImage = () => {
     const mainCanvas = canvasRef.current;
     if (!mainCanvas) return;
@@ -4444,85 +4580,47 @@ export function Chalkboard({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 md:p-6"
+          className="fixed inset-0 z-[100] w-full h-full h-[100dvh] bg-[#02040b] flex flex-col overflow-hidden select-none p-0 m-0"
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 20 }}
-            transition={{ type: "spring", stiffness: 300, damping: 28 }}
-            className="relative w-full h-[90vh] max-w-6xl bg-[#030308]/95 border border-white/10 rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(168,85,247,0.25)] flex flex-col"
-          >
-          {/* TOP CONTROLLER BAR */}
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between px-6 py-4.5 border-b border-white/5 bg-slate-950/50 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-purple-500/15 text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.3)]">
-                <BookOpen size={20} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-                  <h3 className="font-mono text-xs uppercase tracking-widest text-purple-400 font-bold">Virtual Classroom Suite</h3>
-                </div>
-                <p className="text-sm font-semibold text-white/90">MAHR&apos;s Interactive Whiteboard & Chalkboard</p>
-              </div>
-            </div>
+          {/* Unified Top Studio Header with Dropdown & Branding */}
+          <WhiteboardHeader
+              engineMode={chalkboardEngineMode}
+              onSelectEngineMode={handleSelectEngineMode}
+              canUndo={history.length > 0}
+              canRedo={redoStack.length > 0}
+              onUndo={undo}
+              onRedo={redo}
+              layersCount={layers.length}
+              showLayersPanel={showLayersPanel}
+              onToggleLayersPanel={() => setShowLayersPanel(!showLayersPanel)}
+              onOpenUtilities={() => setShowUtilityDrawer(true)}
+              onClearCanvas={clearCanvas}
+              onExportCanvas={exportCanvasImage}
+              onToggleFullScreen={() => {
+                if (!document.fullscreenElement) {
+                  document.documentElement.requestFullscreen?.().catch(() => {});
+                  setIsCanvasFullScreen(true);
+                } else {
+                  document.exitFullscreen?.().catch(() => {});
+                  setIsCanvasFullScreen(false);
+                }
+                setTimeout(handleResizeCanvas, 150);
+              }}
+              onToggleHelp={() => setShowHelper(!showHelper)}
+              showHelper={showHelper}
+              onClose={onClose}
+              activeLayoutMode={activeMode}
+              onSelectLayoutMode={(m) => setActiveMode(m)}
+              onToggleMahrVoice={() => setIsMahrVoiceCompanionOpen((prev) => !prev)}
+              isMahrVoiceOpen={isMahrVoiceCompanionOpen}
+            />
 
-            {/* Layout Toggles */}
-            <div className="flex border border-white/5 bg-white/5 px-1 py-1 rounded-xl gap-1 shrink-0">
-              <button
-                onClick={() => setActiveMode("split")}
-                className={`px-3 py-1.5 text-xs font-mono rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-                  activeMode === "split" 
-                    ? "bg-purple-500 text-white font-bold shadow-md" 
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Layers size={13} />
-                <span>Split Class</span>
-              </button>
-              <button
-                onClick={() => setActiveMode("canvas")}
-                className={`px-3 py-1.5 text-xs font-mono rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-                  activeMode === "canvas" 
-                    ? "bg-purple-500 text-white font-bold shadow-md" 
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Palette size={13} />
-                <span>Chalkboard</span>
-              </button>
-              <button
-                onClick={() => setActiveMode("text")}
-                className={`px-3 py-1.5 text-xs font-mono rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-                  activeMode === "text" 
-                    ? "bg-purple-500 text-white font-bold shadow-md" 
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <FileText size={13} />
-                <span>Lecture Notes</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={() => setShowHelper(!showHelper)}
-                className={`p-2 rounded-xl border border-white/5 hover:border-white/10 text-slate-400 hover:text-white transition duration-150 cursor-pointer ${
-                  showHelper ? "bg-purple-500/10 text-purple-300 border-purple-500/20" : "bg-white/5"
-                }`}
-                title="Classroom Tips"
-              >
-                <QuestionIcon size={18} />
-              </button>
-              <button
-                onClick={onClose}
-                className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-rose-500 hover:border-rose-400 text-slate-450 hover:text-white transition duration-200 cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
+            {/* Ambient MAHR Voice Companion Bar */}
+            <MahrVoiceCompanion
+              isOpen={isMahrVoiceCompanionOpen}
+              onClose={() => setIsMahrVoiceCompanionOpen(false)}
+              onExecuteAction={handleExecuteMahrVoiceAction}
+            />
 
           {/* STATUS NOTIFICATION OVERLAY */}
           {statusAlert && (
@@ -4605,499 +4703,6 @@ export function Chalkboard({
               <div className={`h-full flex flex-col relative ${
                 activeMode === "canvas" ? "w-full" : "w-1/2"
               }`}>
-                {/* Chalkboard controls */}
-                <div className="px-5 py-3 border-b border-white/5 bg-slate-950/40 flex flex-wrap items-center justify-between gap-3 shrink-0 relative z-30">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <Palette size={13} className="text-purple-400" />
-                      <span className="text-[10px] font-bold font-mono tracking-widest text-slate-200 uppercase">Liquid Chalkboard Slate</span>
-                    </div>
-
-                    {/* Pen / Eraser / Connection toggler */}
-                    <div className="flex rounded-lg border border-white/5 bg-white/5 p-0.5 gap-0.5 ml-2">
-                      <button
-                        onClick={() => setTool("pen")}
-                        className={`p-1.5 rounded-md transition cursor-pointer ${
-                          tool === "pen" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                        title="Draw Liquid Chalk (Pen)"
-                      >
-                        <PenTool size={12} />
-                      </button>
-                      <button
-                        onClick={() => setTool("smartpen")}
-                        className={`p-1.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
-                          tool === "smartpen" ? "bg-amber-500 text-slate-950 font-bold shadow-[0_0_10px_rgba(245,158,11,0.5)]" : "text-slate-400 hover:text-white"
-                        }`}
-                        title="Smart Pen: Auto-corrects freehand shapes to perfect vector Circle, Rectangle, Square, Triangle, Line, or Arrow"
-                      >
-                        <Wand2 size={12} className={tool === "smartpen" ? "text-slate-950" : "text-amber-400"} />
-                        <span className="text-[9px] font-mono hidden sm:inline">Smart Pen</span>
-                      </button>
-                      <button
-                        onClick={() => setTool("line")}
-                        className={`p-1.5 rounded-md transition cursor-pointer ${
-                          tool === "line" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                        title="Draw Relationship Line (Snaps to Nearest Shape)"
-                      >
-                        <GitCommit size={12} />
-                      </button>
-                      <button
-                        onClick={() => setTool("arrow")}
-                        className={`p-1.5 rounded-md transition cursor-pointer ${
-                          tool === "arrow" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                        title="Draw Relationship Arrow (Snaps to Nearest Shape)"
-                      >
-                        <ArrowUpRight size={12} />
-                      </button>
-                      <button
-                        onClick={() => setTool("eraser")}
-                        className={`p-1.5 rounded-md transition cursor-pointer ${
-                          tool === "eraser" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                        title="Felt Eraser"
-                      >
-                        <Eraser size={12} />
-                      </button>
-                      <button
-                        onClick={() => setTool("pan")}
-                        className={`p-1.5 rounded-md transition cursor-pointer ${
-                          tool === "pan" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                        title="Pan Canvas (Click & Drag or Middle/Right Mouse)"
-                      >
-                        <Hand size={12} />
-                      </button>
-                    </div>
-
-                    {/* Brush Profile Selector & Studio Tuner */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowBrushQuickMenu(!showBrushQuickMenu)}
-                        className={`px-2.5 py-1 text-[10px] font-mono rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1.5 pointer-events-auto ${
-                          tool === "pen" || tool === "smartpen"
-                            ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.2)]"
-                            : "bg-slate-900 border-white/10 text-slate-400 hover:text-white"
-                        }`}
-                        title="Change natural brush profile (Calligraphy, Watercolor, Highlighter, Liquid Chalk, etc.)"
-                      >
-                        {activeBrushProfile.iconName === "Feather" && <Feather size={11} className="text-cyan-400" />}
-                        {activeBrushProfile.iconName === "Droplets" && <Droplets size={11} className="text-cyan-400" />}
-                        {activeBrushProfile.iconName === "Highlighter" && <HighlighterIcon size={11} className="text-cyan-400" />}
-                        {activeBrushProfile.iconName === "Edit3" && <Edit3 size={11} className="text-cyan-400" />}
-                        {activeBrushProfile.iconName === "Pencil" && <Pencil size={11} className="text-cyan-400" />}
-                        {activeBrushProfile.iconName === "Zap" && <Zap size={11} className="text-cyan-400" />}
-                        {activeBrushProfile.iconName === "PenTool" && <PenTool size={11} className="text-cyan-400" />}
-                        <span className="font-bold hidden sm:inline">{activeBrushProfile.name}</span>
-                      </button>
-
-                      {/* Quick Dropdown Menu */}
-                      {showBrushQuickMenu && (
-                        <div className="absolute top-full mt-1.5 left-0 z-50 bg-[#070712] border border-white/15 rounded-2xl p-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.8)] w-64 flex flex-col gap-1 backdrop-blur-xl">
-                          <div className="px-2 py-1 text-[9px] font-mono text-slate-400 uppercase tracking-wider flex justify-between items-center border-b border-white/5">
-                            <span>Natural Brush Profiles</span>
-                            <button
-                              onClick={() => {
-                                setShowBrushQuickMenu(false);
-                                setShowBrushProfilesModal(true);
-                              }}
-                              className="text-cyan-400 hover:text-cyan-300 text-[9px] flex items-center gap-0.5 cursor-pointer"
-                            >
-                              <SlidersHorizontal size={9} />
-                              <span>Tuner</span>
-                            </button>
-                          </div>
-
-                          {BRUSH_PROFILES.map((prof) => (
-                            <button
-                              key={prof.id}
-                              onClick={() => {
-                                setActiveBrushProfile(prof);
-                                setShowBrushQuickMenu(false);
-                                setTool("pen");
-                              }}
-                              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono flex items-center justify-between transition cursor-pointer ${
-                                activeBrushProfile.id === prof.id
-                                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                                  : "text-slate-300 hover:bg-white/5"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                {prof.iconName === "Feather" && <Feather size={12} className="text-cyan-400" />}
-                                {prof.iconName === "Droplets" && <Droplets size={12} className="text-cyan-400" />}
-                                {prof.iconName === "Highlighter" && <HighlighterIcon size={12} className="text-cyan-400" />}
-                                {prof.iconName === "Edit3" && <Edit3 size={12} className="text-cyan-400" />}
-                                {prof.iconName === "Pencil" && <Pencil size={12} className="text-cyan-400" />}
-                                {prof.iconName === "Zap" && <Zap size={12} className="text-cyan-400" />}
-                                {prof.iconName === "PenTool" && <PenTool size={12} className="text-cyan-400" />}
-                                <span>{prof.name}</span>
-                              </div>
-                              <span className="text-[9px] text-slate-500">{prof.category}</span>
-                            </button>
-                          ))}
-
-                          <button
-                            onClick={() => {
-                              setShowBrushQuickMenu(false);
-                              setShowBrushProfilesModal(true);
-                            }}
-                            className="mt-1 pt-1.5 border-t border-white/5 px-2.5 py-1.5 rounded-xl text-[10px] font-mono text-cyan-400 hover:bg-cyan-500/10 flex items-center justify-center gap-1.5 transition cursor-pointer"
-                          >
-                            <Sparkles size={11} />
-                            <span>Open Brush Studio & Tuner</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 border-l border-white/10 pl-3 shrink-0">
-                        {/* Universal AI Simulation Engine Selector */}
-                        <div className="relative">
-                          <select
-                            value={chalkboardEngineMode}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setChalkboardEngineMode(val);
-                              if (val === "mindmap") {
-                                setShowMindMapCanvas(true);
-                                setShowFlowchartCanvas(false);
-                                setShowAiSimulation(false);
-                              } else if (val === "flowchart") {
-                                setShowFlowchartCanvas(true);
-                                setShowMindMapCanvas(false);
-                                setShowAiSimulation(false);
-                              } else if (val === "2d-fluid") {
-                                setSimulationInitialMode("2d-liquid");
-                                setShowAiSimulation(true);
-                                setShowFlowchartCanvas(false);
-                                setShowMindMapCanvas(false);
-                              } else if (val === "3d-simulation" || val === "simulation" || val === "ai-simulation" || val === "runtime-engine") {
-                                setSimulationInitialMode("3d-webgl");
-                                setShowAiSimulation(true);
-                                setShowFlowchartCanvas(false);
-                                setShowMindMapCanvas(false);
-                              } else if (val === "dld-logic" || val === "dld" || val === "digital-logic") {
-                                setSimulationInitialMode("dld-logic");
-                                setShowAiSimulation(true);
-                                setShowFlowchartCanvas(false);
-                                setShowMindMapCanvas(false);
-                              } else {
-                                setShowAiSimulation(false);
-                                setShowFlowchartCanvas(false);
-                                setShowMindMapCanvas(false);
-                              }
-                            }}
-                            className="px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg border bg-[#090918] border-cyan-500/40 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)] hover:border-cyan-400 outline-none cursor-pointer transition-all"
-                            title="Universal AI Simulation Engine Mode (Mind Map, 2D Liquid, 3D WebGL, Flowchart & Digital Logic Lab)"
-                          >
-                            <option value="chalkboard">🎨 2D Slate (Draw & Chalk)</option>
-                            <option value="mindmap">🧠 Interactive Mind Map Studio</option>
-                            <option value="flowchart">🔀 Flowchart & Workflow</option>
-                            <option value="2d-fluid">🌊 2D Liquid AI Simulation</option>
-                            <option value="3d-simulation">🌌 3D WebGL AI Simulation</option>
-                            <option value="dld-logic">⚡ Digital Logic Design (DLD) Lab</option>
-                          </select>
-                        </div>
-
-                        <button
-                          onClick={() => {
-                            const next = !showMindMapCanvas;
-                            setShowMindMapCanvas(next);
-                            if (next) {
-                              setShowFlowchartCanvas(false);
-                              setShowAiSimulation(false);
-                            }
-                            setChalkboardEngineMode(next ? "mindmap" : "chalkboard");
-                          }}
-                          className={`px-2.5 py-1 text-[9px] font-mono font-bold rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1.5 pointer-events-auto ${
-                            showMindMapCanvas 
-                              ? "bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.35)]" 
-                              : "bg-slate-900/90 border-cyan-500/20 text-cyan-300/90 hover:text-cyan-200 hover:border-cyan-400/50"
-                          }`}
-                          title="Toggle Interactive Mind Map Studio (Vector Memory Driven)"
-                        >
-                          <Brain size={10} className="text-cyan-400" />
-                          <span>🧠 Mind Map</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            const next = !showFlowchartCanvas;
-                            setShowFlowchartCanvas(next);
-                            if (next) setShowAiSimulation(false);
-                            setChalkboardEngineMode(next ? "flowchart" : "chalkboard");
-                          }}
-                          className={`px-2.5 py-1 text-[9px] font-mono font-bold rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1.5 pointer-events-auto ${
-                            showFlowchartCanvas 
-                              ? "bg-purple-500/25 border-purple-400 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.35)]" 
-                              : "bg-slate-900/90 border-purple-500/20 text-purple-300/90 hover:text-purple-200 hover:border-purple-400/50"
-                          }`}
-                          title="Toggle Flowchart & Workflow Node Canvas"
-                        >
-                          <GitCommit size={10} className="text-purple-400" />
-                          <span>🔀 Flowchart</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            const next = !showAiSimulation;
-                            setShowAiSimulation(next);
-                            if (next) {
-                              setShowFlowchartCanvas(false);
-                              setChalkboardEngineMode("3d-simulation");
-                              setSimulationInitialMode("3d-webgl");
-                            } else {
-                              setChalkboardEngineMode("chalkboard");
-                            }
-                          }}
-                          className={`px-2.5 py-1 text-[9px] font-mono font-bold rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1.5 pointer-events-auto ${
-                            showAiSimulation 
-                              ? "bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.35)]" 
-                              : "bg-slate-900/90 border-cyan-500/20 text-cyan-400/90 hover:text-cyan-300 hover:border-cyan-400/50"
-                          }`}
-                          title="Toggle Universal AI Simulation Engine (2D Liquid & 3D WebGL)"
-                        >
-                          <Sparkles size={10} className="text-cyan-400 animate-pulse" />
-                          <span>🌌 AI Sim Engine</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setShowMiniDld(!showMiniDld);
-                            if (showVoiceSketch) setShowVoiceSketch(false);
-                          }}
-                          className={`px-2 py-1 text-[9px] font-mono rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1 pointer-events-auto ${
-                            showMiniDld 
-                              ? "bg-purple-500/15 border-purple-500/40 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.2)]" 
-                              : "bg-slate-900 border-white/10 text-slate-450 hover:text-white hover:border-white/20"
-                          }`}
-                          title="Interactive Logic Board mini simulator overlay"
-                        >
-                          <Sliders size={8} className="text-purple-400" />
-                          <span>🕹️ Mini DLD Gates</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowVoiceSketch(!showVoiceSketch);
-                            if (showMiniDld) setShowMiniDld(false);
-                          }}
-                          className={`px-2 py-1 text-[9px] font-mono rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1 pointer-events-auto ${
-                            showVoiceSketch 
-                              ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.2)]" 
-                              : "bg-slate-900 border-white/10 text-slate-450 hover:text-white hover:border-white/20"
-                          }`}
-                          title="Real-time Voice to sketch parsing system"
-                        >
-                          <Mic size={8} className="text-cyan-400" />
-                          <span>🎤 Voice Sketch</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (!isPlaybackMode) {
-                              handleStartPlayback();
-                            } else {
-                              handleExitPlayback();
-                            }
-                          }}
-                          className={`px-2 py-1 text-[9px] font-mono rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1 pointer-events-auto ${
-                            isPlaybackMode 
-                              ? "bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.3)]" 
-                              : "bg-slate-900 border-white/10 text-slate-400 hover:text-white hover:border-white/20"
-                          }`}
-                          title="Playback: Animate drawing sequence of past scribbles to review thought process"
-                        >
-                          <Film size={9} className="text-amber-400" />
-                          <span>🎬 Replay Scribbles</span>
-                        </button>
-                        <button
-                          onClick={resetStrokeCounter}
-                          className="px-2 py-1 text-[9px] font-mono rounded-lg border bg-slate-900 border-white/10 text-slate-400 hover:text-rose-300 hover:border-rose-500/30 transition duration-150 cursor-pointer flex items-center gap-1 pointer-events-auto"
-                          title="Reset recorded action counter back to 0 strokes"
-                        >
-                          <RotateCcw size={8} className="text-rose-400" />
-                          <span>🔄 Reset Count</span>
-                        </button>
-                        <button
-                          onClick={() => setShowDeduplicatorModal(true)}
-                          className={`px-2 py-1 text-[9px] font-mono rounded-lg border transition duration-150 cursor-pointer flex items-center gap-1 pointer-events-auto ${
-                            isSlateDeduplicatorActive
-                              ? "bg-purple-500/15 border-purple-500/40 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.25)]"
-                              : "bg-slate-900 border-white/10 text-slate-400 hover:text-white"
-                          }`}
-                          title="Visual Slate Deduplicator: Automatically runs a deduplication pass whenever a new mind map is generated"
-                        >
-                          <Sparkles size={8} className={isSlateDeduplicatorActive ? "text-purple-400 animate-spin-slow" : "text-slate-400"} />
-                          <span>Slate Optimizer</span>
-                          {deduplicationReport && deduplicationReport.removedCount > 0 && (
-                            <span className="px-1 py-0.2 rounded bg-purple-500/30 text-[8px] text-purple-200 font-bold border border-purple-400/30">
-                              -{deduplicationReport.removedCount}
-                            </span>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                  {/* Colors selector (liquid glowing chalk markers) */}
-                  {(tool === "pen" || tool === "smartpen") && (
-                    <div className="flex items-center gap-1.5">
-                      {CHALK_COLORS.map((col) => (
-                        <button
-                          key={col.code}
-                          onClick={() => setColor(col.code)}
-                          style={{ 
-                            backgroundColor: col.code,
-                            boxShadow: color === col.code ? `0 0 10px ${col.code}` : "none" 
-                          }}
-                          className={`w-4.5 h-4.5 rounded-full border transition-all cursor-pointer ${
-                            color === col.code ? "scale-115 border-white" : "border-transparent opacity-80 hover:opacity-100"
-                          }`}
-                          title={col.name}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Brush Sizes */}
-                  <div className="flex items-center gap-1 ml-2">
-                    {[2, 4, 8, 14].map((size) => (
-                      <button
-                        key={size}
-                        onClick={() => setBrushSize(size)}
-                        className={`px-1.5 py-0.5 text-[9px] font-mono rounded border transition cursor-pointer ${
-                          brushSize === size 
-                            ? "bg-white/15 border-white/20 text-white" 
-                            : "bg-transparent border-transparent text-slate-400 hover:text-slate-200"
-                        }`}
-                      >
-                        {size === 2 ? "Thin" : size === 4 ? "Mid" : size === 8 ? "Thick" : "Chalk"}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Clear / Export actions */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={undo}
-                      disabled={history.length === 0}
-                      className={`p-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-300 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                        history.length > 0 ? "hover:bg-white/10 text-white" : ""
-                      }`}
-                      title="Undo Action"
-                    >
-                      <Undo size={12} />
-                    </button>
-                    <button
-                      onClick={redo}
-                      disabled={redoStack.length === 0}
-                      className={`p-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-300 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                        redoStack.length > 0 ? "hover:bg-white/10 text-white" : ""
-                      }`}
-                      title="Redo Action (Ctrl+Y)"
-                    >
-                      <Redo size={12} />
-                    </button>
-                    {/* Grid Pattern Selector */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowGridMenu(!showGridMenu)}
-                        className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
-                          gridType !== "none"
-                            ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300"
-                            : "bg-white/5 border-white/5 text-slate-400 hover:bg-white/10"
-                        }`}
-                        title="Blackboard Grid Background"
-                      >
-                        <Grid size={12} />
-                      </button>
-                      {showGridMenu && (
-                        <div className="absolute top-full mt-1.5 right-0 bg-slate-900 border border-white/10 rounded-xl p-1.5 shadow-2xl z-50 flex flex-col gap-1 w-36">
-                          <span className="text-[9px] font-mono text-slate-400 px-2 py-0.5">Grid Overlay</span>
-                          {(["none", "dot-grid", "graph-paper", "isometric", "blueprint"] as const).map((g) => (
-                            <button
-                              key={g}
-                              onClick={() => {
-                                setGridType(g);
-                                setShowGridMenu(false);
-                              }}
-                              className={`px-2 py-1 text-[10px] font-mono rounded-lg text-left transition flex items-center justify-between cursor-pointer ${
-                                gridType === g ? "bg-cyan-500/20 text-cyan-300 font-bold" : "text-slate-300 hover:bg-white/5"
-                              }`}
-                            >
-                              <span>{g === "none" ? "None (Plain)" : g === "dot-grid" ? "Dot Grid" : g === "graph-paper" ? "Graph Paper" : g === "isometric" ? "Isometric 3D" : "Blueprint"}</span>
-                              {gridType === g && <Check size={10} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Tactile Audio Feedback Toggle */}
-                    <button
-                      onClick={() => setIsAudioFeedbackEnabled(!isAudioFeedbackEnabled)}
-                      className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                        isAudioFeedbackEnabled
-                          ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                          : "bg-white/5 border-white/5 text-slate-500 hover:bg-white/10"
-                      }`}
-                      title={isAudioFeedbackEnabled ? "Tactile Chalk Audio: ON" : "Tactile Chalk Audio: OFF"}
-                    >
-                      {isAudioFeedbackEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
-                    </button>
-
-                    {/* Real-time Stylus Pressure Dynamics HUD Toggle */}
-                    <button
-                      onClick={() => setShowPressureHUD(!showPressureHUD)}
-                      className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                        showPressureHUD
-                          ? "bg-cyan-500/15 border-cyan-500/30 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.25)]"
-                          : "bg-white/5 border-white/5 text-slate-500 hover:bg-white/10"
-                      }`}
-                      title={showPressureHUD ? "Stylus Pressure Dynamics HUD: Visible" : "Stylus Pressure Dynamics HUD: Hidden"}
-                    >
-                      <Activity size={12} />
-                    </button>
-
-                    <button
-                      onClick={() => setShowLayersPanel(!showLayersPanel)}
-                      className={`px-2 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 ${
-                        showLayersPanel 
-                          ? "bg-purple-500/20 border-purple-500/50 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.3)]" 
-                          : "bg-white/5 border-white/5 text-slate-300 hover:bg-white/10"
-                      }`}
-                      title="Toggle Layer Stack Manager"
-                    >
-                      <Layers size={12} className="text-purple-400" />
-                      <span className="text-[10px] font-mono hidden sm:inline font-bold">Layers ({layers.length})</span>
-                    </button>
-                    <button
-                      onClick={clearCanvas}
-                      className="p-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-rose-500/20 hover:border-rose-500/30 text-rose-300 transition cursor-pointer"
-                      title="Clear Blackboard"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                    <button
-                      onClick={exportCanvasImage}
-                      className="p-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 text-slate-300 transition cursor-pointer"
-                      title="Export Drawing PNG"
-                    >
-                      <Download size={12} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsCanvasFullScreen(true);
-                        setTimeout(handleResizeCanvas, 100);
-                      }}
-                      className="p-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 text-slate-300 transition cursor-pointer"
-                      title="Full Screen Canvas"
-                    >
-                      <Maximize2 size={12} />
-                    </button>
-                  </div>
-                </div>
-
                 {/* HELP CARD SIDE DRAWER OVERLAY (HINT CARD) */}
                 <AnimatePresence>
                   {showHelper && (
@@ -5131,11 +4736,7 @@ export function Chalkboard({
                 </AnimatePresence>
 
                 {/* Actual canvas painting layer */}
-                <div className={`bg-[#080812] select-none flex flex-col min-h-0 overflow-hidden ${
-                  isCanvasFullScreen 
-                    ? "fixed inset-0 w-screen h-screen z-50 bg-[#080812]" 
-                    : "flex-1 relative"
-                }`}>
+                <div className="flex-1 relative bg-[#080812] select-none flex flex-col min-h-0 overflow-hidden w-full h-full">
                   <div className={`chalkboard-canvas-container flex-1 w-full h-full relative ${
                     isPanning ? "cursor-grabbing" : tool === "pan" ? "cursor-grab" : "cursor-crosshair"
                   }`}>
@@ -5186,70 +4787,14 @@ export function Chalkboard({
                       </AnimatePresence>
 
                       {/* Real-time Stylus Pressure Dynamics HUD */}
-                      <AnimatePresence>
-                        {showPressureHUD && (livePressureTelemetry || isDrawing) && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 15, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 15, scale: 0.95 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute bottom-4 right-4 z-40 bg-slate-950/90 border border-white/10 rounded-2xl p-3.5 shadow-2xl backdrop-blur-xl pointer-events-none flex flex-col gap-2 min-w-[210px] text-xs font-mono select-none"
-                          >
-                            <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                              <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
-                                <Activity size={13} className="animate-pulse text-cyan-400" />
-                                <span>Stylus Dynamics</span>
-                              </div>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/5 capitalize">
-                                {livePressureTelemetry?.pointerType === "pen" ? "🖊️ Apple/Wacom Pen" : livePressureTelemetry?.pointerType === "touch" ? "👆 Touch Pressure" : "🖱️ Dynamic Cursor"}
-                              </span>
-                            </div>
-
-                            {/* Pressure Gauge Bar */}
-                            <div className="flex flex-col gap-1">
-                              <div className="flex justify-between text-[11px] text-slate-300">
-                                <span className="text-slate-400">Tip Pressure</span>
-                                <span className="font-bold text-cyan-300">
-                                  {Math.round((livePressureTelemetry?.pressure || 0.5) * 100)}%
-                                </span>
-                              </div>
-                              <div className="w-full h-2 bg-slate-800/80 rounded-full overflow-hidden border border-white/5 relative">
-                                <motion.div
-                                  className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-emerald-400 to-amber-400"
-                                  style={{
-                                    width: `${Math.min(100, Math.max(4, Math.round((livePressureTelemetry?.pressure || 0.5) * 100)))}%`
-                                  }}
-                                  transition={{ ease: "easeOut", duration: 0.08 }}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Metrics Grid */}
-                            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5 text-[11px]">
-                              <div className="flex flex-col bg-white/5 rounded-lg px-2 py-1">
-                                <span className="text-[9px] text-slate-400">Context Width</span>
-                                <span className="font-bold text-emerald-300">
-                                  {(Number(livePressureTelemetry?.width || currentLineWidthRef.current || brushSize) || 4).toFixed(1)} px
-                                </span>
-                              </div>
-                              <div className="flex flex-col bg-white/5 rounded-lg px-2 py-1">
-                                <span className="text-[9px] text-slate-400">Context Opacity</span>
-                                <span className="font-bold text-purple-300">
-                                  {Math.round((livePressureTelemetry?.opacity || 1.0) * 100)}%
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Active Profile Info */}
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                              <span>Profile:</span>
-                              <span className="text-slate-200 font-semibold truncate max-w-[130px]">
-                                {activeBrushProfile.name}
-                              </span>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      <WhiteboardStylusHUD
+                        isVisible={showPressureHUD && Boolean(livePressureTelemetry || isDrawing)}
+                        livePressureTelemetry={livePressureTelemetry}
+                        isDrawing={isDrawing}
+                        activeBrushName={activeBrushProfile.name}
+                        defaultWidth={currentLineWidthRef.current || brushSize || 4}
+                        onDismiss={() => setShowPressureHUD(false)}
+                      />
 
                       {/* Playback Control Bar */}
                       <AnimatePresence>
@@ -5510,42 +5055,16 @@ export function Chalkboard({
                       </AnimatePresence>
 
                       {/* Zoom and Pan interactive HUD controls */}
-                      <div className="absolute left-4 bottom-4 z-40 bg-slate-950/85 border border-white/5 rounded-xl px-3 py-1.5 flex items-center gap-2 shadow-lg backdrop-blur-md">
-                        <span className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">Zoom:</span>
-                        <span className="font-mono text-xs text-cyan-400 font-bold min-w-[36px] text-center">
-                          {Math.round(zoom * 100)}%
-                        </span>
-                        <div className="h-3 w-px bg-white/10 mx-1" />
-                        <button
-                          onClick={() => {
-                            setZoom((prev) => Math.max(prev / 1.15, 0.4));
-                          }}
-                          className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[10px] text-slate-300 hover:bg-white/10 hover:text-white cursor-pointer"
-                          title="Zoom Out"
-                        >
-                          -
-                        </button>
-                        <button
-                          onClick={() => {
-                            setZoom((prev) => Math.min(prev * 1.15, 8));
-                          }}
-                          className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[10px] text-slate-300 hover:bg-white/10 hover:text-white cursor-pointer"
-                          title="Zoom In"
-                        >
-                          +
-                        </button>
-                        <button
-                          onClick={() => {
-                            setZoom(1);
-                            setPanX(0);
-                            setPanY(0);
-                          }}
-                          className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[10px] text-slate-350 hover:bg-white/10 hover:text-white cursor-pointer"
-                          title="Reset Zoom & Pan"
-                        >
-                          Reset
-                        </button>
-                      </div>
+                      <WhiteboardZoomBar
+                        zoom={zoom}
+                        onZoomIn={() => setZoom((prev) => Math.min(prev * 1.15, 8))}
+                        onZoomOut={() => setZoom((prev) => Math.max(prev / 1.15, 0.4))}
+                        onResetZoom={() => {
+                          setZoom(1);
+                          setPanX(0);
+                          setPanY(0);
+                        }}
+                      />
                       
                       {/* Subtle Blackboard grid texture */}
                       <div className="absolute inset-0 pointer-events-none opacity-[0.03] select-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
@@ -5679,6 +5198,7 @@ export function Chalkboard({
                         <div className="absolute inset-0 z-30 bg-[#03030c] flex flex-col pointer-events-auto">
                           <UniversalSimulationStudio
                             isOpen={true}
+                            embedded={true}
                             initialMode={simulationInitialMode}
                             initialPrompt="Human lungs breathing with asthma"
                             onAskMahr={(q) => handleAskTutor?.(q)}
@@ -5690,166 +5210,65 @@ export function Chalkboard({
                           />
                         </div>
                       )}
+
+                      {/* 📊 Presentation & Google Slides Studio Layer */}
+                      {showSlidesCanvas && (
+                        <div className="absolute inset-0 z-30 bg-[#050510] flex flex-col pointer-events-auto">
+                          <SlideStudioWhiteboard
+                            initialTopic={activeSlidesTopic || initialSlidesTopic || (text?.startsWith("# 🎓 ") ? text.replace(/^# 🎓 /, "").split("\n")[0]?.trim() : undefined)}
+                            onBackToSlate={() => {
+                              setShowSlidesCanvas(false);
+                              setChalkboardEngineMode("chalkboard");
+                            }}
+                            onAskMahr={(q) => handleAskTutor?.(q)}
+                          />
+                        </div>
+                      )}
+
+                      {/* Floating Bottom Dock for Drawing Tools, Colors & Brushes - ONLY in 2D Slate mode */}
+                      {chalkboardEngineMode === "chalkboard" && !showMindMapCanvas && !showFlowchartCanvas && !showAiSimulation && !showSlidesCanvas && (
+                        <WhiteboardFloatingDock
+                          tool={tool as any}
+                          onSelectTool={(t) => setTool(t as any)}
+                          color={color}
+                          onSelectColor={(c) => setColor(c)}
+                          brushSize={brushSize}
+                          onSelectBrushSize={(s) => setBrushSize(s)}
+                          activeBrushProfile={activeBrushProfile}
+                          onSelectBrushProfile={setActiveBrushProfile}
+                          onOpenBrushTuner={() => setShowBrushProfilesModal(true)}
+                          showVoiceSketch={showVoiceSketch}
+                          onToggleVoiceSketch={() => setShowVoiceSketch(!showVoiceSketch)}
+                          showMiniDld={showMiniDld}
+                          onToggleMiniDld={() => setShowMiniDld(!showMiniDld)}
+                          isPlaybackMode={isPlaybackMode}
+                          onTogglePlayback={() => setIsPlaybackMode(!isPlaybackMode)}
+                        />
+                      )}
+
+                      {/* Settings & Utilities Drawer */}
+                      <WhiteboardUtilityDrawer
+                        isOpen={showUtilityDrawer}
+                        onClose={() => setShowUtilityDrawer(false)}
+                        gridType={gridType}
+                        onSelectGridType={setGridType}
+                        isAudioFeedbackEnabled={isAudioFeedbackEnabled}
+                        onToggleAudioFeedback={() => setIsAudioFeedbackEnabled(!isAudioFeedbackEnabled)}
+                        showPressureHUD={showPressureHUD}
+                        onTogglePressureHUD={() => setShowPressureHUD(!showPressureHUD)}
+                        onOpenDeduplicator={() => setShowDeduplicatorModal(true)}
+                        onResetStrokeCounter={resetStrokeCounter}
+                        onToggleVoiceSketch={() => setShowVoiceSketch(!showVoiceSketch)}
+                        onToggleMiniDld={() => setShowMiniDld(!showMiniDld)}
+                      />
+
+                      {/* AI Image Generation & Stamping Modal */}
+                      <WhiteboardAIImageModal
+                        isOpen={showAIImageModal}
+                        onClose={() => setShowAIImageModal(false)}
+                        onStampToCanvas={handleStampImageToCanvas}
+                      />
                     </div>
-
-                  {/* Floating Fullscreen Controls */}
-                  {isCanvasFullScreen && (
-                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-slate-950/90 border border-white/10 rounded-2xl p-2.5 flex items-center gap-4 shadow-2xl backdrop-blur-md pointer-events-auto">
-                      {/* Mini Title */}
-                      <div className="flex items-center gap-1.5 border-r border-white/10 pr-3.5">
-                        <Palette size={13} className="text-purple-400 animate-pulse" />
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-purple-300">Fullscreen Classroom</span>
-                      </div>
-
-                      {/* Tools */}
-                          <div className="flex rounded-lg border border-white/5 bg-white/5 p-0.5 gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => setTool("pen")}
-                              className={`p-1.5 rounded-md transition cursor-pointer ${
-                                tool === "pen" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                              }`}
-                              title="Pen"
-                            >
-                              <PenTool size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTool("line")}
-                              className={`p-1.5 rounded-md transition cursor-pointer ${
-                                tool === "line" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                              }`}
-                              title="Line"
-                            >
-                              <GitCommit size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTool("arrow")}
-                              className={`p-1.5 rounded-md transition cursor-pointer ${
-                                tool === "arrow" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                              }`}
-                              title="Arrow"
-                            >
-                              <ArrowUpRight size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTool("eraser")}
-                              className={`p-1.5 rounded-md transition cursor-pointer ${
-                                tool === "eraser" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                              }`}
-                              title="Eraser"
-                            >
-                              <Eraser size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTool("pan")}
-                              className={`p-1.5 rounded-md transition cursor-pointer ${
-                                tool === "pan" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-white"
-                              }`}
-                              title="Pan"
-                            >
-                              <Hand size={12} />
-                            </button>
-                          </div>
-
-                          {/* Colors if Pen is selected */}
-                          {tool === "pen" && (
-                            <div className="flex items-center gap-1 border-l border-r border-white/10 px-3.5">
-                              {CHALK_COLORS.map((col) => (
-                                <button
-                                  type="button"
-                                  key={col.code}
-                                  onClick={() => setColor(col.code)}
-                                  style={{ 
-                                    backgroundColor: col.code,
-                                    boxShadow: color === col.code ? `0 0 8px ${col.code}` : "none" 
-                                  }}
-                                  className={`w-3.5 h-3.5 rounded-full border transition-all cursor-pointer ${
-                                    color === col.code ? "scale-110 border-white" : "border-transparent opacity-80 hover:opacity-100"
-                                  }`}
-                                  title={col.name}
-                                />
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Brush sizes */}
-                          <div className="flex items-center gap-1">
-                            {[2, 4, 8, 14].map((size) => (
-                              <button
-                                type="button"
-                                key={size}
-                                onClick={() => setBrushSize(size)}
-                                className={`w-5 h-5 rounded-md border flex items-center justify-center text-[8px] font-mono transition cursor-pointer ${
-                                  brushSize === size 
-                                    ? "bg-white/15 border-white/20 text-white font-bold" 
-                                    : "bg-transparent border-transparent text-slate-400 hover:text-slate-200"
-                                }`}
-                              >
-                                {size === 2 ? "•" : size === 4 ? "••" : size === 8 ? "●" : "■"}
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* Drawing actions */}
-                          <div className="flex items-center gap-1 border-l border-white/10 pl-3.5">
-                            <button
-                              type="button"
-                              onClick={undo}
-                              disabled={history.length === 0}
-                              className={`p-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-300 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                                history.length > 0 ? "hover:bg-white/10 text-white" : ""
-                              }`}
-                              title="Undo"
-                            >
-                              <Undo size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={redo}
-                              disabled={redoStack.length === 0}
-                              className={`p-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-300 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                                redoStack.length > 0 ? "hover:bg-white/10 text-white" : ""
-                              }`}
-                              title="Redo"
-                            >
-                              <Redo size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={clearCanvas}
-                              className="p-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-rose-500/20 hover:border-rose-500/30 text-rose-300 transition cursor-pointer"
-                              title="Clear"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={exportCanvasImage}
-                              className="p-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 text-slate-300 transition cursor-pointer mr-2"
-                              title="Export PNG"
-                            >
-                              <Download size={12} />
-                            </button>
-                          </div>
-
-                      {/* Exit Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCanvasFullScreen(false);
-                          setTimeout(handleResizeCanvas, 100);
-                        }}
-                        className="p-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 hover:text-white transition cursor-pointer shadow-[0_0_10px_rgba(168,85,247,0.2)]"
-                        title="Exit Full Screen"
-                      >
-                        <Minimize2 size={12} />
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -5905,7 +5324,6 @@ export function Chalkboard({
             }}
             currentColor={color}
           />
-        </motion.div>
       </motion.div>
     )}
   </AnimatePresence>

@@ -31,5 +31,9 @@ export interface ChatMessage {
   role: "user" | "model";
   text: string;
   timestamp: string;
+  actionExecuted?: string;
+  groundingSources?: any[];
+  searchQueries?: string[];
+  mediaItems?: any[];
 }
 

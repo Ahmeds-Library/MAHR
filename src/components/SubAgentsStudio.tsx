@@ -52,7 +52,7 @@ export function SubAgentsStudio({
   const [role, setRole] = useState("");
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [modelId, setModelId] = useState("gemini-3.8-flash");
+  const [modelId, setModelId] = useState("gemini-3.1-flash-lite");
   const [category, setCategory] = useState<SubAgent["category"]>("custom");
   const [iconName, setIconName] = useState("Bot");
 

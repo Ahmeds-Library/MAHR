@@ -387,22 +387,24 @@ export default function App() {
     chatHistoryRef.current = chatHistory;
   }, [chatHistory]);
 
-  // Pushes the unified chatHistory to the Gemini Live session context
+  // Syncs the unified chatHistory reference
   const syncStateToSession = useCallback((customHistory?: ChatMessage[]) => {
-    if (!sessionRef.current) return;
     const historyToSync = customHistory || chatHistoryRef.current;
     if (!historyToSync || historyToSync.length === 0) return;
-
-    const recent = historyToSync.slice(-8);
-    const contextFormatted = recent
-      .map((msg) => `${msg.role === "user" ? "USER" : "MYRAA"}: ${msg.text}`)
-      .join("\n");
-
-    const syncNotice = `[Live Chat History Context Sync]:\n${contextFormatted}`;
-    sessionRef.current.sendTextMessage(syncNotice);
+    chatHistoryRef.current = historyToSync;
   }, []);
 
-  const appendToChatHistory = useCallback((role: "user" | "model", text: string) => {
+  const appendToChatHistory = useCallback((
+    role: "user" | "model", 
+    text: string, 
+    meta?: {
+      actionExecuted?: string;
+      groundingSources?: any[];
+      searchQueries?: string[];
+      mediaItems?: any[];
+      isStreaming?: boolean;
+    }
+  ) => {
     if (!text || !text.trim()) return;
 
     // Automatically extract facts if user is speaking or sending message
@@ -410,7 +412,7 @@ export default function App() {
       extractAndStoreUserMemories(text);
       pullRelatedMemoriesAndInformResponse(text);
 
-      // Reinforcement learning feedback evaluation on user's response to Myraa
+      // Reinforcement learning feedback evaluation on user's response to Mahr
       const history = chatHistoryRef.current || [];
       const lastModelMsg = [...history].reverse().find((m) => m.role === "model");
       if (lastModelMsg && lastModelMsg.text.trim()) {
@@ -450,7 +452,11 @@ export default function App() {
     setChatHistory((prev) => {
       const updated = prev.map((msg) => ({ ...msg }));
       const lastMsg = updated[updated.length - 1];
-      if (lastMsg && lastMsg.role === role) {
+      const now = Date.now();
+      const lastMsgTime = lastMsg?.timestamp ? new Date(lastMsg.timestamp).getTime() : 0;
+      const isRecentStreamChunk = lastMsg && lastMsg.role === role && (now - lastMsgTime < 2500 || meta?.isStreaming);
+
+      if (isRecentStreamChunk && lastMsg) {
         if (text.startsWith(lastMsg.text)) {
           lastMsg.text = text;
         } else if (!lastMsg.text.endsWith(" ") && !text.startsWith(" ") && !text.startsWith(",") && !text.startsWith(".")) {
@@ -459,12 +465,20 @@ export default function App() {
           lastMsg.text += text;
         }
         lastMsg.timestamp = new Date().toISOString();
+        if (meta?.actionExecuted) lastMsg.actionExecuted = meta.actionExecuted;
+        if (meta?.groundingSources) lastMsg.groundingSources = meta.groundingSources;
+        if (meta?.searchQueries) lastMsg.searchQueries = meta.searchQueries;
+        if (meta?.mediaItems) lastMsg.mediaItems = meta.mediaItems;
       } else {
         updated.push({
           id: "msg_" + Math.random().toString(36).substring(2, 11),
           role: role,
           text: text,
           timestamp: new Date().toISOString(),
+          actionExecuted: meta?.actionExecuted,
+          groundingSources: meta?.groundingSources,
+          searchQueries: meta?.searchQueries,
+          mediaItems: meta?.mediaItems,
         });
       }
       const pruned = pruneChatHistory(updated, chatMaxMessagesRef.current, chatRetentionTimeRef.current);
@@ -568,6 +582,8 @@ export default function App() {
   // Sub-Agents Orchestrator & Studio States
   const [isSubAgentsStudioOpen, setIsSubAgentsStudioOpen] = useState<boolean>(false);
   const [isMunderDifflinOpen, setIsMunderDifflinOpen] = useState<boolean>(false);
+  const [isSlidesStudioOpen, setIsSlidesStudioOpen] = useState<boolean>(false);
+  const [slidesStudioTopic, setSlidesStudioTopic] = useState<string>("Autonomous AI Agents in 2026");
   const [activeSubAgent, setActiveSubAgent] = useState<SubAgent>(PRESET_SUBAGENTS[0]);
   const [customSubAgents, setCustomSubAgents] = useState<SubAgent[]>([]);
 
@@ -581,6 +597,7 @@ export default function App() {
   // Load Model, SubAgents, and Daily Tasks on initialization
   useEffect(() => {
     (async () => {
+      // 1. Load active model & custom subagents safely from IndexedDB
       try {
         const savedModel = (await dbGet("myraa_active_model")) as string;
         if (savedModel) setActiveModelId(savedModel);
@@ -605,17 +622,28 @@ export default function App() {
           setActiveSubAgent(PRESET_SUBAGENTS[0]);
           dbSet("myraa_active_subagent", PRESET_SUBAGENTS[0]);
         }
+      } catch (err) {
+        console.warn("Local model/subagent persistence check:", err);
+      }
 
-        // Fetch daily tasks from backend
+      // 2. Load daily tasks from local IndexedDB cache first, then sync with backend
+      try {
+        const localTasks = await dbGet("myraa_daily_tasks");
+        if (localTasks && Array.isArray(localTasks) && localTasks.length > 0) {
+          setDailyTasks(localTasks);
+        }
+
         const res = await fetch("/api/daily-tasks");
         if (res.ok) {
           const data = await res.json();
           if (data.tasks && Array.isArray(data.tasks)) {
             setDailyTasks(data.tasks);
+            dbSet("myraa_daily_tasks", data.tasks);
           }
         }
-      } catch (err) {
-        console.error("Error loading model/subagent/task persistence:", err);
+      } catch {
+        // Backend still spinning up or offline; offline local IndexedDB cache is already in place
+        console.info("Daily tasks loaded from local offline store.");
       }
     })();
   }, []);
@@ -701,42 +729,45 @@ export default function App() {
     };
     const updated = [newTask, ...dailyTasks];
     setDailyTasks(updated);
+    dbSet("myraa_daily_tasks", updated);
     try {
       await fetch("/api/daily-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tasks: updated })
       });
-    } catch (e) {
-      console.error("Failed saving daily task:", e);
+    } catch {
+      // Saved offline to IndexedDB
     }
   };
 
   const handleToggleDailyTask = async (id: string) => {
     const updated = dailyTasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
     setDailyTasks(updated);
+    dbSet("myraa_daily_tasks", updated);
     try {
       await fetch("/api/daily-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tasks: updated })
       });
-    } catch (e) {
-      console.error("Failed toggling daily task:", e);
+    } catch {
+      // Saved offline to IndexedDB
     }
   };
 
   const handleDeleteDailyTask = async (id: string) => {
     const updated = dailyTasks.filter(t => t.id !== id);
     setDailyTasks(updated);
+    dbSet("myraa_daily_tasks", updated);
     try {
       await fetch("/api/daily-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tasks: updated })
       });
-    } catch (e) {
-      console.error("Failed deleting daily task:", e);
+    } catch {
+      // Saved offline to IndexedDB
     }
   };
 
@@ -750,11 +781,12 @@ export default function App() {
         const data = await res.json();
         if (data.tasks) {
           setDailyTasks(data.tasks);
+          dbSet("myraa_daily_tasks", data.tasks);
           triggerConfetti();
         }
       }
-    } catch (e) {
-      console.error("Failed auto generating tasks:", e);
+    } catch {
+      // Fallback
     }
   };
 
@@ -986,6 +1018,37 @@ export default function App() {
         setIsWhiteboardOpen(true);
         setWhiteboardActiveMode("split");
         break;
+      case "open_slides_studio":
+        if (args?.topic) setSlidesStudioTopic(args.topic);
+        setWhiteboardDiagramType("slides");
+        setWhiteboardActiveMode("canvas");
+        setIsWhiteboardOpen(true);
+        setWhiteboardStatusAlert(`📊 Deep Researching & Generating Slides for "${args?.topic || "Presentation"}" with Web & AI Visuals...`);
+        setTimeout(() => setWhiteboardStatusAlert(null), 5000);
+        break;
+      case "open_mindmap":
+        if (args?.topic) setSlidesStudioTopic(args.topic);
+        setWhiteboardDiagramType("mindmap");
+        setWhiteboardActiveMode("canvas");
+        setIsWhiteboardOpen(true);
+        break;
+      case "open_flowchart":
+        setWhiteboardDiagramType("flowchart");
+        setWhiteboardActiveMode("canvas");
+        setIsWhiteboardOpen(true);
+        break;
+      case "open_dld":
+        setWhiteboardDiagramType("dld");
+        setWhiteboardActiveMode("canvas");
+        setIsWhiteboardOpen(true);
+        break;
+      case "clear_chalkboard":
+        setWhiteboardClearCounter((prev) => prev + 1);
+        setWhiteboardDrawings([]);
+        break;
+      case "close_whiteboard":
+        setIsWhiteboardOpen(false);
+        break;
       default:
         break;
     }
@@ -1001,7 +1064,9 @@ export default function App() {
     askMyraaInput,
     setAskMyraaInput,
     askMahrLoading,
+    setAskMahrLoading,
     askMyraaLoading,
+    setAskMyraaLoading,
     askMahrMessages,
     askMyraaMessages,
     pendingImages,
@@ -1024,7 +1089,13 @@ export default function App() {
     getScreenSnapshot,
     onExecuteAction: handleExecuteActionFromChat,
     isScreenSharing,
-    onAppendToChatHistory: (role, text) => appendToChatHistory(role, text),
+    onAppendToChatHistory: (role, text, meta) => appendToChatHistory(role, text, meta),
+    onSendToRealtimeSession: (text: string) => {
+      if (sessionRef.current) {
+        sessionRef.current.sendTextMessage(text);
+      }
+    },
+    isRealtimeSessionActive: state !== "disconnected",
   });
 
   // Sync settings with the active audio session
@@ -1436,6 +1507,11 @@ export default function App() {
       case "open_sim_engine":
         setIsSubAgentsStudioOpen(true);
         break;
+      case "open_slides_studio":
+        setWhiteboardDiagramType("slides");
+        setWhiteboardActiveMode("split");
+        setIsWhiteboardOpen(true);
+        break;
       case "open_ask_myraa":
         setIsAskMyraaOpen(true);
         break;
@@ -1488,6 +1564,7 @@ export default function App() {
     setIsModelSwitcherOpen(false);
     setIsSubAgentsStudioOpen(false);
     setIsMunderDifflinOpen(false);
+    setIsSlidesStudioOpen(false);
     setIsDailyTaskManagerOpen(false);
     setShowKeyboardShortcuts(false);
     setIsHumanMoodStudioOpen(false);
@@ -2550,6 +2627,7 @@ export default function App() {
             setVoiceSketchTriggerText(text);
           }
         } else if (role === "model") {
+          setAskMahrLoading(false);
           setModelCaption((prev) => {
             const next = prev + text;
             const newEmotion = detectEmotionFromText(next);
@@ -2730,6 +2808,16 @@ export default function App() {
           setIsSimulationStudioOpen(true);
           insertActionToChatHistory(`🪐 **[3D SIMULATION INITIALIZED: ${simPrompt}]**\n\n*(Real-time WebGL 3D Simulation Engine initialized on viewport)*`);
           callback({ result: `Successfully launched real-time 3D Simulation Engine for "${simPrompt}". The interactive 3D WebGL laboratory is active and streaming on TECH's screen. Guide them and explain the dynamic physics/biology verbally now!` });
+        } else if (name === "open_slides_studio" || name === "createPresentation" || name === "generateSlides") {
+          const topic = args.topic || args.title || "Interactive Presentation";
+          setSlidesStudioTopic(topic);
+          setWhiteboardDiagramType("slides");
+          setWhiteboardActiveMode("split");
+          setIsWhiteboardOpen(true);
+          setWhiteboardStatusAlert(`📊 MAHR opened Presentation Studio for: "${topic}" on Whiteboard`);
+          setTimeout(() => setWhiteboardStatusAlert(null), 4000);
+          insertActionToChatHistory(`📊 **[PRESENTATION STUDIO OPENED: ${topic}]**\n*(Google Slides Studio opened on Classroom Whiteboard)*`);
+          callback({ result: `Successfully opened Presentation & Slides Studio on Classroom Whiteboard for "${topic}". It is now visible to TECH.` });
         } else if (name === "setHumanMood") {
           const mood = (args.mood?.toLowerCase() || "neutral") as HumanMoodType;
           const reason = args.reason || "";
@@ -3400,6 +3488,7 @@ export default function App() {
           isModelSwitcherOpen={isModelSwitcherOpen}
           isSubAgentsStudioOpen={isSubAgentsStudioOpen}
           isMunderDifflinOpen={isMunderDifflinOpen}
+          isSlidesStudioOpen={isWhiteboardOpen && whiteboardDiagramType === "slides"}
           isDailyTaskManagerOpen={isDailyTaskManagerOpen}
           isMobileMenuOpen={isMobileMenuOpen}
           setIsMobileMenuOpen={setIsMobileMenuOpen}
@@ -3417,6 +3506,12 @@ export default function App() {
             const next = !isMunderDifflinOpen;
             closeAllPanels();
             setIsMunderDifflinOpen(next);
+          }}
+          onToggleSlidesStudio={() => {
+            closeAllPanels();
+            setWhiteboardDiagramType("slides");
+            setWhiteboardActiveMode("split");
+            setIsWhiteboardOpen(true);
           }}
           onToggleDailyTasks={() => {
             const next = !isDailyTaskManagerOpen;
@@ -3638,9 +3733,19 @@ export default function App() {
         voiceSketchTriggerText={voiceSketchTriggerText}
         onClearVoiceSketchTrigger={() => setVoiceSketchTriggerText(null)}
         onVoiceToMindMap={(topic) => handleVoiceToMindMap(topic, { autoSpeakFeedback: true })}
-        onAskMyraa={(question) => {
-          setIsAskMyraaOpen(true);
+        onAskMahr={(question) => {
+          setIsAskMahrOpen(true);
+          if (question) {
+            handleAskMahrSubmit(undefined, question);
+          }
         }}
+        onAskMyraa={(question) => {
+          setIsAskMahrOpen(true);
+          if (question) {
+            handleAskMahrSubmit(undefined, question);
+          }
+        }}
+        initialSlidesTopic={slidesStudioTopic}
       />
 
       {/* Interactive Screen Share Magnifier & Reading Focus Ruler */}
@@ -3817,23 +3922,25 @@ export default function App() {
         themeColor={themeColor}
       />
 
-      {/* Floating 'Ask MAHR' Button */}
-      <div className="fixed bottom-20 right-4 sm:bottom-24 sm:right-6 md:right-8 z-[110]">
-        <motion.button
-          onClick={() => setIsAskMyraaOpen(!isAskMyraaOpen)}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="px-3.5 sm:px-4 py-2.5 sm:py-3 bg-slate-950/90 hover:bg-slate-900 border border-purple-500/40 hover:border-purple-500 text-purple-300 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center gap-2 font-mono text-xs font-bold tracking-wider cursor-pointer group transition-all"
-          style={{ boxShadow: `0 10px 30px -5px rgba(157, 122, 255, 0.3)` }}
-        >
-          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-            <Sparkles size={14} className="animate-spin" style={{ animationDuration: '4s' }} />
-          </div>
-          <span className="hidden sm:inline">Ask MAHR</span>
-          <span className="sm:hidden">Ask</span>
-          <span className={`w-2 h-2 rounded-full ${isAskMyraaOpen ? "bg-emerald-400" : "bg-purple-400 animate-pulse"}`} />
-        </motion.button>
-      </div>
+      {/* Floating 'Ask MAHR' Button - Hidden when Whiteboard or Simulation Studio is open */}
+      {!isWhiteboardOpen && !isSimulationStudioOpen && (
+        <div className="fixed bottom-20 right-4 sm:bottom-24 sm:right-6 md:right-8 z-[110]">
+          <motion.button
+            onClick={() => setIsAskMyraaOpen(!isAskMyraaOpen)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="px-3.5 sm:px-4 py-2.5 sm:py-3 bg-slate-950/90 hover:bg-slate-900 border border-purple-500/40 hover:border-purple-500 text-purple-300 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center gap-2 font-mono text-xs font-bold tracking-wider cursor-pointer group transition-all"
+            style={{ boxShadow: `0 10px 30px -5px rgba(157, 122, 255, 0.3)` }}
+          >
+            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+              <Sparkles size={14} className="animate-spin" style={{ animationDuration: '4s' }} />
+            </div>
+            <span className="hidden sm:inline">Ask MAHR</span>
+            <span className="sm:hidden">Ask</span>
+            <span className={`w-2 h-2 rounded-full ${isAskMyraaOpen ? "bg-emerald-400" : "bg-purple-400 animate-pulse"}`} />
+          </motion.button>
+        </div>
+      )}
 
       {/* Ask MAHR Interactive Text Console Modal */}
       {(() => {
@@ -3850,12 +3957,17 @@ export default function App() {
                 formattedTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
               }
               return {
+                id: item.id,
                 sender: (item.role === "user" ? "user" : "mahr") as "user" | "mahr",
                 text: item.text,
-                timestamp: formattedTime
+                timestamp: formattedTime,
+                actionExecuted: item.actionExecuted,
+                groundingSources: item.groundingSources,
+                searchQueries: item.searchQueries,
+                mediaItems: item.mediaItems
               };
             })
-          : askMyraaMessages;
+          : [];
 
         return (
           <AskMahrModal
@@ -3870,6 +3982,7 @@ export default function App() {
             activeModelId={activeModelId}
             themeColor={themeColor}
             isScreenSharing={isScreenSharing}
+            isRealtimeConnected={state !== "disconnected"}
             includeScreenSnapshot={includeScreenSnapshot}
             onToggleScreenSnapshot={setIncludeScreenSnapshot}
             isAutoSpeakEnabled={isAutoSpeakEnabled}

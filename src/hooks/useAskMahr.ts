@@ -4,6 +4,7 @@ import { SubAgent } from "../lib/subagentTypes";
 import { speakUtterance } from "../services/speechSynthesisService";
 
 export interface AskMahrMessage {
+  id?: string;
   sender: "user" | "mahr" | "myraa";
   text: string;
   timestamp: string;
@@ -23,8 +24,19 @@ interface UseAskMahrOptions {
   getScreenSnapshot?: () => string | null;
   onExecuteAction?: (actionType: string, args?: any) => void;
   isScreenSharing?: boolean;
-  onAppendToChatHistory?: (role: "user" | "model", text: string) => void;
+  onAppendToChatHistory?: (
+    role: "user" | "model",
+    text: string,
+    meta?: {
+      actionExecuted?: string;
+      groundingSources?: any[];
+      searchQueries?: string[];
+      mediaItems?: any[];
+      isStreaming?: boolean;
+    }
+  ) => void;
   onSendToRealtimeSession?: (text: string) => void;
+  isRealtimeSessionActive?: boolean;
 }
 
 export type UseAskMyraaOptions = UseAskMahrOptions;
@@ -40,6 +52,8 @@ export function useAskMahr({
   onExecuteAction,
   isScreenSharing = false,
   onAppendToChatHistory,
+  onSendToRealtimeSession,
+  isRealtimeSessionActive = false,
 }: UseAskMahrOptions) {
   const [isAskMahrOpen, setIsAskMahrOpen] = useState<boolean>(false);
   const [askMahrInput, setAskMahrInput] = useState<string>("");
@@ -48,13 +62,8 @@ export function useAskMahr({
   const [includeScreenSnapshot, setIncludeScreenSnapshot] = useState<boolean>(true);
   const [isAutoSpeakEnabled, setIsAutoSpeakEnabled] = useState<boolean>(true);
 
-  const [askMahrMessages, setAskMahrMessages] = useState<AskMahrMessage[]>([
-    {
-      sender: "mahr",
-      text: "Hello! I am Mahr. Type any command, ask a question, or analyze your live screen here. How can I help you today?",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    },
-  ]);
+  // We maintain a local messages list as fallback, but primary transcript is synchronized with chatHistory
+  const [askMahrMessages, setAskMahrMessages] = useState<AskMahrMessage[]>([]);
 
   const handleAskMahrSubmit = useCallback(
     async (e?: any, customText?: string, overrideImages?: string[]) => {
@@ -76,23 +85,84 @@ export function useAskMahr({
       }
 
       const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setAskMahrMessages((prev) => [
-        ...prev,
-        {
-          sender: "user",
-          text: userMsg + (screenFrame ? " 📷 [Live Screen Snapshot Attached]" : ""),
-          timestamp: now,
-          attachedImages: imagesToSend
-        }
-      ]);
-      
-      // Sync user message to shared chat journal history
+      const userMessageObj: AskMahrMessage = {
+        sender: "user",
+        text: userMsg + (screenFrame ? " 📷 [Live Screen Snapshot Attached]" : ""),
+        timestamp: now,
+        attachedImages: imagesToSend
+      };
+
+      setAskMahrMessages((prev) => [...prev, userMessageObj]);
+
+      // Sync user message to shared chat journal / unified history
       if (onAppendToChatHistory) {
         onAppendToChatHistory("user", userMsg);
       }
 
+      // Check for explicit presentation / PPT / slides generation request to redirect with full understanding to Whiteboard Slides
+      const pptPattern = /(?:make|create|generate|prepare|build|banao|bana do|banaye|chahiye)\s+(?:a\s+|an\s+)?(?:presentation|ppt|slides|deck|slide deck|google slides)(?:\s+(?:on|about|pe|par|for)\s+(.*))?/i;
+      const reversePptPattern = /(?:presentation|ppt|slides|slide deck|google slides)\s+(?:banao|bana do|banaye|make|create|generate|chahiye)(?:\s+(?:on|about|pe|par|for)\s+(.*))?/i;
+      const topicPptPattern = /(?:presentation|ppt|slides|google slides)\s+(?:on|about|pe|par|for)\s+(.*)/i;
+
+      const pptMatch = userMsg.match(pptPattern) || userMsg.match(reversePptPattern) || userMsg.match(topicPptPattern);
+      if (pptMatch && onExecuteAction) {
+        let extractedTopic = (pptMatch[1] || "").trim().replace(/[?.!]+$/, "");
+        if (!extractedTopic || extractedTopic.length < 2) {
+          extractedTopic = userMsg
+            .replace(/(?:make|create|generate|prepare|build|banao|bana do|banaye|chahiye|presentation|ppt|slides|slide deck|google slides|a|an|on|about|pe|par|for|please|plz|saath|internet|se|images|le|lo|kuch|khud|bana)/gi, "")
+            .trim()
+            .replace(/[?.!]+$/, "");
+        }
+        if (!extractedTopic) extractedTopic = "Strategic Presentation";
+        console.log("[useAskMahr] Presentation intent detected with deep planning for topic:", extractedTopic);
+
+        // MAHR thoroughly understands the user's request and plans the execution
+        const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const understandingReply = `🎯 **Request Understood & Accepted!**
+
+I have carefully analyzed your instruction:
+• **Subject:** *${extractedTopic}*
+• **Target Platform:** Google Slides & Interactive Classroom Whiteboard
+• **Strategy:** 
+  1. 🔍 **Deep Domain Research:** Synthesizing core technical concepts, problem statements, and measurable metrics.
+  2. 🌐 **Internet Image Sourcing:** Fetching available verified imagery from the web.
+  3. 🎨 **Visual Synthesis:** Autonomously generating custom architectural diagrams for missing concepts.
+  4. 📊 **Keynote Assembly:** Assembling animated slides with speaker notes.
+
+Launching your presentation in the Classroom Slides Studio now...`;
+
+        setAskMahrMessages((prev) => [
+          ...prev,
+          {
+            id: `msg_mahr_${Date.now()}`,
+            sender: "mahr",
+            text: understandingReply,
+            timestamp: replyTime
+          }
+        ]);
+
+        if (isAutoSpeakEnabled) {
+          speakUtterance({
+            text: `Understood! I am researching ${extractedTopic}, collecting internet images, generating custom visuals, and building your presentation in Google Slides studio now.`,
+            activeEmotion: "happy"
+          });
+        }
+
+        onExecuteAction("open_slides_studio", { 
+          topic: extractedTopic, 
+          userInstruction: userMsg,
+          deepResearch: true,
+          sourceWebImages: true,
+          generateMissingVisuals: true
+        });
+
+        setAskMahrLoading(false);
+        return;
+      }
+
       setAskMahrLoading(true);
 
+      // Direct query to MAHR subagent brain with complete context & memory
       try {
         const fullContext = [
           studyPadText ? `[Study Pad Notes]\n${studyPadText}` : "",
@@ -158,15 +228,23 @@ export function useAskMahr({
             sender: "mahr",
             text: replyText,
             timestamp: replyTime,
-            actionExecuted: executedActionName ? `✨ Executed: ${executedActionName}` : undefined
+            actionExecuted: executedActionName ? `✨ Executed: ${executedActionName}` : undefined,
+            groundingSources: data.groundingSources,
+            searchQueries: data.searchQueries,
+            mediaItems: data.mediaItems
           }
         ]);
 
         if (onAppendToChatHistory) {
-          onAppendToChatHistory("model", replyText);
+          onAppendToChatHistory("model", replyText, {
+            actionExecuted: executedActionName ? `✨ Executed: ${executedActionName}` : undefined,
+            groundingSources: data.groundingSources,
+            searchQueries: data.searchQueries,
+            mediaItems: data.mediaItems
+          });
         }
 
-        // Instantly speak Mahr's reply aloud using high-speed voice synthesis
+        // Speak Mahr's reply aloud using high-speed voice synthesis if enabled
         if (isAutoSpeakEnabled) {
           speakUtterance({
             text: replyText,
@@ -186,7 +264,6 @@ export function useAskMahr({
     },
     [
       askMahrInput,
-      askMahrLoading,
       pendingImages,
       includeScreenSnapshot,
       isScreenSharing,
@@ -199,20 +276,15 @@ export function useAskMahr({
       setNotesStatusAlert,
       onExecuteAction,
       onAppendToChatHistory,
-      isAutoSpeakEnabled
+      isAutoSpeakEnabled,
+      isRealtimeSessionActive,
+      onSendToRealtimeSession
     ]
   );
 
   const resetAskMahrMessages = useCallback((agent?: SubAgent) => {
-    const targetAgent = agent || activeSubAgent;
-    setAskMahrMessages([
-      {
-        sender: "mahr",
-        text: `Hello! I am ${targetAgent.name} (${targetAgent.role}). ${targetAgent.systemPrompt ? "System prompt and domain knowledge loaded." : ""} How can I assist you today?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      },
-    ]);
-  }, [activeSubAgent]);
+    setAskMahrMessages([]);
+  }, []);
 
   return {
     isAskMahrOpen,
@@ -224,8 +296,11 @@ export function useAskMahr({
     askMyraaInput: askMahrInput,
     setAskMyraaInput: setAskMahrInput,
     askMahrLoading,
+    setAskMahrLoading,
     askMyraaLoading: askMahrLoading,
+    setAskMyraaLoading: setAskMahrLoading,
     askMahrMessages,
+    setAskMahrMessages,
     askMyraaMessages: askMahrMessages,
     pendingImages,
     setPendingImages,
@@ -241,5 +316,3 @@ export function useAskMahr({
 }
 
 export const useAskMyraa = useAskMahr;
-
-
