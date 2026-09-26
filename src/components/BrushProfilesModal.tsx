@@ -358,14 +358,14 @@ export const BrushProfilesModal: React.FC<BrushProfilesModalProps> = ({
                                     : "bg-white/5 text-slate-300"
                                 }`}
                               >
-                                {getIcon(prof.iconName)}
+                                {getIcon(prof?.iconName || "Feather")}
                               </div>
                               <div>
                                 <h4 className="text-xs font-bold text-white leading-tight">
-                                  {prof.name}
+                                  {prof?.name || "Brush"}
                                 </h4>
                                 <span className="text-[9px] font-mono uppercase text-slate-400">
-                                  {prof.category} • {prof.nibShape}
+                                  {prof?.category || "Profile"} • {prof?.nibShape || "Round"}
                                 </span>
                               </div>
                             </div>

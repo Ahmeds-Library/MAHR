@@ -59,7 +59,9 @@ export const WhiteboardFloatingDock: React.FC<WhiteboardFloatingDockProps> = ({
   const [showBrushMenu, setShowBrushMenu] = useState(false);
   const [showColorMenu, setShowColorMenu] = useState(false);
 
-  const getProfileIcon = (iconName: string, size = 13) => {
+  const currentProfile = activeBrushProfile || BRUSH_PROFILES[0];
+
+  const getProfileIcon = (iconName?: string, size = 13) => {
     switch (iconName) {
       case "Feather": return <Feather size={size} className="text-cyan-400" />;
       case "Droplets": return <Droplets size={size} className="text-cyan-400" />;
@@ -162,8 +164,8 @@ export const WhiteboardFloatingDock: React.FC<WhiteboardFloatingDockProps> = ({
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-white/10 hover:border-cyan-500/40 text-cyan-300 transition-all text-xs font-mono cursor-pointer"
             title="Select Natural Brush Texture & Profile"
           >
-            {getProfileIcon(activeBrushProfile.iconName)}
-            <span className="hidden sm:inline font-semibold">{activeBrushProfile.name}</span>
+            {getProfileIcon(currentProfile.iconName)}
+            <span className="hidden sm:inline font-semibold">{currentProfile.name}</span>
             <ChevronUp size={12} className={`text-zinc-400 transition-transform ${showBrushMenu ? "rotate-180" : ""}`} />
           </button>
 

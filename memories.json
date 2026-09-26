@@ -1,40 +1,5 @@
 [
   {
-    "id": "ut75a9264",
-    "category": "preference",
-    "text": "The user prefers to speak in Urdu.",
-    "createdAt": "2026-06-12T09:38:55.211Z",
-    "updatedAt": "2026-06-12T09:38:55.211Z"
-  },
-  {
-    "id": "g5j55e08v",
-    "category": "emotional",
-    "text": "MY GOAL IS TO Become a best coder ever",
-    "createdAt": "2026-06-12T09:40:31.535Z",
-    "updatedAt": "2026-06-12T09:40:31.535Z"
-  },
-  {
-    "id": "4jswpmydh",
-    "category": "goal",
-    "text": "The user's goal is to get every latest knowledge related to his field.",
-    "createdAt": "2026-06-12T10:04:35.022Z",
-    "updatedAt": "2026-06-12T10:04:35.022Z"
-  },
-  {
-    "id": "4o9wz4jio",
-    "category": "identity",
-    "text": "The user's name is Mirza Ahmed.",
-    "createdAt": "2026-06-12T10:08:06.203Z",
-    "updatedAt": "2026-06-12T10:08:06.203Z"
-  },
-  {
-    "id": "7x3xlhpfz",
-    "category": "identity",
-    "text": "The user's name is Mirza Ahmed.",
-    "createdAt": "2026-06-12T10:09:48.474Z",
-    "updatedAt": "2026-06-12T10:09:48.474Z"
-  },
-  {
     "id": "mem_office_1790081038784_p71l",
     "text": "[MAHR Office // Pam] Executed task \"Explain the concept of asynchronous queues using the Feynman...\": Assalam-o-Alaikum, Mirza Ahmed! Welcome back to the MAHR Virtual Office. It’s great to see your drive—if you want to be ...",
     "category": "Learning Milestone",
@@ -46,5 +11,44 @@
     ],
     "importance": 4,
     "created_at": "2026-09-22T12:43:58.784Z"
+  },
+  {
+    "id": "339az34yj",
+    "category": "identity",
+    "text": "The user can speak Hindi.",
+    "createdAt": "2026-09-14T05:45:12.012Z",
+    "updatedAt": "2026-09-14T05:45:12.012Z"
+  },
+  {
+    "id": "pptwl8p1l",
+    "category": "goal",
+    "text": "The user wants to review physics daily.",
+    "createdAt": "2026-09-14T08:16:27.510Z",
+    "updatedAt": "2026-09-14T08:16:27.510Z"
+  },
+  {
+    "id": "mem_hz9bmb195",
+    "category": "project",
+    "text": "User active project: \"Analyze my active screen & code\"",
+    "createdAt": "2026-09-15T10:49:56.787Z",
+    "updatedAt": "2026-09-20T11:38:34.066Z",
+    "confidence": 0.9,
+    "tags": [
+      "category:project"
+    ]
+  },
+  {
+    "id": "wjvr22ywd",
+    "category": "identity",
+    "text": "User explicitly asked me to adopt the Mahr persona during conversation.",
+    "createdAt": "2026-09-17T14:19:28.531Z",
+    "updatedAt": "2026-09-17T14:19:28.531Z"
+  },
+  {
+    "id": "gf9vn62vy",
+    "category": "project",
+    "text": "The user is working on a presentation about MAHR.",
+    "createdAt": "2026-09-23T11:26:06.097Z",
+    "updatedAt": "2026-09-23T11:26:06.097Z"
   }
 ]

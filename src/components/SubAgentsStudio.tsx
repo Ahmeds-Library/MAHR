@@ -152,21 +152,21 @@ export function SubAgentsStudio({
           <div className="p-4 bg-indigo-950/30 border-b border-indigo-900/30 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300">
-                {getAgentIcon(activeAgent.iconName)}
+                {getAgentIcon(activeAgent?.iconName || "Sparkles")}
               </div>
               <div>
                 <div className="text-[11px] text-indigo-300 font-medium">Currently Active Sub-Agent</div>
                 <div className="text-sm font-bold text-white flex items-center gap-2">
-                  {activeAgent.name}
+                  {activeAgent?.name || "MAHR Core"}
                   <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 border border-purple-500/30">
-                    Model: {activeAgent.modelId} ({activeAgent.contextLimit})
+                    Model: {activeAgent?.modelId || "gemini"} ({activeAgent?.contextLimit || "1M"})
                   </span>
                 </div>
               </div>
             </div>
 
             <div className="text-xs text-slate-400 hidden sm:block">
-              Role: <span className="text-white font-medium">{activeAgent.role}</span>
+              Role: <span className="text-white font-medium">{activeAgent?.role || "Companion"}</span>
             </div>
           </div>
 
@@ -325,7 +325,7 @@ export function SubAgentsStudio({
                                 : "bg-slate-700/40 text-slate-300 border-slate-600/40"
                             }`}
                           >
-                            {getAgentIcon(agent.iconName)}
+                            {getAgentIcon(agent?.iconName || "Bot")}
                           </div>
                           <div>
                             <h4 className="font-bold text-white text-sm flex items-center gap-2">

@@ -1234,8 +1234,9 @@ export function MahrCollaborationSuite({
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {tabFilteredMemories.map((m: any) => {
-                      const cfg = categoryConfigTab[m.category] || { label: m.category, icon: Brain, color: "text-purple-400", bg: "bg-purple-500/5" };
-                      const Icon = cfg.icon;
+                      const catKey = m?.category?.toLowerCase() || "";
+                      const cfg = categoryConfigTab[m?.category] || categoryConfigTab[catKey] || { label: m?.category || "Recollection", icon: Brain, color: "text-purple-400 border-purple-500/25", bg: "bg-purple-500/5" };
+                      const Icon = cfg?.icon || Brain;
 
                       return (
                         <div
@@ -1243,12 +1244,12 @@ export function MahrCollaborationSuite({
                           className={`p-3.5 rounded-xl border border-white/5 bg-slate-900/40 hover:bg-slate-950/40 transition flex items-start justify-between gap-3 group relative overflow-hidden`}
                         >
                           <div className="flex gap-2.5">
-                            <div className={`p-1.5 rounded-lg border mt-0.5 shrink-0 bg-slate-950 \${cfg.color}`}>
+                            <div className={`p-1.5 rounded-lg border mt-0.5 shrink-0 bg-slate-950 ${cfg?.color || 'text-purple-400'}`}>
                               <Icon size={12} />
                             </div>
                             <div>
-                              <span className={`text-[8px] font-mono uppercase tracking-widest font-bold \${cfg.color}`}>
-                                {cfg.label}
+                              <span className={`text-[8px] font-mono uppercase tracking-widest font-bold ${cfg?.color || 'text-purple-400'}`}>
+                                {cfg?.label || m?.category || 'Recollection'}
                               </span>
                               <p className="text-[11px] text-slate-300 leading-relaxed font-sans mt-0.5 font-medium">
                                 {m.text}

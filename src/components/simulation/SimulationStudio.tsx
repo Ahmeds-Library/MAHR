@@ -355,8 +355,8 @@ export const SimulationStudio: React.FC<SimulationStudioProps> = ({
                     : "bg-slate-950/70 hover:bg-slate-900 border-white/10 text-slate-300 hover:border-cyan-500/40"
                 }`}
               >
-                <span>{preset.icon}</span>
-                <span>{preset.name.split(" ")[0]} {preset.name.split(" ")[1]}</span>
+                <span>{preset?.icon || "✨"}</span>
+                <span>{(preset?.name || "Simulation").split(" ")[0]} {(preset?.name || "").split(" ")[1] || ""}</span>
               </button>
             );
           })}

@@ -163,7 +163,7 @@ export const MahrVoiceCompanion: React.FC<MahrVoiceCompanionProps> = ({
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pt-1 border-t border-white/5">
           <span className="text-[10px] text-zinc-500 font-mono shrink-0 mr-1">Quick:</span>
           {QUICK_COMMANDS.map((item, idx) => {
-            const Icon = item.icon;
+            const Icon = item?.icon || Sparkles;
             return (
               <button
                 key={idx}

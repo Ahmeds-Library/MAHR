@@ -83,6 +83,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   ] as const;
 
   const currentTabInfo = sidebarTabs.find((t) => t.id === activeTab) || sidebarTabs[0];
+  const CurrentTabIcon = currentTabInfo?.icon || Terminal;
 
   return (
     <AnimatePresence>
@@ -127,8 +128,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Sidebar Category Navigation Buttons */}
               <div className="flex flex-row md:flex-col gap-1.5 overflow-x-auto md:overflow-y-auto no-scrollbar py-1">
                 {sidebarTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
+                  const Icon = tab?.icon || Terminal;
+                  const isActive = activeTab === tab?.id;
                   return (
                     <button
                       key={tab.id}
@@ -205,7 +206,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-white/10 bg-slate-950/40">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-7 h-7 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 shrink-0">
-                  <currentTabInfo.icon size={15} />
+                  <CurrentTabIcon size={15} />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-xs sm:text-sm font-extrabold font-mono tracking-wider uppercase text-white truncate">

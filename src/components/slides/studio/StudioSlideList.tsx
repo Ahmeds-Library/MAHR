@@ -165,20 +165,23 @@ export const StudioSlideList: React.FC<StudioSlideListProps> = ({
             <div className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider px-2 py-0.5">
               Choose Layout
             </div>
-            {QUICK_LAYOUTS.map((item) => (
-              <button
-                key={item.layout}
-                type="button"
-                onClick={() => {
-                  onAddSlide(item.layout);
-                  setShowAddMenu(false);
-                }}
-                className="w-full flex items-center gap-2 p-1.5 rounded-lg text-xs text-left text-zinc-300 hover:text-white hover:bg-amber-500/15 transition-colors cursor-pointer"
-              >
-                <item.icon size={13} className="text-amber-400" />
-                <span>{item.label}</span>
-              </button>
-            ))}
+            {QUICK_LAYOUTS.map((item) => {
+              const ItemIcon = item?.icon || LayoutTemplate;
+              return (
+                <button
+                  key={item.layout}
+                  type="button"
+                  onClick={() => {
+                    onAddSlide(item.layout);
+                    setShowAddMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2 p-1.5 rounded-lg text-xs text-left text-zinc-300 hover:text-white hover:bg-amber-500/15 transition-colors cursor-pointer"
+                >
+                  <ItemIcon size={13} className="text-amber-400" />
+                  <span>{item?.label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

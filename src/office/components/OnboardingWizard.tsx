@@ -345,7 +345,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                         background: 'var(--cth-paper-100)',
                         boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
                       }}>
-                        <Icon name={f.icon} />
+                        <Icon name={f?.icon || 'sparkle'} />
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{

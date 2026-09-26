@@ -284,7 +284,7 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
               fontFamily: 'var(--cth-font-ui)', fontSize: 13
             }}
           >
-            <Icon name={tabDef.icon} /> {t(tabDef.labelKey)}
+            <Icon name={tabDef?.icon || 'terminal'} /> {tabDef?.labelKey ? t(tabDef.labelKey) : ''}
           </button>
         ))}
       </div>

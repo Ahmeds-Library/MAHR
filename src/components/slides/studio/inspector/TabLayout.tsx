@@ -84,7 +84,7 @@ export const TabLayout: React.FC<TabLayoutProps> = ({ slide, onUpdateSlide }) =>
       <div className="grid grid-cols-2 gap-2">
         {LAYOUT_PRESETS.map((p) => {
           const isSelected = slide.layout === p.id;
-          const IconComponent = p.icon;
+          const IconComponent = p?.icon || LayoutTemplate;
           return (
             <button
               key={p.id}

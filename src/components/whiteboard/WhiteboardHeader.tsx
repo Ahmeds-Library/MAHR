@@ -69,7 +69,7 @@ export const WhiteboardHeader: React.FC<WhiteboardHeaderProps> = ({
   // Normalize engineMode for selection
   const activeTabId = engineMode === "2d-fluid" ? "3d-simulation" : engineMode;
   const currentMode = STUDIO_MODES.find((m) => m.id === activeTabId) || STUDIO_MODES[0];
-  const CurrentIcon = currentMode.icon;
+  const CurrentIcon = currentMode?.icon || Palette;
   const isSlateMode = activeTabId === "chalkboard";
 
   // Close dropdown on click outside
@@ -139,7 +139,7 @@ export const WhiteboardHeader: React.FC<WhiteboardHeaderProps> = ({
             </div>
             <div className="space-y-1">
               {STUDIO_MODES.map((mode) => {
-                const Icon = mode.icon;
+                const Icon = mode?.icon || Palette;
                 const isSelected = activeTabId === mode.id;
                 return (
                   <button

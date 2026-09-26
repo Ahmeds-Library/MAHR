@@ -72,24 +72,39 @@ import {
 
 dotenv.config();
 
-function checkPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const srv = net.createServer();
-    srv.once("error", () => resolve(false));
-    srv.once("listening", () => {
-      srv.close(() => resolve(true));
-    });
-    srv.listen(port, "0.0.0.0");
-  });
-}
-
-async function getAvailablePort(startPort: number, maxAttempts = 30): Promise<number> {
-  for (let p = startPort; p < startPort + maxAttempts; p++) {
-    if (await checkPortFree(p)) {
-      return p;
+function determineServerPort(): number {
+  // 1. Explicit CLI arguments (e.g. --port 3000 or --port=3000)
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg === "--port" && process.argv[i + 1]) {
+      const p = parseInt(process.argv[i + 1], 10);
+      if (!isNaN(p) && p > 0) return p;
+    }
+    if (arg.startsWith("--port=")) {
+      const p = parseInt(arg.split("=")[1], 10);
+      if (!isNaN(p) && p > 0) return p;
     }
   }
-  return startPort;
+
+  // 2. Container environment variables
+  if (process.env.DEFAULT_APP_PORT) {
+    const p = parseInt(process.env.DEFAULT_APP_PORT, 10);
+    if (!isNaN(p) && p > 0) return p;
+  }
+  if (process.env.APP_PORT) {
+    const p = parseInt(process.env.APP_PORT, 10);
+    if (!isNaN(p) && p > 0) return p;
+  }
+
+  // 3. Cloud Run / Custom PORT: Cloud Run ingress reverse proxy (Nginx) runs on port 8080
+  // and forwards directly to port 3000. Therefore, the app MUST NOT bind to 8080.
+  if (process.env.PORT && process.env.PORT !== "8080") {
+    const p = parseInt(process.env.PORT, 10);
+    if (!isNaN(p) && p > 0) return p;
+  }
+
+  // Standard AI Studio application port
+  return 3000;
 }
 
 // ==========================================
@@ -162,21 +177,10 @@ async function startServer() {
 
   const app = express();
   const isProduction = process.env.NODE_ENV === "production";
-  const requestedPort = parseInt(process.env.PORT || (isProduction ? "8080" : "3000"), 10);
-  const PORT = isProduction ? requestedPort : await getAvailablePort(requestedPort);
-  if (!isProduction && PORT !== requestedPort) {
-    console.warn(`[Port Conflict] Requested port ${requestedPort} is already in use. Automatically shifted server to http://localhost:${PORT}!`);
-  }
+  const PORT = determineServerPort();
 
-  // Calculate matching HMR port to avoid port 24678 collision (dev mode only)
-  let HMR_PORT = 24678;
-  if (!isProduction) {
-    const requestedHmrPort = 24678 + (PORT - requestedPort);
-    HMR_PORT = await getAvailablePort(requestedHmrPort);
-    if (HMR_PORT !== 24678) {
-      console.warn(`[HMR Port Conflict] Standard HMR port 24678 was in use. Shifted Vite HMR to port ${HMR_PORT}!`);
-    }
-  }
+  // Vite HMR port (dev mode only)
+  const HMR_PORT = 24678;
   
   app.set("trust proxy", true);
   app.use(express.json({ limit: "50mb" }));
@@ -5358,12 +5362,11 @@ Output ONLY valid JSON matching this schema:
   }
 
   server.on("error", (err: any) => {
-    if (err.code === "EADDRINUSE" && process.env.NODE_ENV !== "production") {
-      const nextPort = PORT + 1;
-      console.warn(`[Server] Port ${PORT} unexpectedly in use. Shifting to http://localhost:${nextPort}...`);
-      setTimeout(() => {
-        server.listen(nextPort, "0.0.0.0");
-      }, 250);
+    if (err.code === "EADDRINUSE") {
+      console.error(`[Server Error] Port ${PORT} is already in use. Ensure no duplicate processes are running on port ${PORT}.`);
+      if (process.env.NODE_ENV === "production") {
+        process.exit(1);
+      }
     } else {
       console.error("[Server Error]:", err);
     }

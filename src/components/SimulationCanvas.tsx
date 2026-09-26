@@ -458,19 +458,19 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
       <div id="simulation-header-bar" className="flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-800/90 backdrop-blur-md z-20">
         <div className="flex items-center gap-2.5">
           <span className="text-2xl p-1.5 rounded-xl bg-slate-800/80 border border-slate-700/50 shadow-inner">
-            {activePreset.icon}
+            {activePreset?.icon || "⚡"}
           </span>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-slate-100 tracking-tight">
-                {currentFrameData?.title || activePreset.name}
+                {currentFrameData?.title || activePreset?.name || "Simulation"}
               </h2>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/60">
-                {activePreset.category}
+                {activePreset?.category || "Model"}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 line-clamp-1 max-w-xl">
-              {currentFrameData?.description || activePreset.description}
+              {currentFrameData?.description || activePreset?.description || ""}
             </p>
           </div>
         </div>

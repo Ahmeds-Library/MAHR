@@ -50,7 +50,7 @@ export const PersonaAiTab: React.FC<PersonaAiTabProps> = ({
               icon: Heart
             }
           ].map((opt) => {
-            const Icon = opt.icon;
+            const Icon = opt?.icon || User;
             const isSelected = settings.agentMode === opt.id;
             return (
               <button

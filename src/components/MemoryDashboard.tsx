@@ -95,6 +95,46 @@ export function MemoryDashboard({
     },
   };
 
+  const getCategoryConfig = (cat?: string) => {
+    if (!cat) {
+      return {
+        label: "General Recollection",
+        icon: Brain,
+        color: "text-purple-400 border-purple-500/25",
+        bg: "bg-purple-500/5 hover:bg-purple-500/10"
+      };
+    }
+    if ((categoryConfig as Record<string, any>)[cat]) {
+      return (categoryConfig as Record<string, any>)[cat];
+    }
+    const lower = cat.toLowerCase().trim();
+    if ((categoryConfig as Record<string, any>)[lower]) {
+      return (categoryConfig as Record<string, any>)[lower];
+    }
+    if (lower.includes("learn") || lower.includes("milestone") || lower.includes("study")) {
+      return {
+        label: cat,
+        icon: Flame,
+        color: "text-amber-400 border-amber-500/25",
+        bg: "bg-amber-500/5 hover:bg-amber-500/10"
+      };
+    }
+    if (lower.includes("task") || lower.includes("work") || lower.includes("office") || lower.includes("project")) {
+      return {
+        label: cat,
+        icon: Briefcase,
+        color: "text-cyan-400 border-cyan-500/25",
+        bg: "bg-cyan-500/5 hover:bg-cyan-500/10"
+      };
+    }
+    return {
+      label: cat,
+      icon: Brain,
+      color: "text-purple-400 border-purple-500/25",
+      bg: "bg-purple-500/5 hover:bg-purple-500/10"
+    };
+  };
+
   const getThemeBadgeGlow = () => {
     switch (themeColor) {
       case "violet": return "border-purple-500/30 text-purple-400 bg-purple-500/10";
@@ -111,7 +151,7 @@ export function MemoryDashboard({
 
   const filteredMemories = activeTab === "all" 
     ? memories 
-    : memories.filter(m => m.category === activeTab);
+    : memories.filter(m => m.category === activeTab || m.category?.toLowerCase() === activeTab);
 
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,7 +255,8 @@ export function MemoryDashboard({
                       </label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {(Object.keys(categoryConfig) as MemoryCategory[]).map((cat) => {
-                          const Icon = categoryConfig[cat].icon;
+                          const cfg = getCategoryConfig(cat) || { label: cat, icon: Brain, color: "text-purple-400 border-purple-500/25", bg: "bg-purple-500/5 hover:bg-purple-500/10" };
+                          const Icon = cfg?.icon || Brain;
                           const active = newCategory === cat;
                           return (
                             <button
@@ -229,7 +270,7 @@ export function MemoryDashboard({
                               }`}
                             >
                               <Icon size={12} />
-                              <span className="truncate">{categoryConfig[cat].label.split(" ")[0]}</span>
+                              <span className="truncate">{(cfg?.label || cat || '').split(" ")[0]}</span>
                             </button>
                           );
                         })}
@@ -283,7 +324,7 @@ export function MemoryDashboard({
                 All Memories
               </button>
               {(Object.keys(categoryConfig) as MemoryCategory[]).map((cat) => {
-                const config = categoryConfig[cat];
+                const config = getCategoryConfig(cat);
                 const active = activeTab === cat;
                 return (
                   <button
@@ -295,7 +336,7 @@ export function MemoryDashboard({
                         : "border-white/5 bg-white/5 text-slate-400 hover:border-white/15"
                     }`}
                   >
-                    {config.label.split(" ")[0]}
+                    {(config?.label || cat).split(" ")[0]}
                   </button>
                 );
               })}
@@ -317,13 +358,13 @@ export function MemoryDashboard({
                     <p className="text-xs max-w-xs mt-1.5 leading-relaxed font-mono">
                       {activeTab === "all" 
                         ? "Start talking aloud with MAHR! The background consolidator analyzes transcript slices and builds a life context naturally."
-                        : `No persistent recollections saved in Category "${categoryConfig[activeTab as MemoryCategory]?.label}". Add one or speak with MAHR.`}
+                        : `No persistent recollections saved in Category "${categoryConfig[activeTab as MemoryCategory]?.label || activeTab}". Add one or speak with MAHR.`}
                     </p>
                   </motion.div>
                 ) : (
                   filteredMemories.map((m) => {
-                    const cfg = categoryConfig[m.category];
-                    const Icon = cfg.icon;
+                    const cfg = getCategoryConfig(m?.category) || { label: m?.category || "Recollection", icon: Brain, color: "text-purple-400 border-purple-500/25", bg: "bg-purple-500/5 hover:bg-purple-500/10" };
+                    const Icon = cfg?.icon || Brain;
 
                     return (
                       <motion.div
@@ -331,15 +372,15 @@ export function MemoryDashboard({
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95 }}
-                        className={`flex items-start justify-between gap-4 p-4 rounded-xl border border-white/5 backdrop-blur-md bg-white/[0.02] ${cfg.bg} transition-colors group relative`}
+                        className={`flex items-start justify-between gap-4 p-4 rounded-xl border border-white/5 backdrop-blur-md bg-white/[0.02] ${cfg?.bg || 'bg-purple-500/5'} transition-colors group relative`}
                       >
                         <div className="flex gap-3.5 overflow-hidden">
-                          <div className={`p-2 rounded-lg border mt-0.5 shrink-0 bg-black/40 ${cfg.color}`}>
+                          <div className={`p-2 rounded-lg border mt-0.5 shrink-0 bg-black/40 ${cfg?.color || 'text-purple-400 border-purple-500/25'}`}>
                             <Icon size={14} />
                           </div>
                           <div className="overflow-hidden">
-                            <span className={`text-[9px] font-mono uppercase tracking-wider block ${cfg.color}`}>
-                              {cfg.label}
+                            <span className={`text-[9px] font-mono uppercase tracking-wider block ${cfg?.color || 'text-purple-400'}`}>
+                              {cfg?.label || m?.category || 'Recollection'}
                             </span>
                             <p className="text-xs text-slate-200 mt-1 font-sans leading-relaxed break-words font-medium">
                               {m.text}

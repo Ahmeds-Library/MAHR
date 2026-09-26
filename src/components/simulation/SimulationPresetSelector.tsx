@@ -54,8 +54,8 @@ export const SimulationPresetSelector: React.FC<SimulationPresetSelectorProps> =
                   : "bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800/80"
               }`}
             >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
+              <span>{cat?.icon || "⚡"}</span>
+              <span>{cat?.label || "Category"}</span>
             </button>
           ))}
         </div>
@@ -79,14 +79,14 @@ export const SimulationPresetSelector: React.FC<SimulationPresetSelectorProps> =
               <div className="flex items-start justify-between gap-2 mb-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-xl p-1.5 rounded-xl bg-slate-800/70 border border-slate-700/50 group-hover:scale-105 transition-transform">
-                    {preset.icon}
+                    {preset?.icon || "⚡"}
                   </span>
                   <div>
                     <h3 className="text-xs font-bold text-slate-100 group-hover:text-cyan-300 transition-colors leading-tight">
-                      {preset.name}
+                      {preset?.name || "Simulation"}
                     </h3>
                     <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">
-                      {preset.category}
+                      {preset?.category || "Model"}
                     </span>
                   </div>
                 </div>

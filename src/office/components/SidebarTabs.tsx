@@ -54,7 +54,7 @@ export function SidebarTabs({ current, accent, onChange }: SidebarTabsProps) {
               gap: 6
             }}
           >
-            <Icon name={tab.icon} /> {t(tab.labelKey).toUpperCase()}
+            <Icon name={tab?.icon || 'terminal'} /> {tab?.labelKey ? t(tab.labelKey).toUpperCase() : ''}
           </button>
         );
       })}

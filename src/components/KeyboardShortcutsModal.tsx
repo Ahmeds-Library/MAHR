@@ -178,11 +178,11 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
                     className="group p-2.5 rounded-2xl bg-white/5 hover:bg-purple-950/40 border border-white/10 hover:border-purple-500/40 transition-all flex items-center justify-between cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5">
-                      {item.icon || <Sparkles size={14} className="text-slate-500 group-hover:text-purple-400 transition" />}
+                      {item?.icon || <Sparkles size={14} className="text-slate-500 group-hover:text-purple-400 transition" />}
                       <span className="text-xs text-slate-200 group-hover:text-white font-medium">
-                        {item.description}
+                        {item?.description}
                       </span>
-                      {item.badge && (
+                      {item?.badge && (
                         <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${item.badgeColor}`}>
                           {item.badge}
                         </span>

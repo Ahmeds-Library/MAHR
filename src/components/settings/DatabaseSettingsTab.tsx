@@ -129,7 +129,8 @@ export const DatabaseSettingsTab: React.FC<DatabaseSettingsTabProps> = ({ onStat
       if (res.ok) {
         const data = await res.json();
         setCurrentConfig(data);
-        setSelectedEngine(data.engineKey || "sqlite");
+        const resolvedEngine = (data.engineKey || data.engine || "sqlite").toLowerCase() as DbEngine;
+        setSelectedEngine(ENGINE_CONFIGS[resolvedEngine] ? resolvedEngine : "sqlite");
       }
     } catch (e) {
       console.error("Failed to load DB config:", e);
@@ -218,8 +219,8 @@ export const DatabaseSettingsTab: React.FC<DatabaseSettingsTabProps> = ({ onStat
     setIsSwitching(false);
   };
 
-  const engineCfg = ENGINE_CONFIGS[selectedEngine];
-  const EngineIcon = engineCfg.icon;
+  const engineCfg = ENGINE_CONFIGS[selectedEngine] || ENGINE_CONFIGS.sqlite;
+  const EngineIcon = engineCfg?.icon || HardDrive;
   const isCurrentEngine = currentConfig?.engineKey === selectedEngine;
   const canSwitch = selectedEngine === "sqlite" || (connectionUrl.trim().length > 10);
 
@@ -300,8 +301,8 @@ export const DatabaseSettingsTab: React.FC<DatabaseSettingsTabProps> = ({ onStat
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {(Object.keys(ENGINE_CONFIGS) as DbEngine[]).map((engine) => {
-            const cfg = ENGINE_CONFIGS[engine];
-            const Ico = cfg.icon;
+            const cfg = ENGINE_CONFIGS[engine] || ENGINE_CONFIGS.sqlite;
+            const Ico = cfg?.icon || HardDrive;
             const isActive = selectedEngine === engine;
             const isCurrent = currentConfig?.engineKey === engine;
             return (
