@@ -4,9 +4,9 @@ import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { PixelBadge } from './PixelBadge';
 import { Icon } from './Icon';
-import { useStore } from '@/store/store';
-import { MarkdownPreview } from '@/markdown/MarkdownPreview';
-import { useRtl } from '@/i18n/useDirection';
+import { useStore } from '@office/store/store';
+import { MarkdownPreview } from '@office/markdown/MarkdownPreview';
+import { useRtl } from '@office/i18n/useDirection';
 
 /** A card on the task kanban. Mirrors HiveTask in the main/preload process —
  *  re-declared locally so the renderer doesn't reach into the preload package

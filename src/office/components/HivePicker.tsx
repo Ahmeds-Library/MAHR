@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import type { HarnessConfig } from '@/store/config';
+import type { HarnessConfig } from '@office/store/config';
 
 export interface HivePickerProps {
   config: HarnessConfig;

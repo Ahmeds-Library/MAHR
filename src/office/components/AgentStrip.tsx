@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { AgentCard } from './AgentCard';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { useStore, type Agent } from '@/store/store';
-import { type HarnessConfig } from '@/store/config';
-import { useRestoreTeam } from '@/hooks/useRestoreTeam';
-import { useRtl } from '@/i18n/useDirection';
+import { useStore, type Agent } from '@office/store/store';
+import { type HarnessConfig } from '@office/store/config';
+import { useRestoreTeam } from '@office/hooks/useRestoreTeam';
+import { useRtl } from '@office/i18n/useDirection';
 
 export interface AgentStripProps {
   /** Needed to rebuild a spawn command when a restorable agent predates the

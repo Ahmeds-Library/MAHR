@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { HarnessConfig } from '@/store/config';
+import type { HarnessConfig } from '@office/store/config';
 import { MCP_CATALOG, type McpTier } from '@shared/mcpCatalog';
 
 export interface McpDefaultsSettingsProps {

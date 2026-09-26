@@ -5,9 +5,9 @@ import { PixelButton } from './PixelButton';
 import { SpritePortrait } from './SpritePortrait';
 import { Icon } from './Icon';
 import { ProviderLogo } from './ProviderLogo';
-import { useStore, type Agent } from '@/store/store';
-import { OFFICE_CAST, DEFAULT_CHARACTER, type OfficeCharacterName } from '@/scene/office/cast';
-import { type AccentColorName } from '@/design/tokens';
+import { useStore, type Agent } from '@office/store/store';
+import { OFFICE_CAST, DEFAULT_CHARACTER, type OfficeCharacterName } from '@office/scene/office/cast';
+import { type AccentColorName } from '@office/design/tokens';
 import type { HireManifest } from '@shared/hire';
 import { hireQueueProgress } from '@shared/hireQueue';
 import { MCP_CATALOG } from '@shared/mcpCatalog';
@@ -28,8 +28,8 @@ import {
   inferAgentProvider,
   providerPreset,
   isClaudeProvider
-} from '@/store/config';
-import { useRtl } from '@/i18n/useDirection';
+} from '@office/store/config';
+import { useRtl } from '@office/i18n/useDirection';
 
 const ACCENTS: AccentColorName[] = ['coral', 'mint', 'sky', 'lemon', 'lilac', 'peach'];
 

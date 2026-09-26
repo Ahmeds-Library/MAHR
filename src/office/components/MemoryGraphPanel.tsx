@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import { PixelBadge } from './PixelBadge';
 import { Icon } from './Icon';
-import type { MessageAct } from '@/scene/office/MessageEnvelope';
+import type { MessageAct } from '@office/scene/office/MessageEnvelope';
 import {
   buildGraph,
   type GraphData,

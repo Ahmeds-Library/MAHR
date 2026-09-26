@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| **Generated At** | `2026-09-25T13:14:38.390Z` |
-| **Git Branch** | `main` |
-| **Commit Hash** | `8ae2f93` |
-| **Last Commit** | chore: add infrastructure dependencies and config |
-| **Author** | Mirza Ahmed Hassan |
+| **Generated At** | `2026-09-26T18:21:10.461Z` |
+| **Git Branch** | `unknown` |
+| **Commit Hash** | `unknown` |
+| **Last Commit** | N/A |
+| **Author** | N/A |
 | **Root** | `/MAHR` |
 
 ---
@@ -57,6 +57,7 @@ MAHR/
 ├── metadata.json
 ├── office_state.json
 ├── package.json
+├── project-blueprint.md
 ├── public/
 │   ├── assets/
 │   │   ├── idle.mp4
@@ -96,6 +97,7 @@ MAHR/
 │   ├── create_installers.cjs
 │   ├── desktop-runner.cjs
 │   ├── electron-main.cjs
+│   ├── fix-alias-imports.mjs
 │   ├── generate-blueprint.mjs
 │   ├── generate-png-icons.cjs
 │   ├── mahr.bat
@@ -536,9 +538,13 @@ MAHR/
 ### Path Aliases (vite.config.ts)
 | Alias | Resolves To |
 |---|---|
-| `@\` | `src/office/$1` |
+| `@office\` | `src/office/$1` |
 | `@shared\` | `src/office/shared/$1` |
 | `@brand\` | `public/brand/$1` |
+| `@components\` | `src/components/$1` |
+| `@hooks\` | `src/hooks/$1` |
+| `@lib\` | `src/lib/$1` |
+| `@\` | `src/$1` |
 
 
 ### Electron Build Config
@@ -564,33 +570,34 @@ MAHR/
 ### Totals
 | Metric | Value |
 |---|---|
-| **Total Code Files** | 388 |
-| **Total Lines of Code** | 119,668 |
-| **Total Code Size** | 4.93 MB |
+| **Total Code Files** | 390 |
+| **Total Lines of Code** | 121,077 |
+| **Total Code Size** | 4.99 MB |
 | **public/ Asset Size** | 23.59 MB |
 | **assets/ Size** | 4.48 MB |
 
 ### By Extension
 | Extension | Files | LOC | Size |
 |---|---|---|---|
-| `.tsx` | 164 | 62,521 | 2.60 MB |
-| `.ts` | 184 | 46,874 | 1.89 MB |
-| `.json` | 16 | 4,902 | 262.33 KB |
+| `.tsx` | 164 | 62,570 | 2.60 MB |
+| `.ts` | 184 | 46,881 | 1.89 MB |
+| `.json` | 16 | 4,856 | 259.99 KB |
 | `.cjs` | 7 | 2,126 | 76.84 KB |
+| `.md` | 4 | 1,513 | 64.04 KB |
 | `.go` | 9 | 1,355 | 36.07 KB |
-| `.mjs` | 1 | 879 | 33.81 KB |
+| `.mjs` | 2 | 951 | 36.04 KB |
 | `.js` | 2 | 443 | 15.66 KB |
 | `.py` | 2 | 382 | 12.56 KB |
-| `.md` | 3 | 186 | 10.01 KB |
 
 ### By Directory
 | Directory | Files | LOC | Size |
 |---|---|---|---|
-| `src/` | 346 | 104,603 | 4.37 MB |
-| `server.ts/` | 1 | 5,380 | 236.51 KB |
-| `scripts/` | 6 | 2,358 | 90.32 KB |
+| `src/` | 346 | 104,652 | 4.37 MB |
+| `server.ts/` | 1 | 5,383 | 236.41 KB |
+| `scripts/` | 7 | 2,430 | 92.55 KB |
 | `server-golang/` | 10 | 1,440 | 39.59 KB |
 | `server_memory.ts/` | 1 | 1,439 | 51.17 KB |
+| `project-blueprint.md/` | 1 | 1,317 | 53.69 KB |
 | `server_db.ts/` | 1 | 1,073 | 44.75 KB |
 | `server_office.ts/` | 1 | 876 | 28.04 KB |
 | `electron/` | 2 | 647 | 20.33 KB |
@@ -602,18 +609,18 @@ MAHR/
 | `public/` | 1 | 109 | 2.96 KB |
 | `daily_tasks.json/` | 1 | 74 | 2.50 KB |
 | `package.json/` | 1 | 68 | 2.29 KB |
-| `vite.config.ts/` | 1 | 55 | 1.71 KB |
-| `memories.json/` | 1 | 50 | 1.48 KB |
-| `tsconfig.json/` | 1 | 48 | 889.00 B |
-| `server_chat_history.json/` | 1 | 46 | 1.78 KB |
-| `tsconfig.minimal.json/` | 1 | 46 | 857.00 B |
+| `tsconfig.json/` | 1 | 60 | 1.08 KB |
+| `vite.config.ts/` | 1 | 59 | 2.05 KB |
+| `tsconfig.minimal.json/` | 1 | 58 | 1.04 KB |
+| `AGENTS.md/` | 1 | 36 | 2.72 KB |
 | `electron-builder.json/` | 1 | 28 | 418.00 B |
-| `AGENTS.md/` | 1 | 26 | 2.38 KB |
+| `deleted_memories.json/` | 1 | 18 | 270.00 B |
 | `knowledge_graph.json/` | 1 | 15 | 473.00 B |
 | `app.py/` | 1 | 11 | 287.00 B |
 | `firebase-applet-config.json/` | 1 | 11 | 466.00 B |
 | `metadata.json/` | 1 | 11 | 413.00 B |
-| `deleted_memories.json/` | 1 | 1 | 2.00 B |
+| `server_chat_history.json/` | 1 | 8 | 253.00 B |
+| `memories.json/` | 1 | 1 | 2.00 B |
 
 
 ---
@@ -690,21 +697,7 @@ MAHR/
 ### Git Hotspots — Last 30 Days (Top 15 Most-Changed Files)
 | File | Changes |
 |---|---|
-| `bun.lock` | 3 |
-| `dist_electron/main.cjs` | 3 |
-| `dist_electron/main.jsc` | 3 |
-| `dist_electron/main.sealed` | 3 |
-| `package-lock.json` | 3 |
-| `package.json` | 3 |
-| `public/downloads/MAHR-GPG-KEY.asc` | 3 |
-| `public/downloads/MAHR-Setup-v2.4.0.exe.sig` | 3 |
-| `public/downloads/SHA256SUMS.txt` | 3 |
-| `public/downloads/SHA256SUMS.txt.asc` | 3 |
-| `public/downloads/mahr-desktop_2.4.0_amd64.deb` | 3 |
-| `public/downloads/mahr-desktop_2.4.0_amd64.deb.sig` | 3 |
-| `server.ts` | 3 |
-| `server_chat_history.json` | 3 |
-| `server_memory.ts` | 3 |
+| (No git history yet or fresh clone) | — |
 
 
 ### TODO / FIXME Tracker
@@ -875,12 +868,12 @@ Tables detected in `server_db.ts`:
 ### JSON State Files (Runtime Persistence)
 | File | Purpose | Size |
 |---|---|---|
-| `memories.json` | Persistent memory entries | 1.48 KB |
+| `memories.json` | Persistent memory entries | 2.00 B |
 | `daily_tasks.json` | Daily task list | 2.50 KB |
 | `knowledge_graph.json` | Knowledge graph nodes/edges | 473.00 B |
 | `office_state.json` | MAHR Office session state | 5.96 KB |
 | `token_telemetry.json` | Token usage telemetry | 1.15 KB |
-| `server_chat_history.json` | Chat session history | 1.78 KB |
+| `server_chat_history.json` | Chat session history | 253.00 B |
 
 
 ### Go Vector Store
@@ -969,21 +962,21 @@ and persisted via `/api/vector-memory/ingest-artifacts`.
 |---|---|---|
 | `Chalkboard` | `src/components/Chalkboard.tsx` | 214.58 KB |
 | `DigitalLogicDesignLab` | `src/components/DigitalLogicDesignLab.tsx` | 138.47 KB |
-| `MahrCollaborationSuite` | `src/components/MahrCollaborationSuite.tsx` | 65.84 KB |
+| `MahrCollaborationSuite` | `src/components/MahrCollaborationSuite.tsx` | 66.06 KB |
 | `KnowledgeGraphDashboard` | `src/components/KnowledgeGraphDashboard.tsx` | 46.70 KB |
 | `HeaderNav` | `src/components/HeaderNav.tsx` | 40.56 KB |
 | `ReinforcementLearningStudio` | `src/components/ReinforcementLearningStudio.tsx` | 38.99 KB |
-| `BrushProfilesModal` | `src/components/BrushProfilesModal.tsx` | 27.31 KB |
-| `SimulationCanvas` | `src/components/SimulationCanvas.tsx` | 26.89 KB |
+| `BrushProfilesModal` | `src/components/BrushProfilesModal.tsx` | 27.36 KB |
+| `SimulationCanvas` | `src/components/SimulationCanvas.tsx` | 26.94 KB |
 | `SkillsManager` | `src/components/SkillsManager.tsx` | 26.09 KB |
 | `ModelSwitcherModal` | `src/components/ModelSwitcherModal.tsx` | 23.87 KB |
 | `StudyPadPanel` | `src/components/StudyPadPanel.tsx` | 22.76 KB |
-| `DatabaseSettingsTab` | `src/components/settings/DatabaseSettingsTab.tsx` | 21.57 KB |
+| `DatabaseSettingsTab` | `src/components/settings/DatabaseSettingsTab.tsx` | 21.78 KB |
+| `MemoryDashboard` | `src/components/MemoryDashboard.tsx` | 19.25 KB |
 | `MahrCoreVisualizer` | `src/components/MahrCoreVisualizer.tsx` | 18.80 KB |
 | `DesktopAppsTab` | `src/components/settings/DesktopAppsTab.tsx` | 18.79 KB |
 | `FluidLiquidCanvas2D` | `src/components/simulation/FluidLiquidCanvas2D.tsx` | 18.35 KB |
-| `SubAgentsStudio` | `src/components/SubAgentsStudio.tsx` | 17.82 KB |
-| `MemoryDashboard` | `src/components/MemoryDashboard.tsx` | 17.48 KB |
+| `SubAgentsStudio` | `src/components/SubAgentsStudio.tsx` | 17.90 KB |
 | `DailyTaskManager` | `src/components/DailyTaskManager.tsx` | 17.12 KB |
 | `SlideCanvasPreview` | `src/components/slides/SlideCanvasPreview.tsx` | 16.50 KB |
 | `FlowchartCanvas` | `src/components/flowchart/FlowchartCanvas.tsx` | 16.29 KB |
@@ -1292,12 +1285,14 @@ jobs:
 - `dist/`, `dist_electron/` — build outputs
 
 ### Critical Conventions
-1. **Path alias `@/`** resolves to `src/office/` (NOT `src/` root)
-2. **`@shared/`** resolves to `src/office/shared/`
-3. **`@brand/`** resolves to `public/brand/`
-4. TypeScript server files use `.ts` extension but run via `tsx` (ESM)
-5. Electron files use `.cjs` (CommonJS)
-6. State files (`*.json`) in root are runtime data — ignore for code tasks
+1. **Path alias `@/`** resolves to `src/` (root source directory)
+2. **`@office/`** resolves to `src/office/` (Office system submodule)
+3. **`@shared/`** resolves to `src/office/shared/`
+4. **`@brand/`** resolves to `public/brand/`
+5. **`@components/`**, **`@hooks/`**, **`@lib/`** resolve directly to their respective folders in `src/`
+6. TypeScript server files use `.ts` extension but run via `tsx` (ESM)
+7. Electron files use `.cjs` (CommonJS)
+8. State files (`*.json`) in root are runtime data — ignore for code tasks
 
 ### Architecture Decision Records
 | Decision | Rationale |
@@ -1320,4 +1315,4 @@ jobs:
 
 ---
 ---
-*Blueprint generated by `scripts/generate-blueprint.mjs` — 2026-09-25T13:14:38.584Z*
+*Blueprint generated by `scripts/generate-blueprint.mjs` — 2026-09-26T18:21:10.739Z*

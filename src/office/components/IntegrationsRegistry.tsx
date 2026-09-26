@@ -11,7 +11,7 @@ import {
   type IntegrationRecordView,
   type IntegrationTemplate,
   type TestResult
-} from '@/integrations/registryClient';
+} from '@office/integrations/registryClient';
 
 // Integrations configuration UI — Settings → Integrations. Conformed to Jim's
 // spec v1 (hive/docs/integrations-spec.md) and styled to Pam's mockup

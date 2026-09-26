@@ -1,7 +1,7 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
-import { agentModels, type HarnessConfig } from '@/store/config';
-import { useStore } from '@/store/store';
+import { agentModels, type HarnessConfig } from '@office/store/config';
+import { useStore } from '@office/store/store';
 import {
   CLONE_NODE_BLURB,
   DEFAULT_TRIGGER_MODE,
@@ -22,16 +22,16 @@ import { McpDefaultsSettings } from './McpDefaultsSettings';
 import { IntegrationsRegistry } from './IntegrationsRegistry';
 import { AiEnginesSettings } from './AiEnginesSettings';
 import { REALTIME_MODEL } from '@shared/realtimePricing';
-import { RealtimeDevicePicker } from '@/realtime/DevicePicker';
-import { CostHud } from '@/realtime/CostHud';
+import { RealtimeDevicePicker } from '@office/realtime/DevicePicker';
+import { CostHud } from '@office/realtime/CostHud';
 import {
   isArabicTerminalEnabled,
   isArabicTerminalFollowingLanguage,
   setArabicTerminalEnabled
-} from '@/terminal/arabicSetting';
-import { notifyArabicTerminalChangeAll } from '@/components/terminalPool';
+} from '@office/terminal/arabicSetting';
+import { notifyArabicTerminalChangeAll } from '@office/components/terminalPool';
 import { isComposingKey } from '@shared/imeGuard';
-import { LANGUAGES, setLanguage } from '@/i18n';
+import { LANGUAGES, setLanguage } from '@office/i18n';
 
 export interface SettingsModalProps {
   config: HarnessConfig;

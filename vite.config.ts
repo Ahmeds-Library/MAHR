@@ -9,9 +9,13 @@ export default defineConfig(() => {
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: [
-        { find: /^@\/(.*)/, replacement: path.resolve(__dirname, 'src/office/$1') },
+        { find: /^@office\/(.*)/, replacement: path.resolve(__dirname, 'src/office/$1') },
         { find: /^@shared\/(.*)/, replacement: path.resolve(__dirname, 'src/office/shared/$1') },
         { find: /^@brand\/(.*)/, replacement: path.resolve(__dirname, 'public/brand/$1') },
+        { find: /^@components\/(.*)/, replacement: path.resolve(__dirname, 'src/components/$1') },
+        { find: /^@hooks\/(.*)/, replacement: path.resolve(__dirname, 'src/hooks/$1') },
+        { find: /^@lib\/(.*)/, replacement: path.resolve(__dirname, 'src/lib/$1') },
+        { find: /^@\/(.*)/, replacement: path.resolve(__dirname, 'src/$1') },
       ],
     },
     optimizeDeps: {

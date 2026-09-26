@@ -11,7 +11,7 @@ import {
   setTerminalFontSize,
   useTerminalFontSize
 } from './terminalFontSize';
-import { useAppTheme } from '@/design/theme';
+import { useAppTheme } from '@office/design/theme';
 
 // Zoom lives in ./terminalFontSize so anything outside the terminal (the message
 // composer) can scale with it too; these aliases keep the call sites below short.

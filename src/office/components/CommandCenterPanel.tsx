@@ -16,11 +16,11 @@ import { acquireTerminal, disposeTerminal, resetTerminal } from './terminalPool'
 import { terminalInstanceKey } from './terminalRecovery';
 import { Icon } from './Icon';
 import { MemoryGraphPanel } from './MemoryGraphPanel';
-import { useFleetTelemetry } from '@/hooks/useTelemetry';
+import { useFleetTelemetry } from '@office/hooks/useTelemetry';
 import { COMMAND_GROUPS } from '@shared/claudeCommands';
 import { roleForHiveSpawn } from '@shared/agentRole';
-import { useStore, triggerHistoryVisible, type Agent } from '@/store/store';
-import { usePtyParser } from '@/hooks/usePtyParser';
+import { useStore, triggerHistoryVisible, type Agent } from '@office/store/store';
+import { usePtyParser } from '@office/hooks/usePtyParser';
 import {
   buildSpawnCommand,
   decodeProviderModel,
@@ -33,10 +33,10 @@ import {
   tokenizeCommand,
   AGENT_PROVIDER_PRESETS,
   type AgentProvider
-} from '@/store/config';
+} from '@office/store/config';
 import { canReceiveInbox } from '@shared/agentProvider';
 import { isComposingKey } from '@shared/imeGuard';
-import { useRtl } from '@/i18n/useDirection';
+import { useRtl } from '@office/i18n/useDirection';
 
 /** Michael's control surface. Shown instead of the plain terminal/files panel
  *  when the god agent is selected: terminal + queue, the floor roster (with

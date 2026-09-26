@@ -1,5 +1,5 @@
 import { CSSProperties, ReactNode } from 'react';
-import { AccentColorName } from '@/design/tokens';
+import { AccentColorName } from '@office/design/tokens';
 
 type Variant = 'default' | 'inset' | 'active' | 'terminal' | 'dialog';
 

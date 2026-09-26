@@ -1,5 +1,5 @@
-import { useTypewriter } from '@/hooks/useTypewriter';
-import type { AccentColorName } from '@/design/tokens';
+import { useTypewriter } from '@office/hooks/useTypewriter';
+import type { AccentColorName } from '@office/design/tokens';
 
 export interface RecentTextProps {
   accent: AccentColorName;

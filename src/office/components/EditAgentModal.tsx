@@ -3,9 +3,9 @@ import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { SpritePortrait } from './SpritePortrait';
 import { ProviderLogo } from './ProviderLogo';
-import { useStore, type Agent } from '@/store/store';
-import { OFFICE_CAST, type OfficeCharacterName } from '@/scene/office/cast';
-import { type AccentColorName } from '@/design/tokens';
+import { useStore, type Agent } from '@office/store/store';
+import { OFFICE_CAST, type OfficeCharacterName } from '@office/scene/office/cast';
+import { type AccentColorName } from '@office/design/tokens';
 import {
   type AgentProvider,
   type HarnessConfig,
@@ -15,7 +15,7 @@ import {
   inferAgentProvider,
   providerPreset,
   isClaudeProvider
-} from '@/store/config';
+} from '@office/store/config';
 
 const ACCENTS: AccentColorName[] = ['coral', 'mint', 'sky', 'lemon', 'lilac', 'peach'];
 

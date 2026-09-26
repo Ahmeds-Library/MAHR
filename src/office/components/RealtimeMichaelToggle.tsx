@@ -21,8 +21,8 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { useStore } from '@/store/store';
-import { useRealtimeMichael, type RealtimeStatus } from '@/realtime/session';
+import { useStore } from '@office/store/store';
+import { useRealtimeMichael, type RealtimeStatus } from '@office/realtime/session';
 
 /** Per-status presentation: button variant, SHORT label, dot color, and (optional)
  *  animation for the live-state indicator dot. Maps hook.status → visuals.

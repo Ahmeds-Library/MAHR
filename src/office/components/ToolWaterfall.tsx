@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useAgentSpans, useFleetTelemetry, totalTokens, cacheFraction } from '@/hooks/useTelemetry';
+import { useAgentSpans, useFleetTelemetry, totalTokens, cacheFraction } from '@office/hooks/useTelemetry';
 
 /**
  * Per-agent tool-call timeline (#7B.2) — a horizontal waterfall of tool spans

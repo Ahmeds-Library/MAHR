@@ -762,12 +762,14 @@ function genAgentReference() {
 - \`dist/\`, \`dist_electron/\` — build outputs
 
 ### Critical Conventions
-1. **Path alias \`@/\`** resolves to \`src/office/\` (NOT \`src/\` root)
-2. **\`@shared/\`** resolves to \`src/office/shared/\`
-3. **\`@brand/\`** resolves to \`public/brand/\`
-4. TypeScript server files use \`.ts\` extension but run via \`tsx\` (ESM)
-5. Electron files use \`.cjs\` (CommonJS)
-6. State files (\`*.json\`) in root are runtime data — ignore for code tasks
+1. **Path alias \`@/\`** resolves to \`src/\` (root source directory)
+2. **\`@office/\`** resolves to \`src/office/\` (Office system submodule)
+3. **\`@shared/\`** resolves to \`src/office/shared/\`
+4. **\`@brand/\`** resolves to \`public/brand/\`
+5. **\`@components/\`**, **\`@hooks/\`**, **\`@lib/\`** resolve directly to their respective folders in \`src/\`
+6. TypeScript server files use \`.ts\` extension but run via \`tsx\` (ESM)
+7. Electron files use \`.cjs\` (CommonJS)
+8. State files (\`*.json\`) in root are runtime data — ignore for code tasks
 
 ### Architecture Decision Records
 | Decision | Rationale |

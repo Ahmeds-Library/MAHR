@@ -17,8 +17,8 @@ import { EditAgentModal } from './EditAgentModal';
 import { GitTab } from './GitTab';
 import { Icon } from './Icon';
 import { AgentNameEditor } from './AgentNameEditor';
-import { useStore, type Agent } from '@/store/store';
-import { usePtyParser } from '@/hooks/usePtyParser';
+import { useStore, type Agent } from '@office/store/store';
+import { usePtyParser } from '@office/hooks/usePtyParser';
 
 export interface AgentDetailPanelProps {
   agent: Agent;

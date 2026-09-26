@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import type { BlockReason } from '@/store/store';
+import type { BlockReason } from '@office/store/store';
 
 export interface BlockedBannerProps {
   reason: BlockReason;

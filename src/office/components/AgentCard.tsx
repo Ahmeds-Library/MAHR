@@ -5,9 +5,9 @@ import { PixelBadge, StatusKind } from './PixelBadge';
 import { useHasTerminalDraft } from './terminalPool';
 import { SpritePortrait } from './SpritePortrait';
 import { RealtimeMichaelToggle } from './RealtimeMichaelToggle';
-import { CostHud } from '@/realtime/CostHud';
-import { AccentColorName } from '@/design/tokens';
-import { OfficeCharacterName } from '@/scene/office/cast';
+import { CostHud } from '@office/realtime/CostHud';
+import { AccentColorName } from '@office/design/tokens';
+import { OfficeCharacterName } from '@office/scene/office/cast';
 import { AgentNameEditor } from './AgentNameEditor';
 
 export interface AgentCardProps {

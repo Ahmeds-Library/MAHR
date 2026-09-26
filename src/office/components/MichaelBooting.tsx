@@ -1,5 +1,5 @@
-import { PixelPanel } from '@/components/PixelPanel';
-import { useResolvedGodName } from '@/hooks/useResolvedGodName';
+import { PixelPanel } from '@office/components/PixelPanel';
+import { useResolvedGodName } from '@office/hooks/useResolvedGodName';
 
 /**
  * Loader shown on the empty floor while the god agent is clocking in on

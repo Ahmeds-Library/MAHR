@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FileTree } from './FileTree';
 import { CodeEditor } from './CodeEditor';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 
 export interface FilesTabProps {
   cwd: string;

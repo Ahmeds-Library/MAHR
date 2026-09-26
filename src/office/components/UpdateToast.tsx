@@ -35,10 +35,10 @@
  * goes through the existing `openExternal` opener.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Icon } from '@/components/Icon';
+import { Icon } from '@office/components/Icon';
 import { summarizeReleaseNotes } from '@shared/releaseNotes';
 import { extractDropHtml } from '@shared/releaseDrop';
-import { ReleaseDrop } from '@/components/ReleaseDrop';
+import { ReleaseDrop } from '@office/components/ReleaseDrop';
 import type { UpdateStatus } from '@shared/updateState';
 
 /** The toast is the LOUD half — it only interrupts for the two states a user has

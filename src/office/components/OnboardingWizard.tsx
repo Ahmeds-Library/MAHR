@@ -5,13 +5,13 @@ import { PixelButton } from './PixelButton';
 import { Icon, type IconName } from './Icon';
 import { SpritePortrait } from './SpritePortrait';
 import { ProviderLogo } from './ProviderLogo';
-import { modelsForProvider, onboardingEngineChoices, type AgentProvider, type HarnessConfig } from '@/store/config';
+import { modelsForProvider, onboardingEngineChoices, type AgentProvider, type HarnessConfig } from '@office/store/config';
 import { providerPreset } from '@shared/agentProvider';
 import {
   classifyEngineAvailability, engineAvailabilityBadge, engineAvailabilityMessage, engineBlocksOnboarding
 } from '@shared/engineAvailability';
 import type { ToolStatus } from '@shared/toolCatalog';
-import { useResolvedGodName } from '@/hooks/useResolvedGodName';
+import { useResolvedGodName } from '@office/hooks/useResolvedGodName';
 
 export interface OnboardingWizardProps {
   onComplete: (config: HarnessConfig) => void;

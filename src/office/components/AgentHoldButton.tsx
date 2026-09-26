@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 
 /**
  * 1:1 — "I have this agent, Michael stop sending it work."

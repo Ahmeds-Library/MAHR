@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { paintCastPortrait, type OfficeCharacterName } from '@/scene/office/cast';
-import { PORTRAIT_W, PORTRAIT_H } from '@/scene/office/portraitArt';
+import { paintCastPortrait, type OfficeCharacterName } from '@office/scene/office/cast';
+import { PORTRAIT_W, PORTRAIT_H } from '@office/scene/office/portraitArt';
 
 const FRAME_W = PORTRAIT_W;
 const FRAME_H = PORTRAIT_H;

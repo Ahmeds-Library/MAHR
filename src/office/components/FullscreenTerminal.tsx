@@ -11,17 +11,17 @@ import { CommandCenterPanel } from './CommandCenterPanel';
 import { EditAgentModal } from './EditAgentModal';
 import { Icon } from './Icon';
 import { SpritePortrait } from './SpritePortrait';
-import { PORTRAIT_W } from '@/scene/office/portraitArt';
+import { PORTRAIT_W } from '@office/scene/office/portraitArt';
 import { RealtimeMichaelToggle } from './RealtimeMichaelToggle';
-import { CostHud } from '@/realtime/CostHud';
-import { useStore, type Agent } from '@/store/store';
-import { usePtyParser } from '@/hooks/usePtyParser';
-import { useRestoreTeam } from '@/hooks/useRestoreTeam';
+import { CostHud } from '@office/realtime/CostHud';
+import { useStore, type Agent } from '@office/store/store';
+import { usePtyParser } from '@office/hooks/usePtyParser';
+import { useRestoreTeam } from '@office/hooks/useRestoreTeam';
 import { useTerminalFontSize } from './terminalFontSize';
 import { useHasTerminalDraft, disposeTerminal, reflowTerminal, notifyThemeChangeAll } from './terminalPool';
-import { useAppTheme, toggleAppTheme } from '@/design/theme';
-import type { HarnessConfig } from '@/store/config';
-import { useRtl } from '@/i18n/useDirection';
+import { useAppTheme, toggleAppTheme } from '@office/design/theme';
+import type { HarnessConfig } from '@office/store/config';
+import { useRtl } from '@office/i18n/useDirection';
 
 /** Roster rail width. A fixed 232px is right on a 14" laptop but reads as a
  *  sliver on a 27" display, where names truncate for no reason — so it tracks

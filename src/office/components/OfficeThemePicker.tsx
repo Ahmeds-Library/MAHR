@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { HarnessConfig } from '@/store/config';
-import { useStore } from '@/store/store';
+import type { HarnessConfig } from '@office/store/config';
+import { useStore } from '@office/store/store';
 import { disposeTerminal } from './terminalPool';
 import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import type { ThemeId } from '@/scene/office/themeRegistry';
+import type { ThemeId } from '@office/scene/office/themeRegistry';
 
 // TV-show office themes (Phase 1 = the switch flow infra). Only `office` has a
 // real map+cast today; the five shows render via the loader's office fallback

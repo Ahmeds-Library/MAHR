@@ -18,9 +18,9 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { arabicJoinRanges } from '@/terminal/arabicJoiner';
-import { attachArabicSpacingFix } from '@/terminal/arabicSpacingFix';
-import { isArabicTerminalEnabled } from '@/terminal/arabicSetting';
+import { arabicJoinRanges } from '@office/terminal/arabicJoiner';
+import { attachArabicSpacingFix } from '@office/terminal/arabicSpacingFix';
+import { isArabicTerminalEnabled } from '@office/terminal/arabicSetting';
 import {
   classifyPathToken, isPathToken, pathTokenMatcher, stripPathToken, type PathAction
 } from '@shared/terminalPaths';
@@ -936,7 +936,7 @@ interface MdStoreShape {
   };
 }
 let storeApi: MdStoreShape | null = null;
-void import('@/store/store')
+void import('@office/store/store')
   .then((m) => { storeApi = (m as unknown as { useStore: MdStoreShape }).useStore; })
   .catch(() => { /* store unavailable (tests) — link provider stays inert */ });
 

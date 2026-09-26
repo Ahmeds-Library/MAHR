@@ -5,9 +5,9 @@
 //   - memories: window.cth.hiveMemory(id) per agent (only when topics are on)
 // See MEMORY_GRAPH_SPEC.md §3–§5.
 
-import type { AccentColorName } from '@/design/tokens';
-import type { StatusKind } from '@/components/PixelBadge';
-import type { MessageAct } from '@/scene/office/MessageEnvelope';
+import type { AccentColorName } from '@office/design/tokens';
+import type { StatusKind } from '@office/components/PixelBadge';
+import type { MessageAct } from '@office/scene/office/MessageEnvelope';
 import { extractTopics } from './extractTopics';
 
 export interface AgentNode {

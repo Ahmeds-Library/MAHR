@@ -1,4 +1,4 @@
-import type { AgentProvider } from '@/store/config';
+import type { AgentProvider } from '@office/store/config';
 
 /**
  * ProviderLogo — the official brand mark for each CLI-agent provider, rendered

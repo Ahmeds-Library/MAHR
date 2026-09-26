@@ -1,10 +1,10 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { HarnessConfig, AgentProvider } from '@/store/config';
+import type { HarnessConfig, AgentProvider } from '@office/store/config';
 import { PixelButton } from './PixelButton';
 import { ProviderLogo } from './ProviderLogo';
 import { OSS_BLOG_LINKS } from '@shared/ossModels';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 
 /**
  * AiEnginesSettings — the v0.3.1 per-provider config surface for the BYOK CLI

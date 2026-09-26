@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { useStore, type Agent, type QueuedMessage } from '@/store/store';
+import { useStore, type Agent, type QueuedMessage } from '@office/store/store';
 import { clearTerminalDraft, dismissTerminalPicker, terminalAutomationBlockFor } from './terminalPool';
 import type { TerminalAutomationBlock } from './terminalAutomation';
-import { freeflowRecorder, useFreeflow } from '@/freeflow/recorder';
+import { freeflowRecorder, useFreeflow } from '@office/freeflow/recorder';
 import { useTerminalFontSize } from './terminalFontSize';
 import { isComposingKey } from '@shared/imeGuard';
-import { useRtl } from '@/i18n/useDirection';
+import { useRtl } from '@office/i18n/useDirection';
 
 const EMPTY_QUEUE: QueuedMessage[] = [];
 

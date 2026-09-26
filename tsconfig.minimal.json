@@ -17,6 +17,9 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": [
+        "./src/*"
+      ],
+      "@office/*": [
         "./src/office/*"
       ],
       "@shared/*": [
@@ -24,6 +27,15 @@
       ],
       "@brand/*": [
         "./public/brand/*"
+      ],
+      "@components/*": [
+        "./src/components/*"
+      ],
+      "@hooks/*": [
+        "./src/hooks/*"
+      ],
+      "@lib/*": [
+        "./src/lib/*"
       ]
     },
     "allowImportingTsExtensions": true,

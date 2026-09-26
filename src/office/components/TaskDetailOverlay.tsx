@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import { TaskDetail, parseTasks, type HiveTask } from './TasksKanban';
 
 /**

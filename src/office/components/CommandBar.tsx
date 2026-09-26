@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { AccentColorName } from '@/design/tokens';
+import { AccentColorName } from '@office/design/tokens';
 import { isComposingKey } from '@shared/imeGuard';
 
 type Mode = 'free' | 'slash' | 'quick';

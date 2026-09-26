@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { type SidebarTab } from '@/store/store';
-import { type AccentColorName } from '@/design/tokens';
+import { type SidebarTab } from '@office/store/store';
+import { type AccentColorName } from '@office/design/tokens';
 import { Icon, type IconName } from './Icon';
 
 // v0.3.4: the files tab is gone — the per-agent IDE button (header) opens the
