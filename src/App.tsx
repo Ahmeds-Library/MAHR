@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { MyraaAudioSession, LiveState, setGlobalAudioSession } from "./lib/audio";
-import { MahrCoreVisualizer, MahrEmotion, MyraaCoreVisualizer, MyraaEmotion } from "./components/MahrCoreVisualizer";
+import { MyraaAudioSession, LiveState, setGlobalAudioSession } from "@lib/audio";
+import { MahrCoreVisualizer, MahrEmotion, MyraaCoreVisualizer, MyraaEmotion } from "@components/MahrCoreVisualizer";
 import { 
   Power, 
   Volume2, 
@@ -41,56 +41,56 @@ import {
   Sparkles as SparklesIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { Memory, MemoryCategory, ChatMessage } from "./lib/memoryTypes";
-import { MemoryDashboard } from "./components/MemoryDashboard";
-import { KnowledgeGraphDashboard } from "./components/KnowledgeGraphDashboard";
-import { ChatJournal } from "./components/ChatJournal";
-import { Chalkboard } from "./components/Chalkboard";
-import { MahrCollaborationSuite } from "./components/MahrCollaborationSuite";
-import { StudyPadPanel } from "./components/StudyPadPanel";
-import { UniversalSimulationStudio } from "./components/simulation/UniversalSimulationStudio";
-import { ProactiveTaskReminderToast } from "./components/ProactiveTaskReminderToast";
-import { MagnifierOverlay } from "./components/MagnifierOverlay";
-import { FloatingScreenShareHub } from "./components/FloatingScreenShareHub";
-import { ScreenShareMagnifierModal } from "./components/ScreenShareMagnifierModal";
-import { generateAIMindMapFromText, generateVoiceToMindMap, cleanSpokenTranscript } from "./lib/mindMapGenerator";
-import { layoutVisualDiagram } from "./lib/diagramLayout";
-import { useStudyPad } from "./hooks/useStudyPad";
-import { useWakeWordEngine } from "./hooks/useWakeWordEngine";
-import { useDailyTasksAndMemories } from "./hooks/useDailyTasksAndMemories";
-import { useAudioSessionManager } from "./hooks/useAudioSessionManager";
-import { useAskMahr } from "./hooks/useAskMahr";
-import { detectEmotionFromText, evaluateVoiceAnswerScore } from "./services/speechToneEngine";
-import { speakUtterance, stopAllSpeech, triggerProactivePause, isCurrentlyInProactivePause, setGlobalSpeechMood } from "./services/speechSynthesisService";
+import { Memory, MemoryCategory, ChatMessage } from "@lib/memoryTypes";
+import { MemoryDashboard } from "@components/MemoryDashboard";
+import { KnowledgeGraphDashboard } from "@components/KnowledgeGraphDashboard";
+import { ChatJournal } from "@components/ChatJournal";
+import { Chalkboard } from "@components/Chalkboard";
+import { MahrCollaborationSuite } from "@components/MahrCollaborationSuite";
+import { StudyPadPanel } from "@components/StudyPadPanel";
+import { UniversalSimulationStudio } from "@components/simulation/UniversalSimulationStudio";
+import { ProactiveTaskReminderToast } from "@components/ProactiveTaskReminderToast";
+import { MagnifierOverlay } from "@components/MagnifierOverlay";
+import { FloatingScreenShareHub } from "@components/FloatingScreenShareHub";
+import { ScreenShareMagnifierModal } from "@components/ScreenShareMagnifierModal";
+import { generateAIMindMapFromText, generateVoiceToMindMap, cleanSpokenTranscript } from "@lib/mindMapGenerator";
+import { layoutVisualDiagram } from "@lib/diagramLayout";
+import { useStudyPad } from "@hooks/useStudyPad";
+import { useWakeWordEngine } from "@hooks/useWakeWordEngine";
+import { useDailyTasksAndMemories } from "@hooks/useDailyTasksAndMemories";
+import { useAudioSessionManager } from "@hooks/useAudioSessionManager";
+import { useAskMahr } from "@hooks/useAskMahr";
+import { detectEmotionFromText, evaluateVoiceAnswerScore } from "@/services/speechToneEngine";
+import { speakUtterance, stopAllSpeech, triggerProactivePause, isCurrentlyInProactivePause, setGlobalSpeechMood } from "@/services/speechSynthesisService";
 import { 
   buildVectorKnowledgeGraph, 
   queryVectorMemory, 
   findSemanticallySimilarMemory, 
   formatVectorGroundingPrompt 
-} from "./services/vectorMemoryEngine";
-import { SkillsManager } from "./components/SkillsManager";
-import { ModelSwitcherModal } from "./components/ModelSwitcherModal";
-import { SubAgentsStudio } from "./components/SubAgentsStudio";
-import { DailyTaskManager } from "./components/DailyTaskManager";
-import { HeaderNav } from "./components/HeaderNav";
-import { DesktopAndRemoteModal } from "./components/desktop/DesktopAndRemoteModal";
-import { useDesktopApp } from "./hooks/useDesktopApp";
-import { registerGlobalSummonListener } from "./services/platformAdapter";
-import { MAHROfficeModal } from "./office/MAHROfficeModal";
-import { GlobalAlerts } from "./components/GlobalAlerts";
-import { VoiceDialogueToast } from "./components/VoiceDialogueToast";
-import { FooterVisualizer } from "./components/FooterVisualizer";
-import { AskMahrModal, AskMahrModal as AskMyraaModal } from "./components/AskMahrModal";
-import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
-import { SettingsModal } from "./components/settings/SettingsModal";
-import { SystemSettingsState, saveSettingToDB, loadSettingsFromDB, runSettingsDiagnosticCycle } from "./services/settingsService";
-import { VoiceCommand, matchVoiceCommand, detectVoiceAction } from "./services/voiceCommandService";
-import { getThemeConfig, getVisualizerBarStyle } from "./services/themeService";
-import { analyzeSpeechColorPsychology, PsychologyProfile, PSYCHOLOGY_PROFILES } from "./services/colorPsychologyEngine";
-import { HumanMoodStudio } from "./components/HumanMoodStudio";
-import { GranularMeshGradientBackground } from "./components/GranularMeshGradientBackground";
-import { HumanMoodType, HUMAN_MOOD_CONFIGS, detectHumanMoodFromDialogue } from "./services/humanEmotionEngine";
-import { classifyMemoryFromText } from "./services/memoryClassifierService";
+} from "@/services/vectorMemoryEngine";
+import { SkillsManager } from "@components/SkillsManager";
+import { ModelSwitcherModal } from "@components/ModelSwitcherModal";
+import { SubAgentsStudio } from "@components/SubAgentsStudio";
+import { DailyTaskManager } from "@components/DailyTaskManager";
+import { HeaderNav } from "@components/HeaderNav";
+import { DesktopAndRemoteModal } from "@components/desktop/DesktopAndRemoteModal";
+import { useDesktopApp } from "@hooks/useDesktopApp";
+import { registerGlobalSummonListener } from "@/services/platformAdapter";
+import { MAHROfficeModal } from "@office/MAHROfficeModal";
+import { GlobalAlerts } from "@components/GlobalAlerts";
+import { VoiceDialogueToast } from "@components/VoiceDialogueToast";
+import { FooterVisualizer } from "@components/FooterVisualizer";
+import { AskMahrModal, AskMahrModal as AskMyraaModal } from "@components/AskMahrModal";
+import { KeyboardShortcutsModal } from "@components/KeyboardShortcutsModal";
+import { SettingsModal } from "@components/settings/SettingsModal";
+import { SystemSettingsState, saveSettingToDB, loadSettingsFromDB, runSettingsDiagnosticCycle } from "@/services/settingsService";
+import { VoiceCommand, matchVoiceCommand, detectVoiceAction } from "@/services/voiceCommandService";
+import { getThemeConfig, getVisualizerBarStyle } from "@/services/themeService";
+import { analyzeSpeechColorPsychology, PsychologyProfile, PSYCHOLOGY_PROFILES } from "@/services/colorPsychologyEngine";
+import { HumanMoodStudio } from "@components/HumanMoodStudio";
+import { GranularMeshGradientBackground } from "@components/GranularMeshGradientBackground";
+import { HumanMoodType, HUMAN_MOOD_CONFIGS, detectHumanMoodFromDialogue } from "@/services/humanEmotionEngine";
+import { classifyMemoryFromText } from "@/services/memoryClassifierService";
 import { 
   loadRLPolicy, 
   saveRLPolicy, 
@@ -103,18 +103,18 @@ import {
   KnowledgeDeficit, 
   detectKnowledgeDeficit,
   detectQueryComplexity 
-} from "./services/reinforcementLearningEngine";
-import { ReinforcementLearningStudio } from "./components/ReinforcementLearningStudio";
-import { initActivityTracker, recordUserActivity, checkProactiveReminder } from "./services/proactiveReminderEngine";
+} from "@/services/reinforcementLearningEngine";
+import { ReinforcementLearningStudio } from "@components/ReinforcementLearningStudio";
+import { initActivityTracker, recordUserActivity, checkProactiveReminder } from "@/services/proactiveReminderEngine";
 import { 
   SUPPORTED_AI_MODELS, 
   PRESET_SUBAGENTS, 
   SubAgent, 
   DailyTask, 
   AIModelConfig 
-} from "./lib/subagentTypes";
-import { getSkillsFromDB, dbGet, dbSet, dbRemove } from "./lib/db";
-import { formatMathText } from "./lib/mathFormatter";
+} from "@lib/subagentTypes";
+import { getSkillsFromDB, dbGet, dbSet, dbRemove } from "@lib/db";
+import { formatMathText } from "@lib/mathFormatter";
 import confetti from "canvas-confetti";
 
 const studyTabVariants = {

@@ -370,11 +370,75 @@ export function MAHROfficeFloorView({
           try {
             const agentUpdate = JSON.parse(e.data);
             if (agentUpdate && agentUpdate.id) {
-              updateAgent(agentUpdate.id, {
+              const currentAgents = useStore.getState().agents;
+              const target = currentAgents.find(
+                (a) => a.id === agentUpdate.id || a.character === agentUpdate.character || a.name.toLowerCase() === (agentUpdate.name || '').toLowerCase()
+              );
+              const targetId = target ? target.id : agentUpdate.id;
+              updateAgent(targetId, {
                 status: agentUpdate.status || 'idle',
                 action: agentUpdate.action || 'Ready for assignments',
+                thoughtBubble: agentUpdate.thoughtBubble,
+                toolBubble: agentUpdate.toolBubble,
+                currentTask: agentUpdate.currentTask,
                 recentTextTs: Date.now()
               });
+            }
+          } catch (_) {}
+        });
+
+        es.addEventListener('agent-status-change', (e) => {
+          try {
+            const change = JSON.parse(e.data);
+            if (change && (change.memberId || change.id)) {
+              const id = change.memberId || change.id;
+              const currentAgents = useStore.getState().agents;
+              const target = currentAgents.find(
+                (a) => a.id === id || a.id.toLowerCase().includes(id.toLowerCase()) || a.name.toLowerCase() === id.toLowerCase()
+              );
+              if (target) {
+                updateAgent(target.id, {
+                  status: change.status || 'idle',
+                  action: change.action || change.thoughtBubble || target.action,
+                  thoughtBubble: change.thoughtBubble,
+                  toolBubble: change.toolBubble,
+                  currentTask: change.currentTask,
+                  recentTextTs: Date.now()
+                });
+              }
+            }
+          } catch (_) {}
+        });
+
+        // 📨 Real Envelope Flights: Animate desk-to-desk flying message envelope
+        es.addEventListener('envelope-fly', (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data && data.from && data.to) {
+              flyRealHandoffEnvelope(data.from, data.to, data.act || 'request');
+            }
+          } catch (_) {}
+        });
+
+        // 🎯 Agent Task Completion
+        es.addEventListener('agent-task-complete', (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            const id = data.memberId || data.id;
+            if (id) {
+              const currentAgents = useStore.getState().agents;
+              const target = currentAgents.find(
+                (a) => a.id === id || a.id.toLowerCase().includes(id.toLowerCase()) || a.name.toLowerCase() === id.toLowerCase()
+              );
+              if (target) {
+                updateAgent(target.id, {
+                  status: 'idle',
+                  action: data.action || `Done: ${data.result?.slice(0, 30) || 'Task'}`,
+                  thoughtBubble: data.thoughtBubble,
+                  toolBubble: undefined,
+                  recentTextTs: Date.now()
+                });
+              }
             }
           } catch (_) {}
         });

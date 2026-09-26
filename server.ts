@@ -59,7 +59,8 @@ import {
   autoDelegateTasksFromMahr,
   officeEvents,
   emitOfficeEvent,
-  processMahrOfficeCommand
+  processMahrOfficeCommand,
+  initOrchestrator
 } from "./server_office.ts";
 import {
   initMahrDatabase,
@@ -137,17 +138,17 @@ export function clearModelOverloaded(modelName: string): void {
  * models (gemini-3.1-flash-lite) into distinct isolated capacity pools.
  * Filters out redundant aliases like 'gemini-flash-latest' when 'gemini-3.8-flash' is present.
  */
-export function getPrioritizedModelCandidates(preferredModel: string = "gemini-3.8-flash"): string[] {
-  let basePreferred = preferredModel || "gemini-3.8-flash";
-  if (basePreferred === "gemini-flash-latest") {
-    basePreferred = "gemini-3.8-flash";
+export function getPrioritizedModelCandidates(preferredModel: string = "gemini-2.5-flash"): string[] {
+  let basePreferred = preferredModel || "gemini-2.5-flash";
+  if (basePreferred === "gemini-flash-latest" || basePreferred === "gemini-3.8-flash") {
+    basePreferred = "gemini-2.5-flash";
   }
-  if (basePreferred.includes("2.5") || basePreferred.includes("1.5") || basePreferred.includes("2.0")) {
+  if (basePreferred.includes("1.5") || basePreferred.includes("2.0")) {
     basePreferred = "gemini-3.1-flash-lite";
   }
 
-  const primary = (basePreferred === "gemini-3.1-flash-lite") ? "gemini-3.1-flash-lite" : basePreferred;
-  const alternate = primary === "gemini-3.1-flash-lite" ? "gemini-3.8-flash" : "gemini-3.1-flash-lite";
+  const primary = (basePreferred === "gemini-3.1-flash-lite") ? "gemini-3.1-flash-lite" : "gemini-2.5-flash";
+  const alternate = primary === "gemini-3.1-flash-lite" ? "gemini-2.5-flash" : "gemini-3.1-flash-lite";
 
   // If primary model is currently experiencing high demand (503 / 429), place alternate first
   if (isModelOverloaded(primary)) {
@@ -170,6 +171,13 @@ async function startServer() {
     initMahrDatabase();
   } catch (dbErr) {
     console.warn("[MAHR DB Boot] Notice:", dbErr);
+  }
+
+  // Initialize MAHR GOD Orchestrator for office agents
+  try {
+    initOrchestrator();
+  } catch (orchErr) {
+    console.warn("[MAHR Office Orchestrator Boot] Notice:", orchErr);
   }
 
   // Initialize durable real token telemetry
@@ -1367,7 +1375,7 @@ Return a JSON object with:
 - "beamPulseSpeed": number of seconds per pulse between 0.8 and 2.5`;
 
           const response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
+            model: "gemini-2.5-flash",
             contents: prompt,
             config: {
               responseMimeType: "application/json",
@@ -1386,7 +1394,7 @@ Return a JSON object with:
           });
 
           if (response.usageMetadata) {
-            recordTokenUsage(response.usageMetadata, "gemini-3.8-flash");
+            recordTokenUsage(response.usageMetadata, "gemini-2.5-flash");
           }
 
           if (response.text) {
@@ -2018,9 +2026,9 @@ Also provide:
 
       let generatedJsonText: string | undefined;
       const validDldCandidates = [
-        "gemini-flash-latest",
+        "gemini-2.5-flash",
         "gemini-3.1-flash-lite",
-        "gemini-3.8-flash"
+        "gemini-flash-latest"
       ];
       if (modelId && !modelId.includes("2.5") && !modelId.includes("1.5") && !modelId.includes("2.0")) {
         // If caller explicitly asked for a modern model, keep it in candidate pool
@@ -2469,6 +2477,8 @@ Also provide:
 
   // Dedicated Sub-Agent Chat Endpoint (Supports Google Search Grounding with gemini-3.5-flash)
   app.post("/api/chat/subagent", async (req, res) => {
+    let activeOfficeAgentId = "agent_boss";
+    let activeOfficeAgentName = "MAHR";
     try {
       const {
         message,
@@ -2497,6 +2507,50 @@ Also provide:
 
       const agentName = subAgentName || "MAHR";
       const agentRole = subAgentRole || "Primary Companion & Mentor";
+
+      // Problem 2: When chat starts, put the relevant office agent into "thinking" state with SSE broadcast
+      const promptSnippet = (message || "Analyzing workspace").slice(0, 45);
+      const lowerMsg = (message || "").toLowerCase();
+
+      if (subAgentName && subAgentName !== "MAHR") {
+        activeOfficeAgentName = subAgentName;
+        activeOfficeAgentId = `agent_${subAgentName.toLowerCase()}`;
+      } else if (lowerMsg.match(/(css|ui|design|frontend|pixi|react|button|screen|view|style|layout)/)) {
+        activeOfficeAgentName = "Jim";
+        activeOfficeAgentId = "agent_jim";
+      } else if (lowerMsg.match(/(security|audit|lint|type|error|bug|test|hardware|rule|verify|check)/)) {
+        activeOfficeAgentName = "Dwight";
+        activeOfficeAgentId = "agent_dwight";
+      } else if (lowerMsg.match(/(note|chalkboard|whiteboard|diagram|explain|feynman|concept|study|draw)/)) {
+        activeOfficeAgentName = "Pam";
+        activeOfficeAgentId = "agent_pam";
+      } else if (lowerMsg.match(/(api|socket|realtime|backend|route|stream|server|endpoint|pipe)/)) {
+        activeOfficeAgentName = "Ryan";
+        activeOfficeAgentId = "agent_ryan";
+      } else if (lowerMsg.match(/(db|database|sql|query|perf|cache|latency|benchmark|table|store)/)) {
+        activeOfficeAgentName = "Stanley";
+        activeOfficeAgentId = "agent_stanley";
+      }
+
+      emitOfficeEvent({
+        type: "agent-status-change",
+        data: {
+          memberId: activeOfficeAgentId,
+          status: "thinking",
+          thoughtBubble: `Thinking: ${promptSnippet}...`,
+          toolBubble: "🧠 Processing...",
+          action: `Thinking: "${promptSnippet}..."`
+        },
+        timestamp: Date.now()
+      });
+      emitOfficeEvent("agent-update", {
+        id: activeOfficeAgentId,
+        name: activeOfficeAgentName,
+        status: "thinking",
+        action: `Thinking: "${promptSnippet}..."`,
+        thoughtBubble: `Thinking: ${promptSnippet}...`,
+        toolBubble: "🧠 Processing..."
+      });
 
       const systemInstruction = `IDENTITY & AGENT CHARACTER:
 You are strictly ${agentName}, fulfilling the role of ${agentRole}.
@@ -2828,6 +2882,28 @@ ${userContext || "None"}
         console.error("[Sub-Agent Chat] Failed auto-saving chat journal history:", historyErr);
       }
 
+      // Office agent completion broadcast
+      emitOfficeEvent({
+        type: "agent-status-change",
+        data: {
+          memberId: activeOfficeAgentId,
+          status: "idle",
+          thoughtBubble: `Done: ${(responseText || "").slice(0, 45)}...`,
+          toolBubble: "✔ Done",
+          action: `Answered: "${promptSnippet.slice(0, 30)}..."`,
+          result: responseText
+        },
+        timestamp: Date.now()
+      });
+      emitOfficeEvent("agent-update", {
+        id: activeOfficeAgentId,
+        name: activeOfficeAgentName,
+        status: "idle",
+        action: `Answered: "${promptSnippet.slice(0, 30)}..."`,
+        thoughtBubble: `Done: ${(responseText || "").slice(0, 45)}...`,
+        toolBubble: "✔ Done"
+      });
+
       res.json({
         text: responseText,
         actions: executedActions,
@@ -2841,6 +2917,15 @@ ${userContext || "None"}
       });
     } catch (e: any) {
       console.error("[Sub-Agent Chat Error]:", e);
+      emitOfficeEvent({
+        type: "agent-status-change",
+        data: {
+          memberId: activeOfficeAgentId,
+          status: "idle",
+          action: "Idle at station"
+        },
+        timestamp: Date.now()
+      });
       const errStr = String(e?.message || e);
       if (errStr.includes("429") || errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("Quota exceeded")) {
         return res.json({

@@ -4,10 +4,37 @@
       "id": "ent_1790081038811_uohv",
       "name": "Pam Milestone",
       "type": "project",
-      "description": "Executed task \"Explain the concept of asynchronous queues using the Feynman...\": Assalam-o-Alaikum, Mirza Ahmed! Welcome back to the MAHR Virtual Office. It’s g",
+      "description": "Executed task \"Draft sequence diagram for client-side state recovery after ...\": *Pulls a fresh sheet of paper from the printer, walks over to the central white",
       "importance": 4,
-      "mentionCount": 1,
-      "lastMentioned": "2026-09-22T12:43:58.815Z"
+      "mentionCount": 3,
+      "lastMentioned": "2026-09-26T18:42:37.507Z"
+    },
+    {
+      "id": "ent_1790447424459_h3ie",
+      "name": "Ryan Milestone",
+      "type": "project",
+      "description": "Executed task \"Refactor WebSocket event emitter to support automated reconn...\": # 📋 Classroom Chalkboard: Resilient WebSocket Reconnection Logic\n\nHey TECH-san",
+      "importance": 4,
+      "mentionCount": 6,
+      "lastMentioned": "2026-09-26T18:42:37.051Z"
+    },
+    {
+      "id": "ent_1790447427572_o1ng",
+      "name": "Dwight Milestone",
+      "type": "project",
+      "description": "Executed task \"Hardening WebSocket handshake against unauthorized origin he...\": # 📋 Classroom Chalkboard: Perimeter Defense — Hardening the WebSocket Handshak",
+      "importance": 4,
+      "mentionCount": 3,
+      "lastMentioned": "2026-09-26T18:42:36.129Z"
+    },
+    {
+      "id": "ent_1790448149616_4wk6",
+      "name": "Jim Milestone",
+      "type": "project",
+      "description": "Executed task \"Create a reusable React component for a button with a respon...\": *Slides my chair over to your desk, keeping a casual but focused posture. I set",
+      "importance": 4,
+      "mentionCount": 2,
+      "lastMentioned": "2026-09-26T18:56:20.198Z"
     }
   ],
   "edges": [],

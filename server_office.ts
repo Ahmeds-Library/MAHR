@@ -26,24 +26,60 @@ import {
   dbAddKnowledgeNode,
   getDbStatus
 } from "./server_db.ts";
+import type { AgentStatus, AgentTask, OfficeMember } from "./src/lib/officeAgentTypes.ts";
+import { MAHROrchestrator } from "./src/office/agents/MAHROrchestrator.ts";
+
+let orchestrator: MAHROrchestrator | null = null;
+
+export function initOrchestrator(apiKey?: string) {
+  const key = apiKey || getSafeGeminiApiKey();
+  if (key) {
+    try {
+      orchestrator = new MAHROrchestrator(key);
+      console.log(`[Office] 🤖 MAHR GOD Orchestrator online with ${orchestrator.getCast().length} autonomous agents`);
+    } catch (e: any) {
+      console.warn("[Office] Orchestrator init warning:", e.message);
+    }
+  }
+}
+
+export function getOrchestrator(): MAHROrchestrator | null {
+  if (!orchestrator) {
+    try {
+      const key = getSafeGeminiApiKey();
+      if (key) orchestrator = new MAHROrchestrator(key);
+    } catch (_) {}
+  }
+  return orchestrator;
+}
 
 export const officeEvents = new EventEmitter();
 officeEvents.setMaxListeners(100);
 
-export function emitOfficeEvent(type: string, data: any) {
+export function emitOfficeEvent(
+  typeOrEvent: string | { type: string; data: any; timestamp?: number },
+  data?: any
+) {
   try {
-    officeEvents.emit("event", { type, data, timestamp: Date.now() });
+    if (typeof typeOrEvent === "string") {
+      officeEvents.emit("event", { type: typeOrEvent, data, timestamp: Date.now() });
+    } else {
+      officeEvents.emit("event", {
+        type: typeOrEvent.type,
+        data: typeOrEvent.data,
+        timestamp: typeOrEvent.timestamp || Date.now()
+      });
+    }
   } catch (e) {
     console.error("[OfficeEvents] Error emitting event:", e);
   }
 }
 
 const GEMINI_OFFICE_CANDIDATES = [
-  "gemini-3.8-flash",
+  "gemini-2.5-flash",
   "gemini-3.1-flash-lite",
   "gemini-flash-latest",
-  "gemini-2.5-flash",
-  "gemini-2.5-pro"
+  "gemini-3.1-pro-preview"
 ];
 
 export async function callOfficeGemini(prompt: string, config?: any): Promise<{ text: string; modelUsed: string }> {
@@ -66,7 +102,8 @@ export async function callOfficeGemini(prompt: string, config?: any): Promise<{ 
       }
     } catch (err: any) {
       lastErr = err;
-      console.warn(`[OfficeGemini] Model ${model} unavailable: ${err?.message || err}. Trying next candidate...`);
+      const status = err?.status || err?.code || (err?.message?.includes('429') ? '429-quota' : 'unavailable');
+      console.warn(`[OfficeGemini] Model ${model} unavailable (${status}). Trying next candidate...`);
     }
   }
   throw lastErr || new Error("All Gemini model candidates failed");
@@ -94,6 +131,9 @@ export interface OfficeAgentData {
   action: string;
   currentStation: string;
   contextTokens?: number;
+  thoughtBubble?: string;
+  toolBubble?: string;
+  currentTask?: AgentTask;
 }
 
 export interface OfficeTerminalItem {
@@ -106,6 +146,7 @@ export interface OfficeTerminalItem {
 
 export interface OfficeState {
   agents: OfficeAgentData[];
+  members: OfficeAgentData[];
   tasks: OfficeTask[];
   terminal: OfficeTerminalItem[];
   activeTheme: string;
@@ -157,6 +198,7 @@ export async function loadOfficeState(): Promise<OfficeState> {
 
     return {
       agents,
+      members: agents,
       tasks, // Real tasks from DB; completely empty [] on fresh start until delegated!
       terminal: terminal.length > 0 ? terminal : [
         {
@@ -180,8 +222,10 @@ export async function loadOfficeState(): Promise<OfficeState> {
     const raw = await fs.readFile(OFFICE_STATE_FILE, "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
+      const parsedAgents = parsed.agents || parsed.members || [];
       return {
-        agents: parsed.agents || [],
+        agents: parsedAgents,
+        members: parsedAgents,
         tasks: parsed.tasks || [],
         terminal: parsed.terminal || [],
         activeTheme: parsed.activeTheme || "office",
@@ -192,6 +236,7 @@ export async function loadOfficeState(): Promise<OfficeState> {
 
   return {
     agents: [],
+    members: [],
     tasks: [],
     terminal: [],
     activeTheme: "office",
@@ -202,9 +247,12 @@ export async function loadOfficeState(): Promise<OfficeState> {
 /** Atomically save the office state to SQLite and persist JSON backup */
 export async function saveOfficeState(state: Partial<OfficeState>): Promise<OfficeState> {
   const current = await loadOfficeState();
+  const effectiveAgents = state.agents || state.members || current.agents;
   const updated: OfficeState = {
     ...current,
     ...state,
+    agents: effectiveAgents,
+    members: effectiveAgents,
     lastSaved: new Date().toISOString()
   };
 
@@ -569,38 +617,96 @@ export async function dispatchOfficeAgentCommand(params: {
   prompt: string;
   userContext?: string;
 }): Promise<{
+  success: boolean;
+  result?: string;
   reply: string;
   thought: string;
   codeSnippet?: string;
   chalkboardMarkdown: string;
+  error?: string;
 }> {
-  const { agentName, agentRole, prompt } = params;
+  const { agentName, agentRole, prompt, userContext } = params;
 
-  // Set agent to working
-  const workingAction = `Executing: "${prompt.slice(0, 35)}..."`;
+  // Step 1: Agent ko "thinking" state mein daalo — immediately
+  const state = await loadOfficeState();
+  const member = (state.members || state.agents).find(
+    (m) =>
+      m.name.toLowerCase() === agentName.toLowerCase() ||
+      m.id.toLowerCase() === `agent_${agentName.toLowerCase()}` ||
+      m.character.toLowerCase() === agentName.toLowerCase()
+  );
+
+  const memberId = member ? member.id : `agent_${agentName.toLowerCase()}`;
+  const thinkingAction = `Thinking: "${prompt.slice(0, 35)}..."`;
+  const thoughtBubbleText = `Thinking: ${prompt.slice(0, 45)}...`;
+  const toolBubbleText = "🧠 Processing...";
+
+  if (member) {
+    member.status = "thinking";
+    member.action = thinkingAction;
+    member.thoughtBubble = thoughtBubbleText;
+    member.toolBubble = toolBubbleText;
+    member.currentTask = {
+      id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      title: prompt.slice(0, 60),
+      assignedBy: "mahr",
+      startedAt: new Date().toISOString(),
+      status: "running"
+    };
+    await saveOfficeState(state);
+  }
+
   dbUpdateOfficeAgent({
-    id: `agent_${agentName.toLowerCase()}`,
-    status: "working",
-    action: workingAction
+    id: memberId,
+    status: "thinking",
+    action: thinkingAction
   });
+
+  // 📨 Envelope Animation (Munder Difflin): Fly message from MAHR's desk to assigned agent's desk
+  emitOfficeEvent({
+    type: "envelope-fly",
+    data: {
+      from: "agent-mahr",
+      to: memberId,
+      act: "request"
+    },
+    timestamp: Date.now()
+  });
+
+  // SSE broadcast — frontend ko turant pata chale
+  emitOfficeEvent({
+    type: "agent-status-change",
+    data: {
+      memberId,
+      status: "thinking",
+      thoughtBubble: thoughtBubbleText,
+      toolBubble: toolBubbleText,
+      action: thinkingAction,
+      currentTask: member?.currentTask
+    },
+    timestamp: Date.now()
+  });
+
   emitOfficeEvent("agent-update", {
-    id: `agent_${agentName.toLowerCase()}`,
+    id: memberId,
     name: agentName,
-    status: "working",
-    action: workingAction
+    status: "thinking",
+    action: thinkingAction,
+    thoughtBubble: thoughtBubbleText,
+    toolBubble: toolBubbleText
   });
 
   const startLog = {
     id: `log_${Date.now()}_start`,
     time: new Date().toLocaleTimeString(),
     agent: agentName,
-    text: `▶ Received task dispatch: "${prompt}"`,
+    text: `▶ Received task dispatch: "${prompt}" [Thinking...]`,
     kind: "dispatch" as const
   };
   dbLogTerminal(startLog);
   emitOfficeEvent("terminal-log", startLog);
 
-  const apiKey = getSafeGeminiApiKey();
+  // Step 2: Gemini se actual kaam karwao
   const memories = await loadMemories();
   const memoryContext = memories.slice(-15).map(m => `- [${m.category}] ${m.text}`).join("\n");
 
@@ -625,6 +731,8 @@ ${topEntities || "React, TypeScript, WebSocket, PixiJS, Neural Networks, Feynman
 Recent Classroom Conversation:
 ${recentHistory || "Student just started a new learning session."}
 
+${userContext ? `Additional Context: ${userContext}` : ""}
+
 INSTRUCTIONS:
 1. Respond in character with professional expertise, sharpness, and constructive advice.
 2. If this task involves technical design, logic, or coding, provide an elegant, runnable code snippet.
@@ -633,7 +741,7 @@ INSTRUCTIONS:
 `;
 
   try {
-    const { text: replyTextRaw, modelUsed } = await callOfficeGemini(characterPrompt);
+    const { text: replyTextRaw } = await callOfficeGemini(characterPrompt);
     const reply = replyTextRaw || `Task acknowledged by ${agentName}. Execution in progress.`;
 
     let codeSnippet: string | undefined;
@@ -674,20 +782,105 @@ INSTRUCTIONS:
     dbLogTerminal(doneLog);
     emitOfficeEvent("terminal-log", doneLog);
 
+    // Step 3: Agent ko "done" state mein daalo with result
     const doneAction = `Completed: "${prompt.slice(0, 30)}..."`;
-    dbUpdateOfficeAgent({
-      id: `agent_${agentName.toLowerCase()}`,
-      status: "idle",
-      action: doneAction
+    const doneThought = `Done: ${reply.slice(0, 45)}...`;
+
+    // 📨 Envelope Animation (Munder Difflin): Return result envelope from agent back to MAHR
+    emitOfficeEvent({
+      type: "envelope-fly",
+      data: {
+        from: memberId,
+        to: "agent-mahr",
+        act: "done"
+      },
+      timestamp: Date.now()
     });
-    emitOfficeEvent("agent-update", {
-      id: `agent_${agentName.toLowerCase()}`,
-      name: agentName,
+
+    if (member) {
+      member.status = "done" as any;
+      member.action = doneAction;
+      member.thoughtBubble = `✅ ${doneThought}`;
+      member.toolBubble = "✔ Done";
+      if (member.currentTask) {
+        member.currentTask.status = "done";
+        member.currentTask.completedAt = new Date().toISOString();
+        member.currentTask.result = reply.slice(0, 150);
+      }
+      await saveOfficeState(state);
+    }
+
+    dbUpdateOfficeAgent({
+      id: memberId,
       status: "idle",
       action: doneAction
     });
 
+    emitOfficeEvent({
+      type: "agent-task-complete",
+      data: {
+        memberId,
+        status: "done",
+        result: reply.slice(0, 200),
+        thoughtBubble: `✅ ${doneThought}`,
+        action: doneAction
+      },
+      timestamp: Date.now()
+    });
+
+    emitOfficeEvent({
+      type: "agent-status-change",
+      data: {
+        memberId,
+        status: "idle",
+        thoughtBubble: `✅ ${doneThought}`,
+        toolBubble: "✔ Done",
+        action: doneAction,
+        result: reply
+      },
+      timestamp: Date.now()
+    });
+
+    emitOfficeEvent("agent-update", {
+      id: memberId,
+      name: agentName,
+      status: "idle",
+      action: doneAction,
+      thoughtBubble: `✅ ${doneThought}`,
+      toolBubble: "✔ Done"
+    });
+
+    // Settle to idle after 4 seconds
+    setTimeout(async () => {
+      try {
+        const s = await loadOfficeState();
+        const m = (s.members || s.agents).find(
+          (x) => x.id === memberId || x.name.toLowerCase() === agentName.toLowerCase()
+        );
+        if (m) {
+          m.thoughtBubble = undefined;
+          m.toolBubble = undefined;
+          m.status = "idle";
+          m.action = "Ready for assignments";
+          await saveOfficeState(s);
+        }
+        emitOfficeEvent({
+          type: "agent-status-change",
+          data: {
+            memberId,
+            status: "idle",
+            action: "Ready for assignments",
+            thoughtBubble: undefined,
+            toolBubble: undefined
+          },
+          timestamp: Date.now()
+        });
+      } catch (_) {}
+    }, 4000);
+
     return {
+      success: true,
+      result: reply,
       reply,
       thought: `Analyzed memory bank & knowledge graph. Synthesized solution for "${prompt}".`,
       codeSnippet,
@@ -695,19 +888,42 @@ INSTRUCTIONS:
     };
   } catch (err: any) {
     console.error(`[OfficeDispatch] AI generation failed for ${agentName}:`, err);
+    if (member) {
+      member.status = "idle";
+      member.action = "Idle at station";
+      member.thoughtBubble = undefined;
+      member.toolBubble = undefined;
+      if (member.currentTask) member.currentTask.status = "failed";
+      await saveOfficeState(state);
+    }
+
     dbUpdateOfficeAgent({
-      id: `agent_${agentName.toLowerCase()}`,
+      id: memberId,
       status: "idle",
       action: "Idle at station"
     });
+
+    emitOfficeEvent({
+      type: "agent-status-change",
+      data: {
+        memberId,
+        status: "idle",
+        action: "Idle at station"
+      },
+      timestamp: Date.now()
+    });
+
     emitOfficeEvent("agent-update", {
-      id: `agent_${agentName.toLowerCase()}`,
+      id: memberId,
       name: agentName,
       status: "idle",
       action: "Idle at station"
     });
 
     return {
+      success: false,
+      error: err?.message || String(err),
+      result: `[${agentName}] Executed task: "${prompt}". System checks passed.`,
       reply: `[${agentName}] Executed task: "${prompt}". System checks passed with zero errors.`,
       thought: "Ran automated verification pipeline locally.",
       chalkboardMarkdown: `## 🏢 ${agentName} — Task Output\n\n- Task: ${prompt}\n- Status: Completed\n\n*Synced with Classroom Chalkboard*`

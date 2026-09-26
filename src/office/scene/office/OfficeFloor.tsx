@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Application, Container, Graphics, Ticker, Texture } from 'pixi.js';
 // PixiJS uses new Function() internally, blocked by Electron CSP — this patches it.
 import 'pixi.js/unsafe-eval';
-import { useStore, type Agent } from '@/store/store';
+import { useStore, type Agent } from '@office/store/store';
 import { TiledMapRenderer } from './TiledMapRenderer';
 import { Camera } from './Camera';
 import { Character, paintCup } from './Character';
@@ -11,7 +11,7 @@ import { DeskScreen } from './DeskScreen';
 import { MessageEnvelope, type MessageAct } from './MessageEnvelope';
 import { hexToNumber, DEFAULT_CHARACTER } from './cast';
 import { pickSoloLine, pickExchange, type BreakSpot } from './cafeteriaLines';
-import { colors } from '@/design/tokens';
+import { colors } from '@office/design/tokens';
 import { loadTheme, resolveThemeMap, themeTilesetUrls } from './themeLoader';
 import {
   installContextLossRecovery, planInitFailure, DEFAULT_MAX_INIT_RETRIES
@@ -65,6 +65,8 @@ interface Runtime {
   prevAction?: string;
   prevCarrying?: string;
   prevPrompt?: string;
+  prevThoughtBubble?: string;
+  prevToolBubble?: string;
   brk?: CafeBreak;
   /** This desk's monitor overlay — lit while its agent is seated. */
   screen?: DeskScreen;
@@ -149,6 +151,7 @@ function loadTexture(url: string): Promise<Texture> {
  *  gave it, then to a caller-supplied generic. Returns '' for the working state
  *  with nothing concrete yet — the bubble renders an animated "…" for that. */
 function liveActivity(agent: Agent, fallback = ''): string {
+  if (agent.thoughtBubble && agent.thoughtBubble.trim()) return agent.thoughtBubble.trim();
   const action = (agent.action || '').trim();
   if (action) return action;
   return firstWords(agent.lastPrompt) || fallback;
@@ -1455,7 +1458,9 @@ export function OfficeFloor() {
           || rt.prevStatus !== agent.status
           || rt.prevAction !== agent.action
           || rt.prevCarrying !== agent.carrying
-          || rt.prevPrompt !== agent.lastPrompt;
+          || rt.prevPrompt !== agent.lastPrompt
+          || rt.prevThoughtBubble !== agent.thoughtBubble
+          || rt.prevToolBubble !== agent.toolBubble;
         if (!changed) return;
         // Finishing real work (working/thinking/compacting → done) earns a
         // little celebration before the avatar goes back to roaming — but only
@@ -1473,6 +1478,8 @@ export function OfficeFloor() {
         rt.prevAction = agent.action;
         rt.prevCarrying = agent.carrying;
         rt.prevPrompt = agent.lastPrompt;
+        rt.prevThoughtBubble = agent.thoughtBubble;
+        rt.prevToolBubble = agent.toolBubble;
 
         const c = rt.character;
         c.setBaseAlpha(agent.status === 'ghost' ? 0.5 : 1);
@@ -1515,7 +1522,7 @@ export function OfficeFloor() {
           case 'thinking':
             c.setStatusGlyph('none');
             c.sitAtDesk(true);
-            c.showThought(liveActivity(agent), agent.carrying);
+            c.showThought(liveActivity(agent), agent.toolBubble || agent.carrying);
             break;
           case 'waiting':
             // Parked at the desk awaiting god / another agent — not actively
@@ -1612,8 +1619,24 @@ export function OfficeFloor() {
       const ts = mapRenderer.tileSize;
       const humanPos = { x: entrance.x * ts + ts / 2, y: entrance.y * ts + ts };
       const posFor = (id: string): { x: number; y: number } | null => {
+        if (!id) return null;
         if (id === 'human') return humanPos;
-        const rt = runtimes.get(id);
+        let rt = runtimes.get(id);
+        if (!rt) {
+          const norm = id.toLowerCase().replace(/^(agent[-_]?)/, '');
+          for (const [rid, r] of runtimes.entries()) {
+            const rNorm = rid.toLowerCase().replace(/^(agent[-_]?)/, '');
+            if (
+              rNorm === norm ||
+              r.charName?.toLowerCase() === norm ||
+              (norm === 'mahr' && r.charName?.toLowerCase() === 'michael') ||
+              (norm === 'michael' && rNorm === 'mahr')
+            ) {
+              rt = r;
+              break;
+            }
+          }
+        }
         return rt ? rt.character.getPixelPosition() : null;
       };
       const spawnHandoff = (fromId: string, toId: string, act: MessageAct, needsHuman: boolean) => {

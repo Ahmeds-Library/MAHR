@@ -54,6 +54,7 @@
     "dist",
     "dist_electron",
     "scripts",
+    "src/office/generated",
     "**/*.tmp"
   ]
 }

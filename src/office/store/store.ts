@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import type { AccentColorName } from '@/design/tokens';
-import type { OfficeCharacterName } from '@/scene/office/cast';
-import type { ThemeId } from '@/scene/office/themeRegistry';
-import type { StatusKind } from '@/components/PixelBadge';
+import type { AccentColorName } from '@office/design/tokens';
+import type { OfficeCharacterName } from '@office/scene/office/cast';
+import type { ThemeId } from '@office/scene/office/themeRegistry';
+import type { StatusKind } from '@office/components/PixelBadge';
 import type { AgentProvider } from '@shared/agentProvider';
 import type { HireManifest } from '@shared/hire';
 import {
@@ -56,6 +56,9 @@ export interface Agent {
   note?: string;
   status: StatusKind;
   action: string;
+  thoughtBubble?: string;
+  toolBubble?: string;
+  currentTask?: any;
   progress: number;
   currentStation?: StationKind;
   carrying?: ToolKind;

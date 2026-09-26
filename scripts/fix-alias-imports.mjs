@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * scripts/fix-alias-imports.mjs
- * Migrates internal office imports from `@/` to `@office/`
+ * Migrates internal office imports from `@/` to `@office/`,
+ * and optionally updates relative imports across `src/` to use
+ * `@components/`, `@hooks/`, `@lib/`, `@office/`, etc.
  */
 
 import fs from 'fs';
@@ -11,6 +13,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
+const SRC_DIR = path.join(ROOT, 'src');
 const OFFICE_DIR = path.join(ROOT, 'src', 'office');
 
 function* walkDir(dir) {
@@ -31,36 +34,74 @@ function* walkDir(dir) {
 }
 
 async function fixAliasImports() {
-  console.log('Scanning src/office/ for @/ imports...');
+  console.log('🚀 Running Alias Migration across src/ ...');
   let fixedCount = 0;
   let totalReplacements = 0;
 
+  // 1. First ensure all files in src/office/ have @/ migrated to @office/
   for (const file of walkDir(OFFICE_DIR)) {
     const content = fs.readFileSync(file, 'utf-8');
-    let replacedCountInFile = 0;
+    let replacedInFile = 0;
 
-    // Replace static imports: from '@/...' -> from '@office/...'
     let updated = content.replace(/from\s+(['"])@\/([^'"]+)(['"])/g, (match, q1, p1, q2) => {
-      replacedCountInFile++;
+      replacedInFile++;
       return `from ${q1}@office/${p1}${q2}`;
     });
 
-    // Replace dynamic imports: import('@/...') -> import('@office/...')
     updated = updated.replace(/import\(\s*(['"])@\/([^'"]+)(['"])\s*\)/g, (match, q1, p1, q2) => {
-      replacedCountInFile++;
+      replacedInFile++;
       return `import(${q1}@office/${p1}${q2})`;
     });
 
     if (updated !== content) {
       fs.writeFileSync(file, updated, 'utf-8');
       const rel = path.relative(ROOT, file);
-      console.log(`✅ Fixed (${replacedCountInFile} imports): ${rel}`);
+      console.log(`✅ [Office Internal] Fixed ${replacedInFile} imports in: ${rel}`);
       fixedCount++;
-      totalReplacements += replacedCountInFile;
+      totalReplacements += replacedInFile;
     }
   }
 
-  console.log(`\n🎉 Done! Fixed ${fixedCount} files (${totalReplacements} import statements migrated to @office/).`);
+  // 2. In src/App.tsx and top-level src/ files, migrate relative paths to aliases
+  for (const file of walkDir(SRC_DIR)) {
+    // Only target files directly in src/ (like App.tsx) to avoid unintended relative submodule breaks
+    if (path.dirname(file) !== SRC_DIR) continue;
+
+    const content = fs.readFileSync(file, 'utf-8');
+    let replacedInFile = 0;
+
+    let updated = content
+      .replace(/from\s+(['"])\.\/components\/([^'"]+)(['"])/g, (m, q1, p, q2) => {
+        replacedInFile++;
+        return `from ${q1}@components/${p}${q2}`;
+      })
+      .replace(/from\s+(['"])\.\/hooks\/([^'"]+)(['"])/g, (m, q1, p, q2) => {
+        replacedInFile++;
+        return `from ${q1}@hooks/${p}${q2}`;
+      })
+      .replace(/from\s+(['"])\.\/lib\/([^'"]+)(['"])/g, (m, q1, p, q2) => {
+        replacedInFile++;
+        return `from ${q1}@lib/${p}${q2}`;
+      })
+      .replace(/from\s+(['"])\.\/office\/([^'"]+)(['"])/g, (m, q1, p, q2) => {
+        replacedInFile++;
+        return `from ${q1}@office/${p}${q2}`;
+      })
+      .replace(/from\s+(['"])\.\/services\/([^'"]+)(['"])/g, (m, q1, p, q2) => {
+        replacedInFile++;
+        return `from ${q1}@/services/${p}${q2}`;
+      });
+
+    if (updated !== content) {
+      fs.writeFileSync(file, updated, 'utf-8');
+      const rel = path.relative(ROOT, file);
+      console.log(`✅ [Top-Level Src] Fixed ${replacedInFile} imports in: ${rel}`);
+      fixedCount++;
+      totalReplacements += replacedInFile;
+    }
+  }
+
+  console.log(`\n🎉 Alias Migration Completed! Total files updated: ${fixedCount}, replacements: ${totalReplacements}`);
 }
 
 fixAliasImports().catch((err) => {
