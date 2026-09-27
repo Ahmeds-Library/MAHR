@@ -4,11 +4,11 @@
 
 | Field | Value |
 |---|---|
-| **Generated At** | `2026-09-26T18:42:48.210Z` |
-| **Git Branch** | `unknown` |
-| **Commit Hash** | `unknown` |
-| **Last Commit** | N/A |
-| **Author** | N/A |
+| **Generated At** | `2026-09-27T08:11:04.236Z` |
+| **Git Branch** | `main` |
+| **Commit Hash** | `9cae612` |
+| **Last Commit** | Office fix |
+| **Author** | Ahmeds-Library |
 | **Root** | `/MAHR` |
 
 ---
@@ -286,6 +286,9 @@ MAHR/
 │   ├── office/
 │   │   ├── MAHROfficeFloorView.tsx
 │   │   ├── MAHROfficeModal.tsx
+│   │   ├── agents/
+│   │   │   ├── AgentWorker.ts
+│   │   │   └── MAHROrchestrator.ts
 │   │   ├── assets/
 │   │   │   ├── maps/
 │   │   │   │   ├── brooklyn99.tmj
@@ -387,13 +390,12 @@ MAHR/
 │   │   │   ├── holdOption.ts
 │   │   │   └── recorder.ts
 │   │   ├── generated/
-│   │   │   ├── dwight_solution.ts
 │   │   │   ├── jim_solution.ts
-│   │   │   ├── pam_solution.ts
-│   │   │   └── ryan_solution.ts
+│   │   │   └── pam_solution.ts
 │   │   ├── hooks/
 │   │   │   ├── queueDelivery.ts
 │   │   │   ├── useHive.ts
+│   │   │   ├── useOfficeStream.ts
 │   │   │   ├── usePtyParser.ts
 │   │   │   ├── useResolvedGodName.ts
 │   │   │   ├── useRestoreTeam.ts
@@ -438,6 +440,7 @@ MAHR/
 │   │   │       ├── Character.ts
 │   │   │       ├── CharacterSprite.ts
 │   │   │       ├── DeskScreen.ts
+│   │   │       ├── EnvelopeAnimation.ts
 │   │   │       ├── MessageEnvelope.ts
 │   │   │       ├── OfficeFloor.tsx
 │   │   │       ├── SeatPool.ts
@@ -575,20 +578,20 @@ MAHR/
 ### Totals
 | Metric | Value |
 |---|---|
-| **Total Code Files** | 395 |
-| **Total Lines of Code** | 122,298 |
-| **Total Code Size** | 5.02 MB |
+| **Total Code Files** | 397 |
+| **Total Lines of Code** | 127,256 |
+| **Total Code Size** | 5.17 MB |
 | **public/ Asset Size** | 23.59 MB |
 | **assets/ Size** | 4.48 MB |
 
 ### By Extension
 | Extension | Files | LOC | Size |
 |---|---|---|---|
-| `.tsx` | 164 | 62,608 | 2.61 MB |
-| `.ts` | 188 | 47,172 | 1.90 MB |
-| `.json` | 17 | 5,703 | 287.19 KB |
+| `.tsx` | 164 | 62,662 | 2.61 MB |
+| `.ts` | 190 | 47,898 | 1.92 MB |
+| `.json` | 17 | 9,874 | 410.24 KB |
 | `.cjs` | 7 | 2,126 | 76.84 KB |
-| `.md` | 4 | 1,517 | 64.30 KB |
+| `.md` | 4 | 1,524 | 64.61 KB |
 | `.go` | 9 | 1,355 | 36.07 KB |
 | `.mjs` | 2 | 992 | 37.58 KB |
 | `.js` | 2 | 443 | 15.66 KB |
@@ -597,36 +600,36 @@ MAHR/
 ### By Directory
 | Directory | Files | LOC | Size |
 |---|---|---|---|
-| `src/` | 350 | 104,775 | 4.38 MB |
-| `server.ts/` | 1 | 5,460 | 239.43 KB |
+| `src/` | 352 | 105,454 | 4.40 MB |
+| `server.ts/` | 1 | 5,468 | 239.64 KB |
+| `vector_knowledge_graph.json/` | 1 | 4,235 | 123.08 KB |
 | `scripts/` | 7 | 2,471 | 94.09 KB |
 | `server-golang/` | 10 | 1,440 | 39.59 KB |
 | `server_memory.ts/` | 1 | 1,439 | 51.17 KB |
-| `project-blueprint.md/` | 1 | 1,321 | 53.95 KB |
+| `project-blueprint.md/` | 1 | 1,328 | 54.25 KB |
+| `server_office.ts/` | 1 | 1,097 | 34.45 KB |
 | `server_db.ts/` | 1 | 1,073 | 44.75 KB |
-| `server_office.ts/` | 1 | 1,005 | 31.64 KB |
 | `electron/` | 2 | 647 | 20.33 KB |
-| `office_state.json/` | 1 | 526 | 17.99 KB |
+| `office_state.json/` | 1 | 576 | 19.64 KB |
 | `engine.py/` | 1 | 371 | 12.28 KB |
 | `local-agent.js/` | 1 | 334 | 12.70 KB |
 | `server_tokens.ts/` | 1 | 263 | 8.04 KB |
-| `daily_tasks.json/` | 1 | 186 | 6.10 KB |
-| `vector_knowledge_graph.json/` | 1 | 184 | 4.63 KB |
-| `memories.json/` | 1 | 158 | 5.76 KB |
+| `memories.json/` | 1 | 236 | 8.48 KB |
+| `daily_tasks.json/` | 1 | 154 | 4.94 KB |
 | `server_vault.ts/` | 1 | 125 | 4.17 KB |
 | `public/` | 1 | 109 | 2.96 KB |
 | `package.json/` | 1 | 68 | 2.29 KB |
 | `tsconfig.json/` | 1 | 61 | 1.10 KB |
-| `vite.config.ts/` | 1 | 59 | 2.05 KB |
+| `vite.config.ts/` | 1 | 60 | 2.09 KB |
 | `tsconfig.minimal.json/` | 1 | 58 | 1.04 KB |
-| `knowledge_graph.json/` | 1 | 42 | 1.62 KB |
+| `knowledge_graph.json/` | 1 | 42 | 1.61 KB |
+| `server_chat_history.json/` | 1 | 38 | 1.75 KB |
 | `AGENTS.md/` | 1 | 36 | 2.72 KB |
 | `electron-builder.json/` | 1 | 28 | 418.00 B |
-| `deleted_memories.json/` | 1 | 18 | 270.00 B |
+| `deleted_memories.json/` | 1 | 12 | 156.00 B |
 | `app.py/` | 1 | 11 | 287.00 B |
 | `firebase-applet-config.json/` | 1 | 11 | 466.00 B |
 | `metadata.json/` | 1 | 11 | 413.00 B |
-| `server_chat_history.json/` | 1 | 8 | 253.00 B |
 
 
 ---
@@ -703,14 +706,28 @@ MAHR/
 ### Git Hotspots — Last 30 Days (Top 15 Most-Changed Files)
 | File | Changes |
 |---|---|
-| (No git history yet or fresh clone) | — |
+| `memories.json` | 5 |
+| `server_chat_history.json` | 5 |
+| `vite.config.ts` | 5 |
+| `server.ts` | 5 |
+| `tsconfig.json` | 5 |
+| `mahr_brain.db-wal` | 4 |
+| `package-lock.json` | 4 |
+| `server_office.ts` | 4 |
+| `src/App.tsx` | 4 |
+| `src/components/settings/SettingsModal.tsx` | 4 |
+| `knowledge_graph.json` | 3 |
+| `mahr_brain.db` | 3 |
+| `mahr_brain.db-shm` | 3 |
+| `office_state.json` | 3 |
+| `src/office/MAHROfficeFloorView.tsx` | 3 |
 
 
 ### TODO / FIXME Tracker
 | Type | File | Line | Description |
 |---|---|---|---|
 | `TODO` | `scripts/generate-blueprint.mjs` | L415 | / FIXME Tracker |
-| `TODO` | `src/office/MAHROfficeFloorView.tsx` | L1072 | (${tasks.filter(t => t.col === 'todo').length})\n` + |
+| `TODO` | `src/office/MAHROfficeFloorView.tsx` | L1105 | (${tasks.filter(t => t.col === 'todo').length})\n` + |
 | `TODO` | `src/office/shared/agentProvider.ts` | L235 | // Codex's long-context coding model for the orchestrator role. // TODO-verify |
 | `TODO` | `src/office/shared/agentProvider.ts` | L332 | // gemini-cli heritage: --yolo auto-approves all actions. // TODO-verify |
 | `TODO` | `src/office/shared/agentProvider.ts` | L342 | // gemini-cli style interactive-orient flag. // TODO-verify |
@@ -874,12 +891,12 @@ Tables detected in `server_db.ts`:
 ### JSON State Files (Runtime Persistence)
 | File | Purpose | Size |
 |---|---|---|
-| `memories.json` | Persistent memory entries | 5.76 KB |
-| `daily_tasks.json` | Daily task list | 6.10 KB |
-| `knowledge_graph.json` | Knowledge graph nodes/edges | 1.62 KB |
-| `office_state.json` | MAHR Office session state | 17.99 KB |
+| `memories.json` | Persistent memory entries | 8.48 KB |
+| `daily_tasks.json` | Daily task list | 4.94 KB |
+| `knowledge_graph.json` | Knowledge graph nodes/edges | 1.61 KB |
+| `office_state.json` | MAHR Office session state | 19.64 KB |
 | `token_telemetry.json` | Token usage telemetry | 1.15 KB |
-| `server_chat_history.json` | Chat session history | 253.00 B |
+| `server_chat_history.json` | Chat session history | 1.75 KB |
 
 
 ### Go Vector Store
@@ -989,12 +1006,14 @@ and persisted via `/api/vector-memory/ingest-artifacts`.
 | ... | +68 more | ... |
 
 
-### Office Module Files (177 files)
+### Office Module Files (179 files)
 <details>
 <summary>src/office/ file list</summary>
 
 - `src/office/MAHROfficeFloorView.tsx`
 - `src/office/MAHROfficeModal.tsx`
+- `src/office/agents/AgentWorker.ts`
+- `src/office/agents/MAHROrchestrator.ts`
 - `src/office/bridge/officeBridge.ts`
 - `src/office/components/AddAgentModal.tsx`
 - `src/office/components/AgentCard.tsx`
@@ -1076,12 +1095,11 @@ and persisted via `/api/vector-memory/ingest-artifacts`.
 - `src/office/env.d.ts`
 - `src/office/freeflow/holdOption.ts`
 - `src/office/freeflow/recorder.ts`
-- `src/office/generated/dwight_solution.ts`
 - `src/office/generated/jim_solution.ts`
 - `src/office/generated/pam_solution.ts`
-- `src/office/generated/ryan_solution.ts`
 - `src/office/hooks/queueDelivery.ts`
 - `src/office/hooks/useHive.ts`
+- `src/office/hooks/useOfficeStream.ts`
 - `src/office/hooks/usePtyParser.ts`
 - `src/office/hooks/useResolvedGodName.ts`
 - `src/office/hooks/useRestoreTeam.ts`
@@ -1114,6 +1132,7 @@ and persisted via `/api/vector-memory/ingest-artifacts`.
 - `src/office/scene/office/Character.ts`
 - `src/office/scene/office/CharacterSprite.ts`
 - `src/office/scene/office/DeskScreen.ts`
+- `src/office/scene/office/EnvelopeAnimation.ts`
 - `src/office/scene/office/MessageEnvelope.ts`
 - `src/office/scene/office/OfficeFloor.tsx`
 - `src/office/scene/office/SeatPool.ts`
@@ -1324,4 +1343,4 @@ jobs:
 
 ---
 ---
-*Blueprint generated by `scripts/generate-blueprint.mjs` — 2026-09-26T18:42:48.443Z*
+*Blueprint generated by `scripts/generate-blueprint.mjs` — 2026-09-27T08:11:04.430Z*
