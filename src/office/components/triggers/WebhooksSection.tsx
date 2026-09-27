@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PixelButton } from '../PixelButton';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import { TRIGGER_MODES, type TriggerMode, type WebhookTrigger } from '@shared/triggers';
 import {
   deleteWebhook, generateWebhookSecret, listWebhooks, newWebhook, saveWebhooks,

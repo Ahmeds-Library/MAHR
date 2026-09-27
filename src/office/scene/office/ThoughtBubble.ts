@@ -1,5 +1,5 @@
 import { Container, Graphics, Text } from 'pixi.js';
-import { colors } from '@/design/tokens';
+import { colors } from '@office/design/tokens';
 import { toolIcon } from './ToolBubble';
 
 // A comic "thought cloud" pinned above an avatar's head showing what it's doing

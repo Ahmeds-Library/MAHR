@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { PixelButton } from '../PixelButton';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import {
   Chip, Field, Hint, MiniButton, Muted, Select, SchedulePicker, SubCard, SubHeader,
   Toggle, fmtInterval, inputStyle, textareaStyle, weeklyDraft, weeklyIsUsable,
   type WeeklyDraft
 } from './ui';
 import { formatWeekly, nextWeeklyFireMs } from '@shared/weeklySchedule';
-import { useRtl } from '@/i18n/useDirection';
+import { useRtl } from '@office/i18n/useDirection';
 
 /**
  * SCHEDULES — recurring auto-dispatched missions. The oldest trigger type, and

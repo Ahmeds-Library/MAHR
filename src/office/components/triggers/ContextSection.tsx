@@ -6,7 +6,7 @@ import {
   Callout, Field, Hint, IntervalPicker, Muted, PctField, SubCard, SubHeader, Toggle,
   fmtInterval, textareaStyle
 } from './ui';
-import { useRtl } from '@/i18n/useDirection';
+import { useRtl } from '@office/i18n/useDirection';
 
 /**
  * CONTEXT — the trigger that fires on an agent's own terminal filling up rather

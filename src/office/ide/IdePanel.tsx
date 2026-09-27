@@ -1,12 +1,12 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useStore, type Agent } from '@/store/store';
+import { useStore, type Agent } from '@office/store/store';
 import { FileTree } from '@/components/FileTree';
 import { Icon } from '@/components/Icon';
 import { MonacoEditor } from './MonacoEditor';
 import { MonacoDiff } from './MonacoDiff';
 import { ImagePreview } from './ImagePreview';
-import { MarkdownPreview } from '@/markdown/MarkdownPreview';
+import { MarkdownPreview } from '@office/markdown/MarkdownPreview';
 import { HistoryPane, ComparePane } from './GitPanes';
 import { isImagePath, isSvgPath } from '@shared/imageTypes';
 import { ideBarStyle, ideIconBtn as iconBtn, ideTextBtn as textBtn } from './chrome';

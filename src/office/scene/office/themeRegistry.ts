@@ -13,7 +13,7 @@
 // (uncommitted human WIP) — the office theme references its existing exports.
 
 import type { Texture } from 'pixi.js';
-import { colors } from '@/design/tokens';
+import { colors } from '@office/design/tokens';
 import {
   CAST_BY_NAME,
   getCastFrames,
@@ -22,12 +22,12 @@ import {
   type OfficeCharacterName,
 } from './cast';
 
-import officeTilesetUrl from '@/assets/tilesets/office-tileset.png?url';
-import a5FloorsWallsUrl from '@/assets/tilesets/a5-office-floors-walls.png?url';
-import interiorsUrl from '@/assets/tilesets/interiors.png?url';
+import officeTilesetUrl from '@office/assets/tilesets/office-tileset.png?url';
+import a5FloorsWallsUrl from '@office/assets/tilesets/a5-office-floors-walls.png?url';
+import interiorsUrl from '@office/assets/tilesets/interiors.png?url';
 // .tmj is Tiled JSON; imported as raw text and parsed by the loader.
-import officeMapRaw from '@/assets/maps/office.tmj?raw';
-import brooklyn99MapRaw from '@/assets/maps/brooklyn99.tmj?raw';
+import officeMapRaw from '@office/assets/maps/office.tmj?raw';
+import brooklyn99MapRaw from '@office/assets/maps/brooklyn99.tmj?raw';
 
 /** Theme identifiers. Only `office` exists in Phase 0; the five TV-show themes
  *  (friends, brooklyn99, siliconvalley, got, hogwarts) land in later phases. */

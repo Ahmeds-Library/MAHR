@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { useStore, type Agent } from '@/store/store';
-import { buildSpawnCommand, inferAgentProvider, tokenizeCommand, type HarnessConfig } from '@/store/config';
+import { useStore, type Agent } from '@office/store/store';
+import { buildSpawnCommand, inferAgentProvider, tokenizeCommand, type HarnessConfig } from '@office/store/config';
 import { roleForHiveSpawn } from '@shared/agentRole';
 
 /** "Restore team" — respawn every worker from the previous session.

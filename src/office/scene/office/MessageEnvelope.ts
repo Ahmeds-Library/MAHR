@@ -1,5 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
-import { colors } from '@/design/tokens';
+import { colors } from '@office/design/tokens';
 
 /** Hive speech-acts (mirrors HiveMessage['act'] in the main process). */
 export type MessageAct = 'request' | 'inform' | 'propose' | 'query' | 'agree' | 'refuse' | 'done';

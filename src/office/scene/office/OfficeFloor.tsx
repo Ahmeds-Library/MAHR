@@ -1551,6 +1551,11 @@ export function OfficeFloor() {
             c.sitAtDesk(false);
             c.showThought(liveActivity(agent, t('office.activity.looping')));
             break;
+          case 'done':
+            c.setStatusGlyph('success');
+            c.sitAtDesk(false);
+            c.showThought(liveActivity(agent), agent.toolBubble || '✅ Done');
+            break;
           case 'success':
             c.setStatusGlyph('success');
             if (agent.isGod) { c.hideThought(); c.sitAtDesk(true); break; }
@@ -1578,7 +1583,7 @@ export function OfficeFloor() {
               c.cheer();
               c.showThought(t(CHEER_KEYS[Math.floor(Math.random() * CHEER_KEYS.length)]));
             }
-            else { c.startWandering(); c.showThought(liveActivity(agent, t('office.activity.idle'))); }
+            else { c.startWandering(); if (agent.thoughtBubble) { c.showThought(liveActivity(agent)); } else { c.hideThought(); } }
             break;
         }
       };

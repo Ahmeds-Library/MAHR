@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import { setGodName } from './index';
 
 /**

@@ -43,6 +43,7 @@ export default defineConfig(() => {
           '**/server_chat_history*.json',
           '**/deleted_memories*.json',
           '**/memories*.json',
+          '*/office/generated/**',
           '**/daily_tasks*.json',
           '**/knowledge_graph*.json',
           '**/vector_knowledge_graph*.json',

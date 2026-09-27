@@ -18,7 +18,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 
 /** Mirrors the `window.cth.onRealtimeCompletion` payload (preload). `summary` is the
  *  human-speakable line Michael relays; the rest is context for this toast. */

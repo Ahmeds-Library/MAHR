@@ -399,8 +399,8 @@ export function MAHROfficeFloorView({
               if (target) {
                 updateAgent(target.id, {
                   status: change.status || 'idle',
-                  action: change.action || change.thoughtBubble || target.action,
-                  thoughtBubble: change.thoughtBubble,
+                  action: change.action || target.action,
+                  thoughtBubble: change.thoughtBubble ?? target.thoughtBubble,
                   toolBubble: change.toolBubble,
                   currentTask: change.currentTask,
                   recentTextTs: Date.now()

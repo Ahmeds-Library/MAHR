@@ -552,9 +552,9 @@ Output ONLY a valid JSON array matching this schema:
         });
         newTasks.push(task);
 
-        // Update assigned agent's action
+        // Update assigned agent's action (use dash format: agent-jim not agent_jim)
         dbUpdateOfficeAgent({
-          id: `agent_${task.assignee.toLowerCase()}`,
+          id: `agent-${task.assignee.toLowerCase()}`,
           status: "thinking",
           action: `Assigned: ${task.title}`
         });
@@ -629,14 +629,19 @@ export async function dispatchOfficeAgentCommand(params: {
 
   // Step 1: Agent ko "thinking" state mein daalo — immediately
   const state = await loadOfficeState();
+  const agentNameLower = agentName.toLowerCase();
   const member = (state.members || state.agents).find(
     (m) =>
-      m.name.toLowerCase() === agentName.toLowerCase() ||
-      m.id.toLowerCase() === `agent_${agentName.toLowerCase()}` ||
-      m.character.toLowerCase() === agentName.toLowerCase()
+      m.name.toLowerCase() === agentNameLower ||
+      m.id.toLowerCase() === `agent-${agentNameLower}` ||
+      // backward-compat: some older DB rows may still have underscore format
+      m.id.toLowerCase() === `agent_${agentNameLower}` ||
+      m.character.toLowerCase() === agentNameLower
   );
 
-  const memberId = member ? member.id : `agent_${agentName.toLowerCase()}`;
+  // Always use dash-separated format: agent-jim NOT agent_jim
+  // (store IDs and OfficeFloor runtimes both use agent-<name> with dash)
+  const memberId = member ? member.id : `agent-${agentNameLower}`;
   const thinkingAction = `Thinking: "${prompt.slice(0, 35)}..."`;
   const thoughtBubbleText = `Thinking: ${prompt.slice(0, 45)}...`;
   const toolBubbleText = "🧠 Processing...";
@@ -850,7 +855,7 @@ INSTRUCTIONS:
       toolBubble: "✔ Done"
     });
 
-    // Settle to idle after 4 seconds
+    // Settle to idle after 10 seconds (gives 'done' bubble enough time to show)
     setTimeout(async () => {
       try {
         const s = await loadOfficeState();
@@ -876,7 +881,7 @@ INSTRUCTIONS:
           timestamp: Date.now()
         });
       } catch (_) {}
-    }, 4000);
+    }, 10000);
 
     return {
       success: true,

@@ -18,7 +18,7 @@
  * Exposed as a module singleton + a `useFreeflow()` hook (useSyncExternalStore).
  */
 import { useSyncExternalStore } from 'react';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 
 export type FreeflowStatus = 'idle' | 'recording' | 'transcribing';
 

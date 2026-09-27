@@ -1,4 +1,4 @@
-import i18n, { isRtlLanguage } from '@/i18n';
+import i18n, { isRtlLanguage } from '@office/i18n';
 
 /**
  * The renderer switch for RTL-script terminal support: ON keeps xterm on its

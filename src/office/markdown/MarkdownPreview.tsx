@@ -20,7 +20,7 @@ import { useWorkspaceImage } from '@/hooks/useWorkspaceImage';
 import { isExternal, isRelativeMd, resolveLocalImageRel, resolveRel } from './mdLinks';
 import { remarkSoftBreaks } from './remarkSoftBreaks';
 import { rehypeAutoDir } from './rehypeAutoDir';
-import { useRtl } from '@/i18n/useDirection';
+import { useRtl } from '@office/i18n/useDirection';
 
 /** How the rendered markdown sits in its host.
  *  - `document` (default): a page — its own type scale, 72ch measure, page padding.

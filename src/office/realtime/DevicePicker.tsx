@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRealtimeMichael } from './session';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 
 interface AudioDevice {
   deviceId: string;

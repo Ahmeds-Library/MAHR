@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { PixelButton } from '../PixelButton';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import type { TriggerHistoryEntry } from '@shared/triggers';
-import { useRtl } from '@/i18n/useDirection';
+import { useRtl } from '@office/i18n/useDirection';
 
 /**
  * TRIGGER HISTORY — the ledger of everything an outside party said to this hive

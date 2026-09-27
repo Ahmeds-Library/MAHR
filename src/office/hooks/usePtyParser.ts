@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { useStore, type ToolKind, type StationKind } from '@/store/store';
+import { useStore, type ToolKind, type StationKind } from '@office/store/store';
 import { createAnsiStripper } from '@/components/ansiText';
 
 // Tool call lines look like: `● Read SPEC.md`, `● Bash npm test`, `● Edit src/foo.ts`

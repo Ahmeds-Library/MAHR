@@ -25,7 +25,7 @@
  * recording.
  */
 import { useEffect } from 'react';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import { freeflowRecorder } from './recorder';
 
 /** How long Option must be held ALONE before recording arms. Long enough that a

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useStore } from '@/store/store';
+import { useStore } from '@office/store/store';
 import { CLONE_NODE_BLURB, type OrgTriggerConfig, type TriggerMode } from '@shared/triggers';
 import { getOrgTrigger, setOrgTrigger as persistOrgTrigger } from './api';
 import { Callout, Field, Hint, ModePicker, SecretField, Toggle } from './ui';
