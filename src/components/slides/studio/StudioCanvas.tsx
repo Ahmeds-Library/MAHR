@@ -10,10 +10,19 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Quote,
-  Sparkles
+  Sparkles,
+  TrendingUp,
+  Layers
 } from "lucide-react";
 import { Slide, SlideDeck, SlideTheme } from "../../../services/slides/slideTypes";
 import { StudioInspectorTab } from "./inspector/StudioInspector";
+import { StatsInfographic } from "./infographics/StatsInfographic";
+import { ColumnsInfographic } from "./infographics/ColumnsInfographic";
+import { TimelineInfographic } from "./infographics/TimelineInfographic";
+import { SummaryInfographic } from "./infographics/SummaryInfographic";
+import { BulletsInfographic } from "./infographics/BulletsInfographic";
+import { CitationsBar } from "./infographics/CitationsBar";
+import { VectorInfographicRenderer } from "../../../services/slides/infographics/svgRenderers";
 
 interface StudioCanvasProps {
   deck: SlideDeck;
@@ -103,50 +112,45 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
               </p>
             )}
 
-            {/* Layout Variant: Bullets */}
-            {currentSlide.layout === "bullets" && currentSlide.bullets && (
-              <div className="space-y-2 mt-4">
-                {currentSlide.bullets.map((b, idx) => (
-                  <div key={idx} className="flex items-start gap-2.5">
-                    <span
-                      className="w-2 h-2 rounded-full mt-1.5 shrink-0"
-                      style={{ background: theme.accentCol || "#f59e0b" }}
-                    />
-                    <span
-                      className="text-xs sm:text-sm leading-relaxed"
-                      style={{ color: theme.textPrimary || "#f1f5f9" }}
-                    >
-                      {b}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            {/* Custom Vector Infographic (Value Chain & Market Intelligence) */}
+            {currentSlide.vectorGraphic && (
+              <VectorInfographicRenderer
+                graphic={currentSlide.vectorGraphic}
+                theme={theme}
+              />
             )}
 
             {/* Layout Variant: Stats */}
             {currentSlide.layout === "stats" && currentSlide.stats && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
-                {currentSlide.stats.map((s, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 rounded-xl border backdrop-blur-md"
-                    style={{
-                      background: theme.cardBg || "rgba(255,255,255,0.04)",
-                      borderColor: theme.borderCol || "rgba(255,255,255,0.1)"
-                    }}
-                  >
-                    <div
-                      className="text-xl sm:text-3xl font-extrabold font-mono mb-1"
-                      style={{ color: theme.accentCol || "#f59e0b" }}
-                    >
-                      {s.value}
-                    </div>
-                    <div className="text-[11px] sm:text-xs text-zinc-300 font-medium">
-                      {s.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <StatsInfographic stats={currentSlide.stats} theme={theme} />
+            )}
+
+            {/* Layout Variant: Columns (3-Pillar Architectural Frameworks) */}
+            {currentSlide.layout === "columns" && currentSlide.bullets && (
+              <ColumnsInfographic bullets={currentSlide.bullets} theme={theme} />
+            )}
+
+            {/* Layout Variant: Timeline (4-Phase Strategic Roadmap) */}
+            {currentSlide.layout === "timeline" && currentSlide.bullets && (
+              <TimelineInfographic bullets={currentSlide.bullets} theme={theme} />
+            )}
+
+            {/* Layout Variant: Summary (Executive Decision & ROI Scorecard) */}
+            {currentSlide.layout === "summary" && currentSlide.bullets && (
+              <SummaryInfographic
+                bullets={currentSlide.bullets}
+                callout={currentSlide.callout}
+                theme={theme}
+              />
+            )}
+
+            {/* Layout Variant: Bullets */}
+            {currentSlide.layout === "bullets" && currentSlide.bullets && (
+              <BulletsInfographic
+                bullets={currentSlide.bullets}
+                callout={currentSlide.callout}
+                theme={theme}
+              />
             )}
 
             {/* Layout Variant: Quote */}
@@ -164,22 +168,37 @@ export const StudioCanvas: React.FC<StudioCanvasProps> = ({
               </div>
             )}
 
-            {/* Layout Variant: Media / Image */}
+            {/* Layout Variant: Title or General Media Image preview */}
             {currentSlide.imageUrl && (
-              <div className="mt-3 rounded-xl overflow-hidden max-h-36 sm:max-h-48 border border-white/10">
-                <img
-                  src={currentSlide.imageUrl}
-                  alt={currentSlide.imageCaption || "Slide visual"}
-                  className="w-full h-full object-cover"
-                />
+              <div className="mt-3 flex items-center gap-3 p-2.5 rounded-xl border border-white/10 bg-black/40 backdrop-blur-md">
+                <div className="w-24 sm:w-32 aspect-video rounded-lg overflow-hidden shrink-0 border border-white/10">
+                  <img
+                    src={currentSlide.imageUrl}
+                    alt={currentSlide.imageCaption || "Slide visual"}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-cyan-400 mb-0.5">
+                    <ImageIcon size={11} />
+                    <span>Visual Asset // FMC Intelligence</span>
+                  </div>
+                  <div className="text-xs text-zinc-300 font-medium truncate">
+                    {currentSlide.imageCaption || currentSlide.title}
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Canvas Bottom Footer */}
-          <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono z-10 shrink-0 pt-2 border-t border-white/5">
-            <span>{deck.title}</span>
-            <span>Google Slides Sync</span>
+          {/* Canvas Bottom Footer with Citations & Sourced Data */}
+          <div className="space-y-1.5 z-10 shrink-0">
+            <CitationsBar citations={currentSlide.citations} theme={theme} />
+            <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono pt-1">
+              <span>{deck.title}</span>
+              <span>Google Slides Sync</span>
+            </div>
           </div>
         </div>
       </div>

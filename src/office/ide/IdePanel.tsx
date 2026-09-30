@@ -1,8 +1,8 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type Agent } from '@office/store/store';
-import { FileTree } from '@/components/FileTree';
-import { Icon } from '@/components/Icon';
+import { FileTree } from '@office/components/FileTree';
+import { Icon } from '@office/components/Icon';
 import { MonacoEditor } from './MonacoEditor';
 import { MonacoDiff } from './MonacoDiff';
 import { ImagePreview } from './ImagePreview';

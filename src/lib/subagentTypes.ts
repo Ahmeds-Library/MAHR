@@ -170,9 +170,10 @@ export const PRESET_SUBAGENTS: SubAgent[] = [
 export interface DailyTask {
   id: string;
   title: string;
-  timeBlock: string; // e.g. "08:00 AM", "Morning Focus", "Evening Review"
+  text?: string;
+  timeBlock: string; // e.g. "08:00 AM", "Morning Focus", "Office Sprint", "Anytime"
   priority: "high" | "medium" | "low";
-  category: "study" | "coding" | "personal" | "health" | "work";
+  category: "study" | "coding" | "personal" | "health" | "work" | "Office Task" | string;
   completed: boolean;
   date: string; // YYYY-MM-DD
   reminder: boolean;

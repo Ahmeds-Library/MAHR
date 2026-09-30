@@ -142,6 +142,33 @@ export const VOICE_COMMANDS_LIST: VoiceCommand[] = [
     badgeText: "Slides Studio"
   },
   {
+    id: "open_office",
+    phrase: "Open MAHR Virtual Office Floor",
+    keywords: ["office", "virtual office", "munder difflin", "team floor", "call jim", "call dwight", "call pam", "delegate task"],
+    category: "tools",
+    description: "Launches the Multi-Agent Virtual Office Floor with Jim, Dwight, Pam, Ryan, and Stanley.",
+    example: "MAHR, open virtual office floor",
+    badgeText: "Office Floor"
+  },
+  {
+    id: "open_routines",
+    phrase: "Open Smart Routines",
+    keywords: ["routines", "smart routines", "quick routines", "morning briefing", "daily briefing"],
+    category: "tools",
+    description: "Launches pre-programmed smart autonomous assistant routines.",
+    example: "MAHR, open smart routines",
+    badgeText: "Smart Routines"
+  },
+  {
+    id: "search_vector_memory",
+    phrase: "Search Vector Memory & Knowledge Graph",
+    keywords: ["search memory", "vector search", "recall memory", "knowledge graph", "vector memory", "what do you remember"],
+    category: "navigation",
+    description: "Performs high-dimensional semantic search across user memories and connected knowledge graph.",
+    example: "MAHR, search vector memory for machine learning",
+    badgeText: "Vector Recall"
+  },
+  {
     id: "open_memory",
     phrase: "Open memory dashboard",
     keywords: ["memory", "history", "dashboard", "lessons"],
@@ -326,7 +353,18 @@ export function isVoiceToMindMapTrigger(text: string): {
  * mind map, and shortcut command identification into a single consolidated call.
  */
 export interface VoiceActionResult {
-  type: "voice_to_mindmap" | "sleep" | "wake" | "focus_mode" | "voice_command" | "sketch" | "none";
+  type:
+    | "voice_to_mindmap"
+    | "sleep"
+    | "wake"
+    | "focus_mode"
+    | "voice_command"
+    | "sketch"
+    | "vector_search"
+    | "open_office"
+    | "open_slides"
+    | "open_routines"
+    | "none";
   command?: VoiceCommand;
   topic?: string;
   isWorkflow?: boolean;
@@ -400,7 +438,76 @@ export function detectVoiceAction(
     return { type: "wake", rawText: transcript };
   }
 
-  // 4. Focus Mode Voice Detector
+  // 4. Check Vector Memory Semantic Recall
+  if (
+    lower.includes("search memory") ||
+    lower.includes("vector search") ||
+    lower.includes("recall memory") ||
+    lower.includes("what do you remember about") ||
+    lower.includes("what do you know about") ||
+    lower.includes("search vector")
+  ) {
+    const topic = transcript
+      .replace(/^(hey\s+)?(mahr|myraa)?[,\s]*(please\s+)?(search memory for|vector search for|recall memory about|what do you remember about|what do you know about|search vector for|search memory|vector search|recall memory|search vector)/i, "")
+      .trim();
+    return {
+      type: "vector_search",
+      topic: topic || transcript,
+      rawText: transcript,
+    };
+  }
+
+  // 5. Check Presentation Slides Request
+  if (
+    lower.includes("presentation") ||
+    lower.includes("ppt") ||
+    lower.includes("slide deck") ||
+    lower.includes("slides banao") ||
+    lower.includes("make slides") ||
+    lower.includes("create slides") ||
+    lower.includes("create presentation")
+  ) {
+    const topic = transcript
+      .replace(/^(hey\s+)?(mahr|myraa)?[,\s]*(please\s+)?(make|create|generate|prepare|build|open)?\s*(a\s+)?(presentation|ppt|slides|slide deck|deck)\s*(on|about|for)?/i, "")
+      .trim();
+    return {
+      type: "open_slides",
+      topic: topic || "Strategic Keynote",
+      rawText: transcript,
+    };
+  }
+
+  // 6. Check Virtual Office Request
+  if (
+    lower.includes("open office") ||
+    lower.includes("virtual office") ||
+    lower.includes("munder difflin") ||
+    lower.includes("call jim") ||
+    lower.includes("call dwight") ||
+    lower.includes("call pam") ||
+    lower.includes("team floor")
+  ) {
+    return {
+      type: "open_office",
+      rawText: transcript,
+    };
+  }
+
+  // 7. Check Smart Routines Request
+  if (
+    lower.includes("open routine") ||
+    lower.includes("smart routine") ||
+    lower.includes("morning briefing") ||
+    lower.includes("daily briefing") ||
+    lower.includes("quick routines")
+  ) {
+    return {
+      type: "open_routines",
+      rawText: transcript,
+    };
+  }
+
+  // 8. Focus Mode Voice Detector
   if (
     lower.includes("focus mode") ||
     lower.includes("hide distractions") ||
@@ -420,7 +527,7 @@ export function detectVoiceAction(
     };
   }
 
-  // 5. Match explicit registered voice command
+  // 9. Match explicit registered voice command
   const matchedCmd = matchVoiceCommand(transcript);
   if (matchedCmd) {
     return {
@@ -430,7 +537,7 @@ export function detectVoiceAction(
     };
   }
 
-  // 6. General Whiteboard / Sketch detection
+  // 10. General Whiteboard / Sketch detection
   if (
     lower.includes("flowchart") ||
     lower.includes("flow chart") ||

@@ -80,6 +80,7 @@ import { MAHROfficeModal } from "@office/MAHROfficeModal";
 import { GlobalAlerts } from "@components/GlobalAlerts";
 import { VoiceDialogueToast } from "@components/VoiceDialogueToast";
 import { FooterVisualizer } from "@components/FooterVisualizer";
+import { QuickRoutinesDrawer } from "@components/assistant/QuickRoutinesDrawer";
 import { AskMahrModal, AskMahrModal as AskMyraaModal } from "@components/AskMahrModal";
 import { KeyboardShortcutsModal } from "@components/KeyboardShortcutsModal";
 import { SettingsModal } from "@components/settings/SettingsModal";
@@ -90,6 +91,13 @@ import { analyzeSpeechColorPsychology, PsychologyProfile, PSYCHOLOGY_PROFILES } 
 import { HumanMoodStudio } from "@components/HumanMoodStudio";
 import { GranularMeshGradientBackground } from "@components/GranularMeshGradientBackground";
 import { HumanMoodType, HUMAN_MOOD_CONFIGS, detectHumanMoodFromDialogue } from "@/services/humanEmotionEngine";
+import { predictHumanMoodML } from "@/services/ml/adaptiveMoodModel";
+import { 
+  loadRLAtmospherePolicies, 
+  saveRLAtmospherePolicies, 
+  updateAtmospherePolicyWithReward, 
+  RLAtmospherePolicy 
+} from "@/services/ml/rlMoodOptimizer";
 import { classifyMemoryFromText } from "@/services/memoryClassifierService";
 import { 
   loadRLPolicy, 
@@ -114,6 +122,13 @@ import {
   AIModelConfig 
 } from "@lib/subagentTypes";
 import { getSkillsFromDB, dbGet, dbSet, dbRemove } from "@lib/db";
+import { 
+  normalizeDailyTask, 
+  normalizeDailyTaskList, 
+  loadDailyTasksFromStorage, 
+  saveDailyTasksToStorage, 
+  getLocalTodayDateString 
+} from "@lib/taskSchema";
 import { formatMathText } from "@lib/mathFormatter";
 import confetti from "canvas-confetti";
 
@@ -419,6 +434,15 @@ export default function App() {
         const evalRes = evaluateTurnReward(text, lastModelMsg.text);
         if (evalRes.reward !== 0) {
           setRlPolicy((prev) => updateRLPolicy(prev, evalRes.reward, "general"));
+          setRlAtmospherePolicies((prev) => {
+            if (!prev) return prev;
+            const currentAtm = prev[currentHumanMood];
+            if (!currentAtm) return prev;
+            const updatedAtm = updateAtmospherePolicyWithReward(currentAtm, evalRes.reward);
+            const next = { ...prev, [currentHumanMood]: updatedAtm };
+            saveRLAtmospherePolicies(next);
+            return next;
+          });
         }
       }
     } else if (role === "model") {
@@ -589,6 +613,7 @@ export default function App() {
 
   // Daily Tasks & Schedule Manager States
   const [isDailyTaskManagerOpen, setIsDailyTaskManagerOpen] = useState<boolean>(false);
+  const [isQuickRoutinesOpen, setIsQuickRoutinesOpen] = useState<boolean>(false);
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
 
   // Ask Myraa Text Assistant States
@@ -628,22 +653,31 @@ export default function App() {
 
       // 2. Load daily tasks from local IndexedDB cache first, then sync with backend
       try {
-        const localTasks = await dbGet("myraa_daily_tasks");
-        if (localTasks && Array.isArray(localTasks) && localTasks.length > 0) {
+        const todayStr = getLocalTodayDateString();
+        const localTasks = await loadDailyTasksFromStorage();
+        if (localTasks.length > 0) {
           setDailyTasks(localTasks);
         }
 
         const res = await fetch("/api/daily-tasks");
         if (res.ok) {
           const data = await res.json();
-          if (data.tasks && Array.isArray(data.tasks)) {
-            setDailyTasks(data.tasks);
-            dbSet("myraa_daily_tasks", data.tasks);
+          const serverTasks = normalizeDailyTaskList(data, todayStr);
+          if (serverTasks.length > 0) {
+            setDailyTasks(serverTasks);
+            await saveDailyTasksToStorage(serverTasks);
+          } else if (localTasks.length > 0) {
+            // Keep local tasks and sync to server
+            await fetch("/api/daily-tasks", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tasks: localTasks })
+            }).catch(() => {});
           }
         }
-      } catch {
+      } catch (taskErr) {
         // Backend still spinning up or offline; offline local IndexedDB cache is already in place
-        console.info("Daily tasks loaded from local offline store.");
+        console.info("Daily tasks loaded from local offline store:", taskErr);
       }
     })();
   }, []);
@@ -722,14 +756,15 @@ export default function App() {
   };
 
   const handleAddDailyTask = async (taskData: Omit<DailyTask, "id" | "createdAt">) => {
-    const newTask: DailyTask = {
+    const todayStr = getLocalTodayDateString();
+    const newTask = normalizeDailyTask({
       ...taskData,
       id: "task-" + Math.random().toString(36).substring(2, 9),
       createdAt: new Date().toISOString()
-    };
+    }, todayStr);
     const updated = [newTask, ...dailyTasks];
     setDailyTasks(updated);
-    dbSet("myraa_daily_tasks", updated);
+    await saveDailyTasksToStorage(updated);
     try {
       await fetch("/api/daily-tasks", {
         method: "POST",
@@ -744,7 +779,7 @@ export default function App() {
   const handleToggleDailyTask = async (id: string) => {
     const updated = dailyTasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
     setDailyTasks(updated);
-    dbSet("myraa_daily_tasks", updated);
+    await saveDailyTasksToStorage(updated);
     try {
       await fetch("/api/daily-tasks", {
         method: "POST",
@@ -759,7 +794,24 @@ export default function App() {
   const handleDeleteDailyTask = async (id: string) => {
     const updated = dailyTasks.filter(t => t.id !== id);
     setDailyTasks(updated);
-    dbSet("myraa_daily_tasks", updated);
+    await saveDailyTasksToStorage(updated);
+    try {
+      await fetch("/api/daily-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks: updated })
+      });
+    } catch {
+      // Saved offline to IndexedDB
+    }
+  };
+
+  const handleUpdateDailyTask = async (updatedTask: DailyTask) => {
+    const todayStr = getLocalTodayDateString();
+    const normalized = normalizeDailyTask(updatedTask, todayStr);
+    const updated = dailyTasks.map(t => t.id === normalized.id ? normalized : t);
+    setDailyTasks(updated);
+    await saveDailyTasksToStorage(updated);
     try {
       await fetch("/api/daily-tasks", {
         method: "POST",
@@ -779,9 +831,11 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.tasks) {
-          setDailyTasks(data.tasks);
-          dbSet("myraa_daily_tasks", data.tasks);
+        const todayStr = getLocalTodayDateString();
+        const serverTasks = normalizeDailyTaskList(data, todayStr);
+        if (serverTasks.length > 0) {
+          setDailyTasks(serverTasks);
+          await saveDailyTasksToStorage(serverTasks);
           triggerConfetti();
         }
       }
@@ -917,6 +971,10 @@ export default function App() {
   const [isSimulationStudioOpen, setIsSimulationStudioOpen] = useState<boolean>(false);
   const [isHumanMoodStudioOpen, setIsHumanMoodStudioOpen] = useState<boolean>(false);
   const [currentHumanMood, setCurrentHumanMood] = useState<HumanMoodType>("neutral");
+  const [rlAtmospherePolicies, setRlAtmospherePolicies] = useState<Record<HumanMoodType, RLAtmospherePolicy> | null>(null);
+  useEffect(() => {
+    loadRLAtmospherePolicies().then(setRlAtmospherePolicies);
+  }, []);
   useEffect(() => {
     setGlobalSpeechMood(currentHumanMood);
   }, [currentHumanMood]);
@@ -1511,6 +1569,22 @@ export default function App() {
         setWhiteboardDiagramType("slides");
         setWhiteboardActiveMode("split");
         setIsWhiteboardOpen(true);
+        speakNotification("Opening Presentation Slides Studio.");
+        break;
+      case "open_office":
+        closeAllPanels();
+        setIsMunderDifflinOpen(true);
+        speakNotification("Opening MAHR Virtual Office Floor.");
+        break;
+      case "open_routines":
+        closeAllPanels();
+        setIsQuickRoutinesOpen(true);
+        speakNotification("Opening Mahr Smart Routines.");
+        break;
+      case "search_vector_memory":
+        closeAllPanels();
+        setShowKnowledgeGraph(true);
+        speakNotification("Opening your Vector Memory and Knowledge Graph.");
         break;
       case "open_ask_myraa":
         setIsAskMyraaOpen(true);
@@ -1569,6 +1643,65 @@ export default function App() {
     setShowKeyboardShortcuts(false);
     setIsHumanMoodStudioOpen(false);
     setIsRLStudioOpen(false);
+    setIsQuickRoutinesOpen(false);
+  };
+
+  const handleRunAlexaRoutine = (routineId: string) => {
+    switch (routineId) {
+      case "morning_briefing": {
+        const pendingTasks = (dailyTasks || []).filter((t) => !t.completed);
+        const taskBrief =
+          pendingTasks.length > 0
+            ? `You have ${pendingTasks.length} pending task${pendingTasks.length > 1 ? "s" : ""}: ${pendingTasks.slice(0, 3).map((t) => t.title).join(", ")}.`
+            : "All your tasks for today are completed!";
+        const greeting = `Good morning! Welcome to your MAHR Cognitive Briefing. All systems are operational. ${taskBrief} How would you like to start?`;
+        speakNotification(greeting);
+        setNotesStatusAlert("🌅 Morning Briefing in progress...");
+        setTimeout(() => setNotesStatusAlert(null), 4000);
+        break;
+      }
+      case "fmc_presentation_routine": {
+        closeAllPanels();
+        setIsSlidesStudioOpen(true);
+        speakNotification("Generating your comprehensive 10-slide FMC Master Strategic Keynote deck with quantitative statistics, value chain infographics, and retail market intelligence.");
+        setNotesStatusAlert("📊 10-Slide FMC Master Keynote Initialized.");
+        setTimeout(() => setNotesStatusAlert(null), 4000);
+        break;
+      }
+      case "deep_focus_pomodoro": {
+        setIsFocusMode(true);
+        speakNotification("Entering Deep Focus Mode. Ambient filters engaged.");
+        setNotesStatusAlert("🎯 Deep Focus Mode Enabled.");
+        setTimeout(() => setNotesStatusAlert(null), 3500);
+        break;
+      }
+      case "automated_pipeline_routine": {
+        closeAllPanels();
+        setIsSlidesStudioOpen(true);
+        speakNotification("Triggering Automated 4-Step AI Presentation Pipeline: Gemini structure, Manim vector animation, Drive cloner, and Slides injector.");
+        setNotesStatusAlert("🚀 Automated 4-Step Pipeline Launched.");
+        setTimeout(() => setNotesStatusAlert(null), 4000);
+        break;
+      }
+      case "boardroom_standup": {
+        closeAllPanels();
+        setIsMunderDifflinOpen(true);
+        speakNotification("Summoning the office floor agents for a standup sync.");
+        setNotesStatusAlert("🏢 Boardroom Standup Initialized.");
+        setTimeout(() => setNotesStatusAlert(null), 4000);
+        break;
+      }
+      case "vector_memory_search": {
+        closeAllPanels();
+        setShowKnowledgeGraph(true);
+        speakNotification("Recalling high-dimensional vector memory graph.");
+        setNotesStatusAlert("🧠 Vector Knowledge Graph Recall Active.");
+        setTimeout(() => setNotesStatusAlert(null), 4000);
+        break;
+      }
+      default:
+        break;
+    }
   };
 
   const sessionRef = useRef<MyraaAudioSession | null>(null);
@@ -2622,6 +2755,46 @@ export default function App() {
             }
           } else if (action.type === "voice_command" && action.command) {
             handleExecuteVoiceShortcut(action.command);
+          } else if (action.type === "vector_search") {
+            const query = action.topic || text;
+            speakNotification(`Querying your 128-dimensional vector memory graph for ${query}...`);
+            fetch("/api/vector-memory/query", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ query, topK: 3, minSimilarity: 0.28 })
+            })
+              .then((r) => r.json())
+              .then((d) => {
+                const topMatches = d.topMatches || [];
+                if (topMatches.length > 0) {
+                  const best = topMatches[0];
+                  const matchLabel = best.node?.label || "Memory Concept";
+                  const matchDesc = best.node?.description || "";
+                  const simPercent = Math.round((best.similarity || 0.8) * 100);
+                  speakNotification(`Found related vector memory: ${matchLabel} with ${simPercent}% relevance. ${matchDesc.slice(0, 100)}`);
+                  setWhiteboardStatusAlert(`🧠 Vector Recall: ${matchLabel} (${simPercent}%)`);
+                } else {
+                  speakNotification(`Searched vector memory for ${query}. Opening your Knowledge Graph.`);
+                }
+                setTimeout(() => setWhiteboardStatusAlert(null), 4000);
+              })
+              .catch(() => {});
+            closeAllPanels();
+            setShowKnowledgeGraph(true);
+          } else if (action.type === "open_office") {
+            closeAllPanels();
+            setIsMunderDifflinOpen(true);
+            speakNotification("Opening MAHR Virtual Office Floor. Michael, Jim, Pam, and Dwight are on standby.");
+          } else if (action.type === "open_slides") {
+            closeAllPanels();
+            setWhiteboardDiagramType("slides");
+            setWhiteboardActiveMode("split");
+            setIsWhiteboardOpen(true);
+            speakNotification(`Opening Slides Studio for ${action.topic || "presentation"}.`);
+          } else if (action.type === "open_routines") {
+            closeAllPanels();
+            setIsQuickRoutinesOpen(true);
+            speakNotification("Opening Mahr Smart Routines.");
           } else if (action.type === "sketch") {
             setIsWhiteboardOpen(true);
             setVoiceSketchTriggerText(text);
@@ -3001,6 +3174,29 @@ export default function App() {
               return;
             } else if (action.type === "voice_command" && action.command) {
               handleExecuteVoiceShortcut(action.command);
+            } else if (action.type === "vector_search") {
+              const query = action.topic || transcript;
+              speakNotification(`Searching vector memory for ${query}...`);
+              closeAllPanels();
+              setShowKnowledgeGraph(true);
+              return;
+            } else if (action.type === "open_office") {
+              closeAllPanels();
+              setIsMunderDifflinOpen(true);
+              speakNotification("Opening MAHR Virtual Office Floor.");
+              return;
+            } else if (action.type === "open_slides") {
+              closeAllPanels();
+              setWhiteboardDiagramType("slides");
+              setWhiteboardActiveMode("split");
+              setIsWhiteboardOpen(true);
+              speakNotification(`Opening Slides Studio for ${action.topic || "presentation"}.`);
+              return;
+            } else if (action.type === "open_routines") {
+              closeAllPanels();
+              setIsQuickRoutinesOpen(true);
+              speakNotification("Opening Mahr Smart Routines.");
+              return;
             }
 
             if (action.type === "wake") {
@@ -3312,11 +3508,22 @@ export default function App() {
       return;
     }
 
+    const activeText = (userCaption || "") + " " + (modelCaption || "");
+    const mlPrediction = predictHumanMoodML(activeText);
     const detectedMoodResult = detectHumanMoodFromDialogue(userCaption, modelCaption, currentHumanMood);
-    if (detectedMoodResult && detectedMoodResult.mood !== currentHumanMood) {
-      setCurrentHumanMood(detectedMoodResult.mood);
-      setMoodShiftReason(detectedMoodResult.reason);
-      const moodCfg = HUMAN_MOOD_CONFIGS[detectedMoodResult.mood];
+
+    // Prefer explicit dialogue mood match, or fall back to high-confidence ML prediction
+    const candidateMood = (detectedMoodResult && detectedMoodResult.mood !== "neutral")
+      ? detectedMoodResult.mood
+      : (mlPrediction.confidence >= 0.32 && mlPrediction.predictedMood !== "neutral" ? mlPrediction.predictedMood : (detectedMoodResult ? detectedMoodResult.mood : null));
+
+    if (candidateMood && candidateMood !== currentHumanMood) {
+      setCurrentHumanMood(candidateMood);
+      setMoodShiftReason(
+        detectedMoodResult?.reason ||
+        `ML Emotional Shift to ${candidateMood} (${(mlPrediction.confidence * 100).toFixed(0)}% confidence)`
+      );
+      const moodCfg = HUMAN_MOOD_CONFIGS[candidateMood];
       if (moodCfg && moodCfg.themeId && moodCfg.themeId !== themeColor) {
         setThemeColor(moodCfg.themeId);
       }
@@ -3360,6 +3567,8 @@ export default function App() {
       {/* Immersive Granular SVG Mesh Gradient Atmosphere Layer mapped to HumanMoodType */}
       <GranularMeshGradientBackground 
         currentMood={currentHumanMood}
+        intensity={rlAtmospherePolicies?.[currentHumanMood]?.meshIntensity ?? 1.0}
+        transitionDurationMs={rlAtmospherePolicies?.[currentHumanMood]?.crossfadeDurationMs ?? 1800}
         fallbackGradient={
           autoShiftBackground && psychologyProfile
             ? psychologyProfile.bgGradientCss
@@ -3409,6 +3618,8 @@ export default function App() {
           valenceScore={psychologyProfile?.valenceScore || 0.0}
           beamPulseSpeed={psychologyProfile?.beamPulseSpeed || 1.8}
           laserGridOpacity={psychologyProfile?.laserGridOpacity || 0.25}
+          currentHumanMood={currentHumanMood}
+          rlPolicy={rlAtmospherePolicies ? rlAtmospherePolicies[currentHumanMood] : null}
           onManualSleepRequested={handlePutToSleep}
           onManualWakeRequested={() => {
             setWakeWordRipple(Date.now());
@@ -3658,7 +3869,37 @@ export default function App() {
           }}
           onOpenRecalls={() => {
             closeAllPanels();
-            setShowMemoryDashboard(true);
+            setShowKnowledgeGraph(true);
+            speakNotification("Opening Vector Memory & Knowledge Graph.");
+          }}
+          isWakeWordEnabled={isWakeWordEnabled}
+          onToggleWakeWord={() => {
+            setIsWakeWordEnabled((prev) => {
+              const next = !prev;
+              saveSettingToDB("isWakeWordEnabled", next);
+              speakNotification(next ? "Wake-word active. Say Hey Mahr anytime." : "Wake-word listener paused.");
+              return next;
+            });
+          }}
+          onOpenOffice={() => {
+            closeAllPanels();
+            setIsMunderDifflinOpen(true);
+            speakNotification("Opening MAHR Virtual Office Floor.");
+          }}
+          onOpenSlides={() => {
+            closeAllPanels();
+            setWhiteboardDiagramType("slides");
+            setWhiteboardActiveMode("split");
+            setIsWhiteboardOpen(true);
+            speakNotification("Opening Presentation Slides Studio.");
+          }}
+          onOpenRoutines={() => {
+            closeAllPanels();
+            setIsQuickRoutinesOpen(true);
+            speakNotification("Opening Mahr Smart Routines.");
+          }}
+          onOpenAskMahr={() => {
+            setIsAskMyraaOpen((prev) => !prev);
           }}
         />
       )}
@@ -3918,6 +4159,7 @@ export default function App() {
         onAddTask={handleAddDailyTask}
         onToggleTask={handleToggleDailyTask}
         onDeleteTask={handleDeleteDailyTask}
+        onUpdateTask={handleUpdateDailyTask}
         onAutoGenerateTasks={handleAutoGenerateDailyTasks}
         themeColor={themeColor}
       />
@@ -4026,6 +4268,33 @@ export default function App() {
         onClose={() => setIsDesktopRemoteModalOpen(false)}
         activeModelName={activeModelId}
         isLiveActive={state !== "disconnected"}
+      />
+
+      {/* Mahr Smart Routines Drawer */}
+      <QuickRoutinesDrawer
+        isOpen={isQuickRoutinesOpen}
+        onClose={() => setIsQuickRoutinesOpen(false)}
+        onRunRoutine={handleRunAlexaRoutine}
+        onOpenOffice={() => {
+          closeAllPanels();
+          setIsMunderDifflinOpen(true);
+        }}
+        onOpenChalkboard={() => {
+          closeAllPanels();
+          setIsWhiteboardOpen(true);
+        }}
+        onOpenTasks={() => {
+          closeAllPanels();
+          setIsDailyTaskManagerOpen(true);
+        }}
+        onOpenMemories={() => {
+          closeAllPanels();
+          setShowMemoryDashboard(true);
+        }}
+        onOpenSlides={() => {
+          closeAllPanels();
+          setIsSlidesStudioOpen(true);
+        }}
       />
     </div>
   );

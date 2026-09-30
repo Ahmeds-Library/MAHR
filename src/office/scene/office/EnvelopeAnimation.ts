@@ -1,16 +1,16 @@
-import * as PIXI from 'pixi.js';
+import { Application, Graphics } from 'pixi.js';
 
 export class EnvelopeAnimation {
-  private app: PIXI.Application;
-  private sprite: PIXI.Graphics;
+  private app: Application;
+  private sprite: Graphics;
 
-  constructor(app: PIXI.Application) {
+  constructor(app: Application) {
     this.app = app;
     this.sprite = this.createEnvelope();
   }
 
-  private createEnvelope(): PIXI.Graphics {
-    const g = new PIXI.Graphics();
+  private createEnvelope(): Graphics {
+    const g = new Graphics();
     // Envelope base shape
     g.rect(0, 0, 20, 14);
     g.fill(0xfff9c4);

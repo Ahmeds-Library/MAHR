@@ -128,22 +128,23 @@ export function useMahrSlideAssistant(
         setAudience(userText);
         setStep("ask_slide_count");
         addMahrMessage(
-          `Got it, tailoring for **${userText}**.\n\nNow: **How many slides do you want in this deck?**`,
+          `Got it, tailoring for **${userText}**.\n\nNow: **Aap ko kitni slides chahiye?**\n*(Suggested: 6 se 10 slides for comprehensive executive depth & visual impact)*`,
           [
+            "6 Slides (Suggested: Balanced Keynote)",
+            "8 Slides (Suggested: Strategic Deck)",
+            "10 Slides (Suggested: Comprehensive Masterclass)",
             "5 Slides (Executive Blitz)",
-            "6 Slides (Balanced Keynote)",
-            "8 Slides (Full Pitch Deck)",
-            "10 Slides (Comprehensive Deep Dive)"
+            "12 Slides (Deep-Dive Technical Roadmap)"
           ]
         );
       } else if (step === "ask_slide_count") {
         const match = userText.match(/\d+/);
-        const count = match ? parseInt(match[0], 10) : 6;
+        const count = match ? parseInt(match[0], 10) : 8;
         const validCount = Math.max(3, Math.min(count, 14));
         setSlideCount(validCount);
         setStep("ask_visual_tone");
         addMahrMessage(
-          `Perfect, setting deck length to **${validCount} slides**.\n\nLast question before generation: **Which visual aesthetic and theme should we apply?**`,
+          `Shabash! Selected **${validCount} slides** (Suggested: 6-10).\n\nLast question before generation: **Which visual aesthetic and theme should we apply?**`,
           [
             "Obsidian Neon (Luminous Cyan & Purple Glow)",
             "Royal Executive (Midnight Navy & Warm Gold)",

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isArabicTerminalEnabled } from './arabicSetting';
-import { notifyArabicTerminalChangeAll } from '@/components/terminalPool';
+import { notifyArabicTerminalChangeAll } from '@office/components/terminalPool';
 
 /**
  * Make terminal Arabic/RTL rendering follow the app language.

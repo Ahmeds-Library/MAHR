@@ -176,10 +176,12 @@ export class Character {
   }
 
   moveTo(tile: { x: number; y: number }): void {
-    const path = findPath(this.mapRenderer, this.getTilePosition(), tile);
+    const curPos = this.getTilePosition();
+    const path = findPath(this.mapRenderer, curPos, tile);
     if (path && path.length > 0) {
       this.sitting = false; // stand up before walking (clears the sit offset)
       this.sprite.setSeatedCrop(0); // show legs again while standing/walking
+      this.sprite.setPosition(this.px, this.py); // clear sit offset
       this.path = path;
       this.state = 'walk';
       this.sprite.setAnimation('walk', this.direction);
@@ -187,15 +189,44 @@ export class Character {
   }
 
   walkToAndThen(tile: { x: number; y: number }, callback: () => void): void {
-    this.idleLoop = false; // a directed walk-and-do (e.g. a café break) owns the avatar
+    this.idleLoop = false; // a directed walk-and-do (e.g. a café break or boardroom standup) owns the avatar
+    this.wandering = false; // cancel wander so it doesn't wander away mid-transit
+    this.pendingSit = false; // cancel pending sit so it doesn't snap to chair
+    this.pendingWork = null;
     this.arrivalCallback = callback;
     this.moveTo(tile);
     if (this.state !== 'walk') {
       // No path produced. If we're already on the tile, fire the callback now;
-      // otherwise it's unreachable — drop it so we don't "arrive" somewhere else.
-      this.arrivalCallback = null;
       const t = this.getTilePosition();
-      if (t.x === tile.x && t.y === tile.y) callback();
+      if (t.x === tile.x && t.y === tile.y) {
+        this.arrivalCallback = null;
+        callback();
+      } else {
+        // Fallback: If direct path failed, check adjacent walkable tiles near goal
+        const altDirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+        let foundAlt = false;
+        for (const d of altDirs) {
+          const alt = { x: tile.x + d.x, y: tile.y + d.y };
+          if (this.mapRenderer.isWalkable(alt.x, alt.y)) {
+            const altPath = findPath(this.mapRenderer, t, alt);
+            if (altPath && altPath.length > 0) {
+              this.sitting = false;
+              this.sprite.setSeatedCrop(0);
+              this.sprite.setPosition(this.px, this.py);
+              this.path = altPath;
+              this.state = 'walk';
+              this.sprite.setAnimation('walk', this.direction);
+              foundAlt = true;
+              break;
+            }
+          }
+        }
+        if (!foundAlt) {
+          // If completely unreachable, don't leave agent hanging forever!
+          this.arrivalCallback = null;
+          callback();
+        }
+      }
     }
   }
 

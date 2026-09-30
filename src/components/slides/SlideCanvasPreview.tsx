@@ -14,6 +14,11 @@ import {
   Maximize2
 } from "lucide-react";
 import { Slide, SlideTheme } from "../../services/slides/slideTypes";
+import { ColumnsInfographic } from "./studio/infographics/ColumnsInfographic";
+import { TimelineInfographic } from "./studio/infographics/TimelineInfographic";
+import { SummaryInfographic } from "./studio/infographics/SummaryInfographic";
+import { CitationsBar } from "./studio/infographics/CitationsBar";
+import { VectorInfographicRenderer } from "../../services/slides/infographics/svgRenderers";
 
 interface SlideCanvasPreviewProps {
   slide: Slide;
@@ -124,6 +129,12 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
 
         {/* Dynamic Center / Body Content by Layout */}
         <div className="gsap-slide-body my-auto w-full max-w-5xl mx-auto py-1 sm:py-2">
+          {slide.vectorGraphic && (
+            <div className="mb-2">
+              <VectorInfographicRenderer graphic={slide.vectorGraphic} theme={theme} />
+            </div>
+          )}
+
           {slide.layout === "title" && (
             <div className={`space-y-4 sm:space-y-6 ${hasMedia ? "grid grid-cols-1 md:grid-cols-2 gap-6 items-center text-left" : "text-center"}`}>
               <div className="space-y-3 sm:space-y-4">
@@ -257,7 +268,71 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
             </div>
           )}
 
-          {(slide.layout === "bullets" || slide.layout === "summary" || slide.layout === "columns" || slide.layout === "media") && (
+          {/* Layout Variant: Columns */}
+          {slide.layout === "columns" && (
+            <div className="space-y-3 sm:space-y-4">
+              <div>
+                <h2
+                  className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight mb-1"
+                  style={{ color: theme.textPrimary }}
+                >
+                  {slide.title}
+                </h2>
+                {slide.subtitle && (
+                  <p className="text-xs sm:text-sm" style={{ color: theme.textSecondary }}>
+                    {slide.subtitle}
+                  </p>
+                )}
+              </div>
+              <ColumnsInfographic bullets={slide.bullets || []} theme={theme} />
+            </div>
+          )}
+
+          {/* Layout Variant: Timeline */}
+          {slide.layout === "timeline" && (
+            <div className="space-y-3 sm:space-y-4">
+              <div>
+                <h2
+                  className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight mb-1"
+                  style={{ color: theme.textPrimary }}
+                >
+                  {slide.title}
+                </h2>
+                {slide.subtitle && (
+                  <p className="text-xs sm:text-sm" style={{ color: theme.textSecondary }}>
+                    {slide.subtitle}
+                  </p>
+                )}
+              </div>
+              <TimelineInfographic bullets={slide.bullets || []} theme={theme} />
+            </div>
+          )}
+
+          {/* Layout Variant: Summary */}
+          {slide.layout === "summary" && (
+            <div className="space-y-3 sm:space-y-4">
+              <div>
+                <h2
+                  className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight mb-1"
+                  style={{ color: theme.textPrimary }}
+                >
+                  {slide.title}
+                </h2>
+                {slide.subtitle && (
+                  <p className="text-xs sm:text-sm" style={{ color: theme.textSecondary }}>
+                    {slide.subtitle}
+                  </p>
+                )}
+              </div>
+              <SummaryInfographic
+                bullets={slide.bullets || []}
+                callout={slide.callout}
+                theme={theme}
+              />
+            </div>
+          )}
+
+          {(slide.layout === "bullets" || slide.layout === "media") && (
             <div className={`space-y-4 ${hasMedia ? "grid grid-cols-1 md:grid-cols-12 gap-5 items-center" : ""}`}>
               {/* Left Column: Text & Bullets */}
               <div className={hasMedia ? "md:col-span-7 space-y-3 sm:space-y-4" : "space-y-4 sm:space-y-6"}>
@@ -293,7 +368,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
                         )}
                       </div>
                       <span className="text-xs sm:text-sm leading-relaxed" style={{ color: theme.textPrimary }}>
-                        {bullet}
+                        {typeof bullet === "string" ? bullet : (bullet as any)?.text || (bullet as any)?.point || (bullet as any)?.title || String(bullet || "")}
                       </span>
                     </div>
                   ))}
@@ -366,18 +441,21 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
           )}
         </div>
 
-        {/* Slide Bottom Bar with Web Grounding Citations */}
-        <div className="relative z-10 flex flex-wrap items-center justify-between pt-2.5 border-t border-white/5 text-[9px] sm:text-[11px] text-zinc-500 font-mono gap-2">
-          <div className="flex items-center gap-2">
-            <span>MAHR Presentation Studio // Powered by Gemini & Google Slides</span>
-            {slide.citations && slide.citations.length > 0 && (
-              <span className="hidden sm:inline-flex items-center gap-1 text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-md border border-cyan-500/20">
-                <Globe size={10} />
-                <span>Web Grounded</span>
-              </span>
-            )}
+        {/* Slide Bottom Bar with Citations & Grounding */}
+        <div className="relative z-10 space-y-1.5 pt-2">
+          <CitationsBar citations={slide.citations} theme={theme} />
+          <div className="flex flex-wrap items-center justify-between text-[9px] sm:text-[11px] text-zinc-500 font-mono gap-2 pt-1 border-t border-white/5">
+            <div className="flex items-center gap-2">
+              <span>MAHR Presentation Studio // Powered by Gemini & Google Slides</span>
+              {slide.citations && slide.citations.length > 0 && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-md border border-cyan-500/20">
+                  <Globe size={10} />
+                  <span>Web Grounded</span>
+                </span>
+              )}
+            </div>
+            <span className="uppercase tracking-widest">{theme.name}</span>
           </div>
-          <span className="uppercase tracking-widest">{theme.name}</span>
         </div>
       </div>
     </div>

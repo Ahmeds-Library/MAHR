@@ -9,7 +9,8 @@ import {
   Sparkles,
   LogIn,
   LogOut,
-  Check
+  Check,
+  Zap
 } from "lucide-react";
 import { SlideDeck } from "../../../services/slides/slideTypes";
 import { SLIDE_THEMES } from "../../../services/slides/slideThemes";
@@ -20,6 +21,8 @@ interface StudioHeaderProps {
   onPresent: () => void;
   onExport: () => void;
   onSelectTheme: (themeId: string) => void;
+  onOpenInfographics?: () => void;
+  onOpenPipeline?: () => void;
   isAuthenticated: boolean;
   user: any;
   onSignIn: () => void;
@@ -32,6 +35,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onPresent,
   onExport,
   onSelectTheme,
+  onOpenInfographics,
+  onOpenPipeline,
   isAuthenticated,
   user,
   onSignIn,

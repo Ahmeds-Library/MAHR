@@ -16,7 +16,7 @@
 import { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useWorkspaceImage } from '@/hooks/useWorkspaceImage';
+import { useWorkspaceImage } from '@office/hooks/useWorkspaceImage';
 import { isExternal, isRelativeMd, resolveLocalImageRel, resolveRel } from './mdLinks';
 import { remarkSoftBreaks } from './remarkSoftBreaks';
 import { rehypeAutoDir } from './rehypeAutoDir';

@@ -1,13 +1,32 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, type Plugin} from 'vite';
+
+function pixiExtensionIdempotencyPlugin(): Plugin {
+  return {
+    name: 'pixi-extension-idempotency',
+    enforce: 'pre',
+    transform(code: string, id: string) {
+      if (id.includes('Extensions') && code.includes('already has a handler')) {
+        return {
+          code: code.replace(
+            /throw new Error\([`'"]Extension type \$\{?type\}? already has a handler[`'"]\);?/g,
+            'return this;'
+          ),
+          map: null,
+        };
+      }
+      return null;
+    },
+  };
+}
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [pixiExtensionIdempotencyPlugin(), react(), tailwindcss()],
     resolve: {
-      dedupe: ['react', 'react-dom'],
+      dedupe: ['react', 'react-dom', 'pixi.js'],
       alias: [
         { find: /^@office\/(.*)/, replacement: path.resolve(__dirname, 'src/office/$1') },
         { find: /^@shared\/(.*)/, replacement: path.resolve(__dirname, 'src/office/shared/$1') },
@@ -19,7 +38,7 @@ export default defineConfig(() => {
       ],
     },
     optimizeDeps: {
-      include: ['react', 'react-dom', 'motion/react'],
+      include: ['react', 'react-dom', 'motion/react', 'pixi.js'],
     },
     build: {
       outDir: 'dist',

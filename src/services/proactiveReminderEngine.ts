@@ -54,7 +54,7 @@ export function generateTaskReminderSpeech(
   const highPriority = pendingTasks.find((t) => t.priority === "high");
   const targetTask = highPriority || pendingTasks[0];
 
-  const taskTitle = targetTask.title;
+  const taskTitle = targetTask.title || targetTask.text || "your scheduled task";
   let speechText = "";
   let emotion = "warm";
 

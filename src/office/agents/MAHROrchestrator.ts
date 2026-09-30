@@ -1,4 +1,4 @@
-import { AgentWorker, type AgentConfig } from './AgentWorker';
+import { AgentWorker, type AgentConfig } from './AgentWorker.ts';
 
 export const OFFICE_CAST: AgentConfig[] = [
   {

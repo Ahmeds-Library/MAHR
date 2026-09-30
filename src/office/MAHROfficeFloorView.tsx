@@ -15,6 +15,7 @@ import {
   Building2, 
   Coffee, 
   Users, 
+  Monitor,
   Trophy, 
   Terminal, 
   Kanban, 
@@ -171,6 +172,9 @@ export function MAHROfficeFloorView({
 
   // Tasks kanban state (Clean at start; NO mock tasks until MAHR or student creates them!)
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
+  const stationLockMapRef = useRef<Record<string, number>>({});
+  const [conferenceInfo, setConferenceInfo] = useState<{ active: boolean; status: string; stage: string } | null>(null);
+  const [autoStandupEnabled, setAutoStandupEnabled] = useState<boolean>(true);
 
   // ── Memory & Knowledge Graph State ─────────────────────────────────────
   const [memorySubTab, setMemorySubTab] = useState<'graph' | 'memory' | 'summary'>('graph');
@@ -228,10 +232,12 @@ export function MAHROfficeFloorView({
                 (a) => a.id === dbAgent.id || a.character === dbAgent.character
               );
               if (target && dbAgent.action && !/^reconnecting/i.test(dbAgent.action)) {
+                const isStationLocked = (stationLockMapRef.current[target.id] && Date.now() - stationLockMapRef.current[target.id] < 6000)
+                  || (target.character && stationLockMapRef.current[target.character] && Date.now() - stationLockMapRef.current[target.character] < 6000);
                 updateAgent(target.id, {
                   status: (dbAgent.status && dbAgent.status !== 'reconnecting') ? dbAgent.status : target.status,
                   action: dbAgent.action,
-                  currentStation: dbAgent.currentStation || target.currentStation,
+                  currentStation: isStationLocked ? target.currentStation : (dbAgent.currentStation || target.currentStation),
                 });
               }
             });
@@ -328,6 +334,69 @@ export function MAHROfficeFloorView({
     }
   }, [isOpen]);
 
+  // Synchronize global office tasks with floor notice board
+  useEffect(() => {
+    (window as any).__officeTasks = tasks;
+  }, [tasks]);
+
+  // Listen for boardroom conference status events
+  useEffect(() => {
+    const handleConfStatus = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        if (detail.stage === 'dismissed') {
+          setConferenceInfo({ active: false, status: detail.status, stage: detail.stage });
+          setTimeout(() => setConferenceInfo(null), 3500);
+        } else {
+          setConferenceInfo({ active: true, status: detail.status, stage: detail.stage });
+        }
+      }
+    };
+    window.addEventListener('cth:conference-status', handleConfStatus);
+    return () => window.removeEventListener('cth:conference-status', handleConfStatus);
+  }, []);
+
+  // Autonomous sprint cycle: team convenes in boardroom to deliberate new tasks before pinning to notice board
+  useEffect(() => {
+    if (!autoStandupEnabled) return;
+
+    const interval = setInterval(async () => {
+      // Don't interrupt if conference is already active
+      if (conferenceInfo?.active) return;
+
+      let targetTask = tasks.find((t) => t.col === 'todo');
+      if (!targetTask) {
+        try {
+          const res = await fetch('/api/office/auto-delegate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topicHint: 'System architecture review and sprint planning' })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.tasks && data.tasks.length > 0) {
+              setTasks(data.tasks);
+              targetTask = data.tasks[0];
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (targetTask) {
+        window.dispatchEvent(
+          new CustomEvent('cth:call-conference', {
+            detail: {
+              taskTitle: targetTask.title,
+              assigneeId: targetTask.assignee
+            }
+          })
+        );
+      }
+    }, 85000);
+
+    return () => clearInterval(interval);
+  }, [autoStandupEnabled, conferenceInfo?.active, tasks]);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ⚡ Live Server-Sent Events (SSE) connection for instant real-time sync
@@ -354,10 +423,12 @@ export function MAHROfficeFloorView({
                     (a) => a.id === dbAgent.id || a.character === dbAgent.character
                   );
                   if (target && dbAgent.action && !/^reconnecting/i.test(dbAgent.action)) {
+                    const isStationLocked = (stationLockMapRef.current[target.id] && Date.now() - stationLockMapRef.current[target.id] < 6000)
+                      || (target.character && stationLockMapRef.current[target.character] && Date.now() - stationLockMapRef.current[target.character] < 6000);
                     updateAgent(target.id, {
                       status: (dbAgent.status && dbAgent.status !== 'reconnecting') ? dbAgent.status : target.status,
                       action: dbAgent.action,
-                      currentStation: dbAgent.currentStation || target.currentStation,
+                      currentStation: isStationLocked ? target.currentStation : (dbAgent.currentStation || target.currentStation),
                     });
                   }
                 });
@@ -377,7 +448,7 @@ export function MAHROfficeFloorView({
               const targetId = target ? target.id : agentUpdate.id;
               updateAgent(targetId, {
                 status: agentUpdate.status || 'idle',
-                action: agentUpdate.action || 'Ready for assignments',
+                action: agentUpdate.action || 'Standing by',
                 thoughtBubble: agentUpdate.thoughtBubble,
                 toolBubble: agentUpdate.toolBubble,
                 currentTask: agentUpdate.currentTask,
@@ -433,8 +504,8 @@ export function MAHROfficeFloorView({
               if (target) {
                 updateAgent(target.id, {
                   status: 'idle',
-                  action: data.action || `Done: ${data.result?.slice(0, 30) || 'Task'}`,
-                  thoughtBubble: data.thoughtBubble,
+                  action: data.action || (data.result ? data.result.slice(0, 30) : 'Completed task'),
+                  thoughtBubble: undefined,
                   toolBubble: undefined,
                   recentTextTs: Date.now()
                 });
@@ -498,6 +569,13 @@ export function MAHROfficeFloorView({
 
   // ⚡ Autonomous Task Delegation from MAHR
   const handleAutoDelegateTasks = async (topicHint?: string) => {
+    console.log("[MAHROfficeModal] 'Ask Mahr' delegation triggered, dispatching to orchestration layer:", {
+      action: "auto-delegate",
+      topicHint: topicHint || "autonomous-sprint",
+      activeAgent: activeAgent?.name,
+      timestamp: new Date().toISOString()
+    });
+
     setIsDelegating(true);
     try {
       const res = await fetch('/api/office/auto-delegate', {
@@ -507,12 +585,23 @@ export function MAHROfficeFloorView({
       });
       if (res.ok) {
         const data = await res.json();
-        if (data && Array.isArray(data.tasks)) {
+        console.log("[MAHROfficeModal] 'Ask Mahr' orchestration response received:", data);
+        if (data && Array.isArray(data.tasks) && data.tasks.length > 0) {
           setTasks(data.tasks);
           fetchOfficeState();
           fetchKnowledgeData();
+
+          // 📢 Gather team in Conference Room first to review the new missions, then pin to Notice Board!
+          const primaryTask = data.tasks[0];
+          window.dispatchEvent(new CustomEvent('cth:call-conference', {
+            detail: {
+              taskTitle: primaryTask?.title || 'Sprint Objectives Briefing',
+              assigneeId: primaryTask?.assignee
+            }
+          }));
+
           if (onNotifyUser) {
-            onNotifyUser(`⚡ MAHR assigned ${data.tasks.length} live missions to the office floor!`);
+            onNotifyUser(`🏢 Team gathering in Boardroom: Reviewing & assigning new tasks!`);
           }
         }
       }
@@ -533,6 +622,29 @@ export function MAHROfficeFloorView({
       setIsFullscreen(false);
     }
   };
+
+  // Clean Modal Close handler with fullscreen exit & propagation prevention
+  const handleCloseModal = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+      setIsFullscreen(false);
+    }
+    onClose?.();
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        handleCloseModal();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
 
   // Trigger Coffee Break
   const handleCoffeeBreak = () => {
@@ -556,23 +668,28 @@ export function MAHROfficeFloorView({
     onNotifyUser?.(`${worker.name} just stepped over to the breakroom for fresh coffee! ☕`);
   };
 
-  // Trigger Call Standup
+  // Trigger Call Standup with boardroom animation & dispatch
   const handleCallStandup = () => {
-    agents.forEach((a, idx) => {
-      updateAgent(a.id, {
-        status: 'working',
-        action: 'gathering for executive standup meeting',
-        currentStation: 'board',
-        progress: idx + 1
-      });
-    });
+    const activeTask = tasks.find((t) => t.col !== 'done');
+    const standupTopic = activeTask?.title || 'Executive Sprint Planning & Architecture Review';
+    const targetAssignee = activeTask?.assignee || 'Jim';
+
+    // Dispatch conference event to ConferenceDirector
+    window.dispatchEvent(
+      new CustomEvent('cth:call-conference', {
+        detail: {
+          taskTitle: standupTopic,
+          assigneeId: targetAssignee
+        }
+      })
+    );
 
     const standupNotes = `# 🏢 MAHR Office — Daily Standup Summary\n\n` +
-      `**Date:** ${new Date().toLocaleDateString()} | **Attendees:** ${agents.map(a => a.name).join(', ')}\n\n` +
+      `**Date:** ${new Date().toLocaleDateString()} | **Attendees:** ${agents.map((a) => a.name).join(', ')}\n\n` +
       `### Active Workstreams\n` +
-      agents.map(a => `- **${a.name}** (${a.character}): ${a.action || 'Working on sprint objectives'}`).join('\n') +
+      agents.map((a) => `- **${a.name}** (${a.character}): ${a.action || 'Working on sprint objectives'}`).join('\n') +
       `\n\n### Open Deliverables\n` +
-      tasks.filter(t => t.col !== 'done').map(t => `- [ ] [${t.prio.toUpperCase()}] ${t.title} (*${t.assignee}*)`).join('\n');
+      tasks.filter((t) => t.col !== 'done').map((t) => `- [ ] [${t.prio.toUpperCase()}] ${t.title} (*${t.assignee}*)`).join('\n');
 
     setTerminalFeed((prev) => [
       ...prev,
@@ -580,18 +697,42 @@ export function MAHROfficeFloorView({
         id: String(Date.now()),
         time: new Date().toTimeString().split(' ')[0],
         agent: 'MAHR (Boss)',
-        text: `📢 All-hands standup called at the conference table! ${agents.length} agents attending.`,
+        text: `📢 All-hands standup called in Boardroom for "${standupTopic}"! ${agents.length} agents gathering.`,
         kind: 'system'
       }
     ]);
 
     confetti({ particleCount: 35, spread: 60, origin: { y: 0.2 } });
-    onNotifyUser?.(`📢 Standup called! Notes generated for the classroom whiteboard.`);
+    onNotifyUser?.(`📢 Standup called! Agents gathering in the Boardroom.`);
     
     // Automatically offer to push to whiteboard
     if (onUpdateWhiteboard) {
       onUpdateWhiteboard(standupNotes);
     }
+  };
+
+  // Manual Dismiss Standup
+  const handleDismissStandup = () => {
+    agents.forEach((a) => {
+      updateAgent(a.id, {
+        currentStation: 'desk',
+        status: 'working',
+        action: a.isGod ? 'orchestrating office floor' : 'working at workstation desk'
+      });
+      fetch('/api/office/agent-station', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: a.id,
+          character: a.character,
+          currentStation: 'desk',
+          action: a.isGod ? 'orchestrating office floor' : 'working at workstation desk',
+          status: 'working'
+        })
+      }).catch(() => {});
+    });
+    setConferenceInfo(null);
+    onNotifyUser?.('Standup adjourned — team returned to workstations.');
   };
 
   // Trigger The Dundies
@@ -726,7 +867,8 @@ export function MAHROfficeFloorView({
     } finally {
       updateAgent(targetAgent.id, {
         status: 'idle',
-        action: 'Ready for assignments'
+        action: 'Standing by',
+        thoughtBubble: undefined
       });
     }
   };
@@ -818,13 +960,25 @@ export function MAHROfficeFloorView({
     if (isMahrBoss || isDelegationPhrase) {
       flyRealHandoffEnvelope('MAHR', 'office-floor', 'command');
       try {
+        const commandPayload = {
+          command: text,
+          userMessage: text
+        };
+
+        console.log("[MAHROfficeModal] 'Ask Mahr' command dispatched to orchestration layer:", {
+          payload: commandPayload,
+          activeAgent: activeAgent.name,
+          timestamp: new Date().toISOString()
+        });
+
         const res = await fetch('/api/office/mahr-command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: text })
+          body: JSON.stringify(commandPayload)
         });
         if (res.ok) {
           const data = await res.json();
+          console.log("[MAHROfficeModal] processMahrOfficeCommand result received:", data);
           const targetAgent = data.agentName || 'Jim';
           flyRealHandoffEnvelope('MAHR', targetAgent, 'task');
 
@@ -1154,23 +1308,65 @@ export function MAHROfficeFloorView({
     ]);
   };
 
-  // Change active agent station
+  // Change active agent station and dispatch avatar on the floor
   const handleSetStation = (station: StationKind, actionDesc: string) => {
     if (!activeAgent) return;
+    const newStatus = station === 'web' ? 'idle' : station === 'board' ? 'thinking' : 'working';
+
+    // Lock station locally for 6 seconds so incoming SSE stream does not revert optimistic dispatch
+    stationLockMapRef.current[activeAgent.id] = Date.now();
+    if (activeAgent.character) {
+      stationLockMapRef.current[activeAgent.character] = Date.now();
+    }
+
     updateAgent(activeAgent.id, {
       currentStation: station,
-      action: actionDesc
+      action: actionDesc,
+      status: newStatus,
+      thoughtBubble: actionDesc
     });
+
+    const stationTitle = station === 'web' 
+      ? 'Breakroom Kitchen' 
+      : station === 'board' 
+      ? 'Conference Whiteboard' 
+      : 'Coding Workstation';
+
     setTerminalFeed((prev) => [
       ...prev,
       {
         id: String(Date.now()),
         time: new Date().toTimeString().split(' ')[0],
         agent: activeAgent.name,
-        text: `Moved to ${station}: ${actionDesc}`,
+        text: `📍 Dispatched to ${stationTitle}: ${actionDesc}`,
         kind: 'system'
       }
     ]);
+    onNotifyUser?.(`Dispatched ${activeAgent.name} to ${stationTitle}!`);
+
+    if (station === 'board') {
+      window.dispatchEvent(
+        new CustomEvent('cth:call-conference', {
+          detail: {
+            taskTitle: actionDesc || `${activeAgent.name}'s Boardroom Review`,
+            assigneeId: activeAgent.name
+          }
+        })
+      );
+    }
+
+    // Synchronize to backend so state persists across sessions
+    fetch('/api/office/agent-station', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: activeAgent.id,
+        character: activeAgent.character,
+        currentStation: station,
+        action: actionDesc,
+        status: newStatus
+      })
+    }).catch(() => {});
   };
 
   // Save current code file
@@ -1242,7 +1438,7 @@ export function MAHROfficeFloorView({
             title="Ask MAHR to autonomously analyze context and delegate real tasks to specialists"
           >
             <Zap size={12} className={isDelegating ? "animate-spin text-amber-300" : "text-amber-300"} />
-            <span>{isDelegating ? "DELEGATING..." : "⚡ DELEGATE WORK"}</span>
+            <span>{isDelegating ? "DELEGATING..." : "⚡ ASK MAHR"}</span>
           </button>
 
           <button
@@ -1305,7 +1501,8 @@ export function MAHROfficeFloorView({
 
           {onClose && (
             <button
-              onClick={onClose}
+              type="button"
+              onClick={handleCloseModal}
               className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-300 transition cursor-pointer"
               title="Close MAHR Office Floor"
             >
@@ -1328,7 +1525,45 @@ export function MAHROfficeFloorView({
             <div className="hidden lg:flex px-2 py-1 rounded-md bg-[#161122]/85 backdrop-blur border border-[#3b2d50] text-[10px] font-mono text-purple-300">
               <span>ACTIVE STATION: {activeAgent.currentStation?.toUpperCase() || 'DESK'}</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setAutoStandupEnabled(!autoStandupEnabled)}
+              className={`px-2 py-0.5 rounded text-[9px] font-mono border transition pointer-events-auto cursor-pointer ${
+                autoStandupEnabled
+                  ? 'bg-sky-950/70 border-sky-500/60 text-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.3)]'
+                  : 'bg-slate-900/70 border-slate-700 text-slate-400'
+              }`}
+              title="Toggle periodic autonomous team standup conferences"
+            >
+              AUTO-STANDUP: {autoStandupEnabled ? 'ON' : 'OFF'}
+            </button>
           </div>
+
+          {/* Live Boardroom Standup HUD Overlay */}
+          {conferenceInfo?.active && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 rounded-xl bg-[#1b1528]/95 border border-sky-400/60 shadow-[0_0_24px_rgba(56,189,248,0.35)] backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-top duration-300">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
+              </span>
+              <div className="flex flex-col">
+                <span className="text-[9px] font-mono font-bold text-sky-300 uppercase tracking-widest">
+                  BOARDROOM STANDUP ({conferenceInfo.stage.toUpperCase()})
+                </span>
+                <span className="text-[11px] font-mono text-slate-200 font-medium max-w-[280px] sm:max-w-md truncate">
+                  {conferenceInfo.status}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissStandup}
+                className="px-2 py-0.5 rounded bg-red-950/70 hover:bg-red-900 border border-red-500/50 text-red-200 text-[9px] font-mono font-bold transition cursor-pointer"
+                title="Dismiss standup and return agents to workstations"
+              >
+                DISMISS
+              </button>
+            </div>
+          )}
 
           {/* Real PixiJS Canvas Floor */}
           <div className="flex-1 min-h-0 relative overflow-hidden">
@@ -1427,36 +1662,45 @@ export function MAHROfficeFloorView({
 
             {/* Station Dispatch Shortcuts */}
             <div className="flex items-center gap-1.5 pt-1 text-[10px] font-mono text-[#a899b5]">
-              <span className="text-[#7c6a90]">STATION:</span>
+              <span className="text-[#9d89b3] font-semibold text-[9px] tracking-wider uppercase">STATION:</span>
               <button
+                type="button"
                 onClick={() => handleSetStation('desk', 'working at coding workstation')}
-                className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                title="Send agent to their workstation desk"
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md border text-[10px] font-mono transition-all duration-200 cursor-pointer shadow-sm active:scale-95 ${
                   activeAgent.currentStation === 'desk' || !activeAgent.currentStation
-                    ? 'bg-purple-900/60 border-purple-400 text-white font-bold'
-                    : 'bg-[#1d172a] border-[#3b2d50] hover:bg-[#281f3b] text-slate-300'
+                    ? 'bg-gradient-to-r from-purple-800 to-indigo-900 border-purple-400 text-white font-bold shadow-[0_0_12px_rgba(168,85,247,0.5)] ring-1 ring-purple-400/60 scale-[1.02]'
+                    : 'bg-[#1b1528] border-[#3e3054] hover:bg-[#281f3b] hover:border-purple-500/50 hover:scale-[1.02] text-slate-300'
                 }`}
               >
-                DESK
+                <Monitor size={11} className={activeAgent.currentStation === 'desk' || !activeAgent.currentStation ? 'text-purple-300' : 'text-slate-400'} />
+                <span>DESK</span>
               </button>
               <button
+                type="button"
                 onClick={() => handleSetStation('web', 'taking break in kitchen')}
-                className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                title="Send agent to kitchen breakroom for coffee"
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md border text-[10px] font-mono transition-all duration-200 cursor-pointer shadow-sm active:scale-95 ${
                   activeAgent.currentStation === 'web'
-                    ? 'bg-purple-900/60 border-purple-400 text-white font-bold'
-                    : 'bg-[#1d172a] border-[#3b2d50] hover:bg-[#281f3b] text-slate-300'
+                    ? 'bg-gradient-to-r from-amber-800/90 to-amber-950 border-amber-400 text-amber-100 font-bold shadow-[0_0_12px_rgba(245,158,11,0.5)] ring-1 ring-amber-400/60 scale-[1.02]'
+                    : 'bg-[#1b1528] border-[#3e3054] hover:bg-[#281f3b] hover:border-amber-500/50 hover:scale-[1.02] text-slate-300'
                 }`}
               >
-                BREAKROOM
+                <Coffee size={11} className={activeAgent.currentStation === 'web' ? 'text-amber-300' : 'text-slate-400'} />
+                <span>BREAKROOM</span>
               </button>
               <button
+                type="button"
                 onClick={() => handleSetStation('board', 'presenting at conference whiteboard')}
-                className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                title="Send agent to conference room whiteboard"
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md border text-[10px] font-mono transition-all duration-200 cursor-pointer shadow-sm active:scale-95 ${
                   activeAgent.currentStation === 'board'
-                    ? 'bg-purple-900/60 border-purple-400 text-white font-bold'
-                    : 'bg-[#1d172a] border-[#3b2d50] hover:bg-[#281f3b] text-slate-300'
+                    ? 'bg-gradient-to-r from-cyan-800/90 to-blue-950 border-cyan-400 text-cyan-100 font-bold shadow-[0_0_12px_rgba(6,182,212,0.6)] ring-1 ring-cyan-400/60 scale-[1.02]'
+                    : 'bg-[#1b1528] border-[#3e3054] hover:bg-[#281f3b] hover:border-cyan-500/50 hover:scale-[1.02] text-slate-300'
                 }`}
               >
-                CONFERENCE
+                <Users size={11} className={activeAgent.currentStation === 'board' ? 'text-cyan-300 animate-pulse' : 'text-slate-400'} />
+                <span>CONFERENCE</span>
               </button>
             </div>
           </div>

@@ -6,8 +6,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CommitGraph } from '@/components/git/CommitGraph';
-import { Icon } from '@/components/Icon';
+import { CommitGraph } from '@office/components/git/CommitGraph';
+import { Icon } from '@office/components/Icon';
 
 // Local mirrors of the main-side git shapes (renderer-local by convention —
 // importing the preload module would drag electron into the bundle).

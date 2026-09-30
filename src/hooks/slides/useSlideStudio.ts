@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useTransition } from "react";
 import { SlideDeck, Slide, SlideLayout } from "../../services/slides/slideTypes";
 import { DEFAULT_THEME_ID } from "../../services/slides/slideThemes";
-import { generateSlideDeckWithAI } from "../../services/slides/slideAIEngine";
+import { generateSlideDeckWithAI, createFallbackPresentationDeck } from "../../services/slides/slideAIEngine";
 import {
   getVectorGroundingForTopic,
   GroundedVectorContext
@@ -11,60 +11,10 @@ interface UseSlideStudioProps {
   initialTopic?: string;
 }
 
-export function useSlideStudio({ initialTopic = "Artificial Intelligence & Ambient OS" }: UseSlideStudioProps = {}) {
-  const [deck, setDeck] = useState<SlideDeck>(() => ({
-    id: `deck_${Date.now()}`,
-    title: initialTopic,
-    subtitle: "Strategic Executive Overview",
-    audience: "Professional Audience",
-    topic: initialTopic,
-    themeId: DEFAULT_THEME_ID,
-    slides: [
-      {
-        id: `slide_init_1`,
-        slideNumber: 1,
-        layout: "title",
-        title: initialTopic,
-        subtitle: "Keynote Architecture & Strategic Insights",
-        categoryTag: "EXECUTIVE BRIEFING",
-        speakerNotes: `Welcome to this presentation on ${initialTopic}. We will explore technical architecture, core paradigms, and future horizons.`,
-        animationStyle: "zoom-in"
-      },
-      {
-        id: `slide_init_2`,
-        slideNumber: 2,
-        layout: "bullets",
-        title: "Key Foundational Pillars",
-        subtitle: "Core tenets powering modern ambient intelligence",
-        categoryTag: "FOUNDATIONS",
-        bullets: [
-          "Zero-latency multi-modal cognitive pipelines",
-          "128-dimensional vector memory retrieval & associative recall",
-          "Decoupled 3-layer architecture ensuring robust scalability",
-          "Contextual ambient audio and teleprompter narration"
-        ],
-        speakerNotes: "Here we examine the four primary foundational pillars that underpin the framework.",
-        animationStyle: "slide-up"
-      },
-      {
-        id: `slide_init_3`,
-        slideNumber: 3,
-        layout: "stats",
-        title: "Empirical Performance & Metrics",
-        subtitle: "Benchmarked efficiency across production workloads",
-        categoryTag: "METRICS & DATA",
-        stats: [
-          { value: "99.98%", label: "Real-time Reliability" },
-          { value: "<45ms", label: "Vector Query Latency" },
-          { value: "10x", label: "Productivity Velocity" }
-        ],
-        speakerNotes: "Notice the quantitative advantages highlighted by these benchmark metrics.",
-        animationStyle: "zoom-in"
-      }
-    ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }));
+export function useSlideStudio({ initialTopic = "FMCG Market Dynamics & Omnichannel Strategy" }: UseSlideStudioProps = {}) {
+  const [deck, setDeck] = useState<SlideDeck>(() =>
+    createFallbackPresentationDeck(initialTopic, "Executive Leadership", 10, DEFAULT_THEME_ID)
+  );
 
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -236,7 +186,11 @@ export function useSlideStudio({ initialTopic = "Artificial Intelligence & Ambie
         }
 
         // Check if user is asking to present
-        if (lower.includes("present") || lower.includes("fullscreen") || lower.includes("start slideshow")) {
+        const isPresentCommand =
+          /^(start\s+)?(slideshow|fullscreen|full\s+screen)$/i.test(lower.trim()) ||
+          /^(play|start|run|launch)\s+(the\s+)?(slides?|presentation|slideshow)$/i.test(lower.trim()) ||
+          /^(enter\s+)?present(ation)?\s+mode$/i.test(lower.trim());
+        if (isPresentCommand) {
           setIsPresenting(true);
           setIsGenerating(false);
           return;
@@ -256,11 +210,17 @@ export function useSlideStudio({ initialTopic = "Artificial Intelligence & Ambie
           return;
         }
 
+        // Parse requested slide count or default to suggested (6-10)
+        const countMatch = prompt.match(/\b(\d+)\s*(?:slides?|pages?)\b/i);
+        const targetCount = countMatch ? Math.max(3, Math.min(parseInt(countMatch[1], 10), 16)) : 8;
+
+        setStatusMessage(`MAHR is generating ${targetCount} slides (Suggested: 6 se 10 slides)...`);
+
         // Full Deck Synthesis or Regeneration
         const generated = await generateSlideDeckWithAI({
           topic: prompt,
           themeId: deck.themeId,
-          slideCount: 6,
+          slideCount: targetCount,
           vectorContext: vectorContext || undefined
         });
 
@@ -309,7 +269,7 @@ export function useSlideStudio({ initialTopic = "Artificial Intelligence & Ambie
       const generated = await generateSlideDeckWithAI({
         topic: deck.topic || deck.title,
         themeId: deck.themeId,
-        slideCount: deck.slides.length || 6,
+        slideCount: Math.max(10, deck.slides.length || 10),
         vectorContext: refreshedContext
       });
 

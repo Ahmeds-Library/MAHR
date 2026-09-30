@@ -6,12 +6,15 @@
  * - Layer 3 (Domain & APIs): exportSlideDeckToGoogleSlides, Gemini AI integration
  */
 
-import React, { useState, useCallback } from "react";
-import { SlideDeck } from "../../services/slides/slideTypes";
+import React, { useState, useCallback, useEffect } from "react";
+import { SlideDeck, Slide } from "../../services/slides/slideTypes";
+import { SlideVectorGraphic } from "../../services/slides/infographics/infographicTypes";
 import { SLIDE_THEMES, DEFAULT_THEME_ID } from "../../services/slides/slideThemes";
 import { exportSlideDeckToGoogleSlides, GooglePresentationResult } from "../../services/slides/googleSlidesApi";
 import { useGoogleSlidesAuth } from "../../hooks/slides/useGoogleSlidesAuth";
 import { useSlideStudio } from "../../hooks/slides/useSlideStudio";
+import { useBackgroundPresentationPipeline } from "../../hooks/slides/useBackgroundPresentationPipeline";
+import { enrichDeckWithVectorGraphics } from "../../services/slides/infographics/backgroundInfographicEnricher";
 
 // Modular Studio Components (Layer 1)
 import { StudioHeader } from "./studio/StudioHeader";
@@ -21,6 +24,8 @@ import { StudioInspector, StudioInspectorTab } from "./studio/inspector/StudioIn
 import { StudioMahrChatBar } from "./studio/StudioMahrChatBar";
 import { SlidePresentMode } from "./SlidePresentMode";
 import { GoogleSlidesExportDialog } from "./GoogleSlidesExportDialog";
+import { InfographicGeneratorModal } from "./studio/infographics/InfographicGeneratorModal";
+import { SlidePipelineModal } from "./pipeline/SlidePipelineModal";
 
 interface SlideStudioWhiteboardProps {
   onBackToSlate?: () => void;
@@ -58,11 +63,37 @@ export const SlideStudioWhiteboard: React.FC<SlideStudioWhiteboardProps> = ({
     regenerateWithMemory
   } = useSlideStudio({ initialTopic });
 
+  const {
+    backgroundNotice,
+    runBackgroundPipeline,
+    injectBackgroundInfographic,
+    autoEnrichDeck
+  } = useBackgroundPresentationPipeline();
+
   const { user, isAuthenticated, signIn, signOut } = useGoogleSlidesAuth();
+
+  // Background auto-enrichment on initial deck mount or topic updates
+  useEffect(() => {
+    if (deck && deck.slides && deck.slides.length > 0) {
+      const hasGraphics = deck.slides.some((s) => !!s.vectorGraphic);
+      if (!hasGraphics) {
+        const enriched = autoEnrichDeck(deck, 2);
+        if (enriched !== deck) {
+          setDeck(enriched);
+        }
+      }
+    }
+  }, [deck.topic, deck.title]);
 
   // Inspector Drawer state
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [inspectorTab, setInspectorTab] = useState<StudioInspectorTab>("content");
+
+  // Infographic Generator Modal State
+  const [showInfographicModal, setShowInfographicModal] = useState(false);
+
+  // Automated 4-Step Pipeline Modal State
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
 
   // Export State
   const [isExporting, setIsExporting] = useState(false);
@@ -73,6 +104,27 @@ export const SlideStudioWhiteboard: React.FC<SlideStudioWhiteboardProps> = ({
 
   const currentTheme = SLIDE_THEMES[deck.themeId] || SLIDE_THEMES[DEFAULT_THEME_ID];
   const totalSlides = deck.slides.length;
+
+  // Global KBS Keyboard Shortcut (Ctrl+I / Cmd+I) to open Infographic Generator
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "i" || e.key === "I")) {
+        e.preventDefault();
+        setShowInfographicModal((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleInsertGraphic = (graphic: SlideVectorGraphic) => {
+    updateCurrentSlide({
+      vectorGraphic: graphic,
+      title: graphic.title || currentSlide?.title,
+      subtitle: graphic.subtitle || currentSlide?.subtitle,
+      categoryTag: graphic.category === "value_chain" ? "VALUE CHAIN VECTOR" : "MARKET INTELLIGENCE"
+    });
+  };
 
   const handleOpenInspectorTab = (tab: StudioInspectorTab) => {
     setInspectorTab(tab);
@@ -92,11 +144,43 @@ export const SlideStudioWhiteboard: React.FC<SlideStudioWhiteboardProps> = ({
         onBackToSlate?.();
         return;
       }
+      if (
+        lower.includes("pipeline") ||
+        lower.includes("manim") ||
+        lower.includes("gemini presentation") ||
+        lower.includes("automated deck") ||
+        lower.includes("automated presentation") ||
+        lower.includes("complete architecture")
+      ) {
+        // Runs autonomously in the background without UI interruption
+        const cleanPrompt = prompt.replace(/^(run|start|execute|launch)\s+/i, "");
+        runBackgroundPipeline(cleanPrompt || deck.topic || deck.title, 8, (enrichedDeck) => {
+          setDeck(enrichedDeck);
+        });
+        return;
+      }
+      if (
+        lower.includes("infographic") ||
+        lower.includes("vector graphic") ||
+        lower.includes("insert graphic") ||
+        lower.includes("draw value chain") ||
+        lower.includes("draw market")
+      ) {
+        // Auto-injects optimal vector graphic directly in the background
+        injectBackgroundInfographic(prompt + " " + (currentSlide?.title || ""), (graphic) => {
+          handleInsertGraphic(graphic);
+        });
+        return;
+      }
       if (lower.includes("export") || lower.includes("google slide export")) {
         setShowExportModal(true);
         return;
       }
-      if (lower.includes("present") || lower.includes("fullscreen") || lower.includes("slideshow")) {
+      const isPresentCommand =
+        /^(start\s+)?(slideshow|fullscreen|full\s+screen)$/i.test(lower) ||
+        /^(play|start|run|launch)\s+(the\s+)?(slides?|presentation|slideshow)$/i.test(lower) ||
+        /^(enter\s+)?present(ation)?\s+mode$/i.test(lower);
+      if (isPresentCommand) {
         setIsPresenting(true);
         return;
       }
@@ -162,6 +246,16 @@ export const SlideStudioWhiteboard: React.FC<SlideStudioWhiteboardProps> = ({
         onSignOut={signOut}
       />
 
+      {/* Subtle Background Autonomous Pipeline / Infographic Notification */}
+      {backgroundNotice && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-200 pointer-events-none">
+          <div className="px-4 py-2 rounded-full bg-slate-950/90 border border-cyan-500/40 text-cyan-300 font-mono text-xs shadow-xl shadow-cyan-950/50 flex items-center gap-2 backdrop-blur-xl">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>{backgroundNotice}</span>
+          </div>
+        </div>
+      )}
+
       {/* 2. Workspace Body: 3-Column Studio Layout */}
       <div className="flex-1 flex min-h-0 relative overflow-hidden">
         {/* Left Column: Slide Thumbnails Filmstrip */}
@@ -213,6 +307,7 @@ export const SlideStudioWhiteboard: React.FC<SlideStudioWhiteboardProps> = ({
           onUpdateSlide={updateCurrentSlide}
           onDuplicateSlide={duplicateSlide}
           onRemoveSlide={removeSlide}
+          onOpenInfographics={() => setShowInfographicModal(true)}
         />
       </div>
 
@@ -240,6 +335,21 @@ export const SlideStudioWhiteboard: React.FC<SlideStudioWhiteboardProps> = ({
         progressPercent={exportProgressPercent}
         exportResult={exportResult}
         exportError={exportError}
+      />
+
+      {/* 5. Pre-Styled Vector Infographic Generator Dialog (KBS Ctrl+I) */}
+      <InfographicGeneratorModal
+        isOpen={showInfographicModal}
+        onClose={() => setShowInfographicModal(false)}
+        onInsertGraphic={handleInsertGraphic}
+        theme={currentTheme}
+      />
+
+      {/* 6. Mahr Automated Presentation Pipeline Dialog (Gemini, Manim, Drive, Slides) */}
+      <SlidePipelineModal
+        isOpen={showPipelineModal}
+        onClose={() => setShowPipelineModal(false)}
+        initialPrompt={deck.topic || deck.title}
       />
     </div>
   );

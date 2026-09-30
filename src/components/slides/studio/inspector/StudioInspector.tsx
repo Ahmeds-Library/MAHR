@@ -28,6 +28,7 @@ interface StudioInspectorProps {
   onUpdateSlide: (partial: Partial<Slide>) => void;
   onDuplicateSlide: (index: number) => void;
   onRemoveSlide: (index: number) => void;
+  onOpenInfographics?: () => void;
 }
 
 export const StudioInspector: React.FC<StudioInspectorProps> = ({
@@ -40,7 +41,8 @@ export const StudioInspector: React.FC<StudioInspectorProps> = ({
   onSelectTab,
   onUpdateSlide,
   onDuplicateSlide,
-  onRemoveSlide
+  onRemoveSlide,
+  onOpenInfographics
 }) => {
   if (!isOpen || !currentSlide) return null;
 
@@ -184,7 +186,11 @@ export const StudioInspector: React.FC<StudioInspectorProps> = ({
 
           {activeTab === "visuals" && (
             <div className="animate-in fade-in duration-150">
-              <TabVisuals slide={currentSlide} onUpdateSlide={onUpdateSlide} />
+              <TabVisuals
+                slide={currentSlide}
+                onUpdateSlide={onUpdateSlide}
+                onOpenInfographics={onOpenInfographics}
+              />
             </div>
           )}
 

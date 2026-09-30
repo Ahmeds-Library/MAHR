@@ -3,6 +3,10 @@ import * as THREE from "three";
 import { MyraaAudioSession, LiveState } from "../lib/audio";
 import { Sparkles, Radio, MessageSquare, ShieldAlert, Cpu, Moon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { HumanMoodType } from "@/services/humanEmotionEngine";
+import { RLAtmospherePolicy } from "@/services/ml/rlMoodOptimizer";
+import { useMoodPulseResonance } from "@/hooks/visualizer/useMoodPulseResonance";
+import { MahrMoodResonanceAura } from "@/components/visualizer/MahrMoodResonanceAura";
 
 export type MahrEmotion = 
   | "idle" 
@@ -40,6 +44,8 @@ interface MahrCoreVisualizerProps {
   valenceScore?: number;
   beamPulseSpeed?: number;
   laserGridOpacity?: number;
+  currentHumanMood?: HumanMoodType;
+  rlPolicy?: RLAtmospherePolicy | null;
 }
 
 export type MyraaCoreVisualizerProps = MahrCoreVisualizerProps;
@@ -59,9 +65,19 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
   projectorIntensity = 1.0,
   valenceScore = 0.0,
   beamPulseSpeed = 1.8,
-  laserGridOpacity = 0.25
+  laserGridOpacity = 0.25,
+  currentHumanMood = "neutral",
+  rlPolicy = null,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
+
+  // Hook up adaptive ML/RL mood resonance pulsing
+  const { pulseScale, auraOpacity, isResponding, resonanceProfile } = useMoodPulseResonance({
+    currentMood: currentHumanMood,
+    characterState,
+    session,
+    rlPolicy,
+  });
 
   // Three.js Engine References
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -259,9 +275,24 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
         id="myraa-animated-presence"
         className="absolute z-10 w-full h-full flex items-center justify-center pointer-events-auto transition-all duration-700"
       >
-        <div className="relative w-full max-w-4xl aspect-[16/9] flex items-center justify-center scale-[0.95] sm:scale-110 select-none pointer-events-none md:max-h-[72vh] max-h-[62vh]">
+        <div 
+          className="relative w-full max-w-4xl aspect-[16/9] flex items-center justify-center scale-[0.95] sm:scale-110 select-none pointer-events-none md:max-h-[72vh] max-h-[62vh]"
+          style={{
+            transform: `scale(${pulseScale})`,
+            transition: "transform 0.08s ease-out",
+          }}
+        >
           {/* Subtle Outer Ambient Shadow Cast */}
           <div className="absolute inset-0 rounded-[2.5rem] blur-[30px] opacity-20 bg-cyan-600/15 pointer-events-none mix-blend-screen" />
+
+          {/* REAL-TIME EMOTIONAL RESONANCE AURA PULSING IN SYNC WITH DETECTED HUMAN MOOD */}
+          <MahrMoodResonanceAura
+            isResponding={isResponding}
+            pulseScale={pulseScale}
+            auraOpacity={auraOpacity}
+            profile={resonanceProfile}
+            characterState={characterState}
+          />
 
           {/* SUBTLE HOLOGRAPHIC RIPPLE ANIMATION ON WAKE WORD DETECTION */}
           <AnimatePresence>

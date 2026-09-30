@@ -949,7 +949,14 @@ export function dbGetOfficeAgents(): DbOfficeAgent[] {
 
 export function dbUpdateOfficeAgent(agent: Partial<DbOfficeAgent> & { id: string }): void {
   const db = getDb();
-  const current = db.prepare("SELECT * FROM office_agents WHERE id = ?").get(agent.id) as any;
+  const normalizedId = agent.id.replace(/-/g, "_");
+  const hyphenId = agent.id.replace(/_/g, "-");
+  const current = db.prepare("SELECT * FROM office_agents WHERE id = ? OR id = ? OR id = ? OR character = ?").get(
+    agent.id,
+    normalizedId,
+    hyphenId,
+    agent.character || ""
+  ) as any;
   if (!current) return;
   const stmt = db.prepare(`
     UPDATE office_agents SET
@@ -960,7 +967,7 @@ export function dbUpdateOfficeAgent(agent: Partial<DbOfficeAgent> & { id: string
     agent.status ?? current.status, agent.action ?? current.action,
     agent.current_station ?? current.current_station,
     agent.context_tokens ?? current.context_tokens,
-    new Date().toISOString(), agent.id
+    new Date().toISOString(), current.id
   );
 }
 

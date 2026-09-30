@@ -11,6 +11,8 @@ interface StudioMahrChatBarProps {
 }
 
 const QUICK_CHIPS = [
+  { label: "⚡ Vector Infographic (KBS)", prompt: "Open vector infographic generator for value chain and market intelligence" },
+  { label: "📊 10-Slide FMC Master Deck", prompt: "Synthesize a 10-slide FMC strategic presentation deck with data statistics, infographics, internet citations, and critical thinking" },
   { label: "Add Metric Slide", prompt: "Add a new quantitative statistics slide comparing key milestones" },
   { label: "Sharpen Bullets", prompt: "Enhance current slide bullets with high-impact executive insights" },
   { label: "Action Roadmap", prompt: "Add an action summary roadmap slide with 3 implementation phases" },
@@ -29,6 +31,7 @@ export const StudioMahrChatBar: React.FC<StudioMahrChatBarProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!inputVal.trim() || isGenerating) return;
     const prompt = inputVal.trim();
     setInputVal("");
@@ -38,6 +41,12 @@ export const StudioMahrChatBar: React.FC<StudioMahrChatBarProps> = ({
   const handleChipClick = async (prompt: string) => {
     if (isGenerating) return;
     await onExecutePrompt(prompt);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.stopPropagation();
+    }
   };
 
   return (
@@ -76,6 +85,33 @@ export const StudioMahrChatBar: React.FC<StudioMahrChatBarProps> = ({
           )}
         </div>
 
+        {/* Suggested Slide Count Selector */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none text-[10px] py-0.5 border-t border-white/5">
+          <span className="text-zinc-400 font-mono flex items-center gap-1 shrink-0">
+            📊 Kitni slides chahiye? <span className="text-amber-400 font-semibold">(Suggested: 6 se 10):</span>
+          </span>
+          {[
+            { label: "6 Slides (Suggested)", count: 6 },
+            { label: "8 Slides (Suggested)", count: 8 },
+            { label: "10 Slides (Masterclass)", count: 10 },
+            { label: "5 Slides (Quick)", count: 5 },
+            { label: "12 Slides (Deep-Dive)", count: 12 },
+          ].map((item, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                const targetTopic = topic && !topic.includes("Presentation Studio") ? topic : "strategy & market execution";
+                setInputVal(`Generate ${item.count} slides on ${targetTopic}`);
+              }}
+              disabled={isGenerating}
+              className="px-2 py-0.5 rounded-md bg-zinc-900 hover:bg-amber-500/15 border border-white/10 hover:border-amber-400/40 text-[10px] text-zinc-300 hover:text-amber-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-40"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
         {/* Text Chat & Command Input Form */}
         <form onSubmit={handleSubmit} className="relative flex items-center">
           <div className="absolute left-3 flex items-center gap-1.5 pointer-events-none text-zinc-400">
@@ -86,6 +122,7 @@ export const StudioMahrChatBar: React.FC<StudioMahrChatBarProps> = ({
             type="text"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
+            onKeyDown={handleKeyDown}
             disabled={isGenerating}
             placeholder={
               isGenerating

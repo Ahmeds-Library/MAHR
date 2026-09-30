@@ -166,6 +166,24 @@ export const HeaderNav = ({
       };
   }, [availableModels, activeModelId]);
 
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  const todayTasks = useMemo(() => {
+    return dailyTasks.filter(
+      (t) => t.date === todayStr || (!t.completed && (!t.date || t.date <= todayStr))
+    );
+  }, [dailyTasks, todayStr]);
+
+  const completedTodayTasksCount = useMemo(() => {
+    return todayTasks.filter((t) => t.completed).length;
+  }, [todayTasks]);
+
   const completedTasksCount = dailyTasks.filter(t => t.completed).length;
 
   // Detect user platform based on navigator.userAgent for platform-specific installer
@@ -451,7 +469,7 @@ export const HeaderNav = ({
                 <span>Daily Schedule</span>
               </div>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 font-bold">
-                {completedTasksCount}/{dailyTasks.length}
+                {todayTasks.length > 0 ? `${completedTodayTasksCount}/${todayTasks.length}` : `${completedTasksCount}/${dailyTasks.length}`}
               </span>
             </button>
 
@@ -589,12 +607,12 @@ export const HeaderNav = ({
             <button
               onClick={onToggleDailyTasks}
               className="h-9 px-3 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/35 text-amber-200 text-xs font-mono font-semibold flex items-center gap-2 transition-all duration-200 shadow-sm hover:border-amber-400/70 hover:scale-[1.02] cursor-pointer shrink-0"
-              title="Daily Task & Schedule Tracker"
+              title="Daily Task & Schedule Tracker (Today's Progress)"
             >
               <Calendar size={14} className="text-amber-400 shrink-0" />
-              <span className="hidden lg:inline">Tasks</span>
+              <span className="hidden lg:inline">Today</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/25 text-amber-200 font-bold border border-amber-400/30 font-mono">
-                {completedTasksCount}/{dailyTasks.length}
+                {todayTasks.length > 0 ? `${completedTodayTasksCount}/${todayTasks.length}` : `${completedTasksCount}/${dailyTasks.length}`}
               </span>
             </button>
           </div>

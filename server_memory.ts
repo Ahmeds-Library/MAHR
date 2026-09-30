@@ -177,17 +177,89 @@ export async function loadDeletedMemoryIds(): Promise<string[]> {
 
 const DAILY_TASKS_FILE = path.join(DATA_DIR, "daily_tasks.json");
 
+function getDefaultDailyTasks(todayStr: string) {
+  return [
+    {
+      id: "task_seed_1",
+      title: "Master React Fiber Architecture & Concurrent Mode (Feynman Technique)",
+      text: "Master React Fiber Architecture & Concurrent Mode (Feynman Technique)",
+      timeBlock: "Morning Focus",
+      priority: "high",
+      category: "study",
+      completed: false,
+      date: todayStr,
+      reminder: true,
+      notes: "Explain reconciliation tree diffing in simple words on chalkboard",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "task_seed_2",
+      title: "Implement High-Throughput WebSocket Streaming Pipeline",
+      text: "Implement High-Throughput WebSocket Streaming Pipeline",
+      timeBlock: "Afternoon Sprint",
+      priority: "high",
+      category: "coding",
+      completed: false,
+      date: todayStr,
+      reminder: true,
+      notes: "Optimize backpressure and token-by-token payload transmission",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "task_seed_3",
+      title: "Solve Daily Active Recall Flashcards & Algorithmic Quiz",
+      text: "Solve Daily Active Recall Flashcards & Algorithmic Quiz",
+      timeBlock: "Evening Review",
+      priority: "medium",
+      category: "study",
+      completed: false,
+      date: todayStr,
+      reminder: false,
+      notes: "Review spaced repetition queue with MAHR interactive companion",
+      createdAt: new Date().toISOString()
+    }
+  ];
+}
+
 export async function loadDailyTasks(): Promise<any[]> {
   try {
-    const data = await fs.readFile(DAILY_TASKS_FILE, "utf-8");
-    const parsed = parseJsonWithRecovery<any[]>(data, []);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error: any) {
-    if (error.code === "ENOENT") return [];
+    const todayStr = new Date().toISOString().split("T")[0];
+    let parsed: any[] = [];
     try {
-      await safeWriteFileAtomic(DAILY_TASKS_FILE, []);
+      const data = await fs.readFile(DAILY_TASKS_FILE, "utf-8");
+      parsed = parseJsonWithRecovery<any[]>(data, []);
+    } catch (err: any) {
+      if (err.code !== "ENOENT") throw err;
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      const defaults = getDefaultDailyTasks(todayStr);
+      await safeWriteFileAtomic(DAILY_TASKS_FILE, defaults);
+      return defaults;
+    }
+
+    return parsed.map((t: any) => {
+      const isDone = Boolean(t.completed);
+      return {
+        ...t,
+        title: t.title || t.text || "Untitled Task",
+        text: t.text || t.title || "Untitled Task",
+        date: (!isDone && (!t.date || t.date < todayStr)) ? todayStr : (t.date || todayStr),
+        timeBlock: t.timeBlock || (t.category === "Office Task" ? "Office Sprint" : "Anytime"),
+        category: t.category || "study",
+        completed: isDone,
+        priority: t.priority || "medium",
+        reminder: t.reminder !== undefined ? Boolean(t.reminder) : true,
+        createdAt: t.createdAt || new Date().toISOString()
+      };
+    });
+  } catch (error: any) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const defaults = getDefaultDailyTasks(todayStr);
+    try {
+      await safeWriteFileAtomic(DAILY_TASKS_FILE, defaults);
     } catch (_) {}
-    return [];
+    return defaults;
   }
 }
 

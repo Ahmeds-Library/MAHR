@@ -164,7 +164,31 @@ Launching your presentation in the Classroom Slides Studio now...`;
 
       // Direct query to MAHR subagent brain with complete context & memory
       try {
+        // Query high-dimensional vector memory knowledge base for semantic grounding
+        let vectorGroundingText = "";
+        try {
+          const vectorRes = await fetch("/api/vector-memory/query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: userMsg, topK: 3, minSimilarity: 0.28 }),
+          });
+          if (vectorRes.ok) {
+            const vectorData = await vectorRes.json();
+            const topMatches = vectorData.topMatches || [];
+            if (topMatches.length > 0) {
+              vectorGroundingText = `=== RECALLED VECTOR KNOWLEDGE GRAPH CONTEXT ===\n` +
+                topMatches.map((m: any, i: number) => 
+                  `${i + 1}. [${m.node?.clusterName || "Concept"}] ${m.node?.label || ""}: ${m.node?.description || ""} (Relevance: ${Math.round((m.similarity || 0.8) * 100)}%)`
+                ).join("\n") +
+                `\n=================================================`;
+            }
+          }
+        } catch (vecErr) {
+          console.warn("[useAskMahr] Vector grounding lookup bypassed:", vecErr);
+        }
+
         const fullContext = [
+          vectorGroundingText,
           studyPadText ? `[Study Pad Notes]\n${studyPadText}` : "",
           whiteboardText ? `[Classroom Chalkboard]\n${whiteboardText}` : ""
         ].filter(Boolean).join("\n\n");

@@ -17,7 +17,7 @@
  * Branch feat/realtime-michael. See board.md "🎙 REALTIME MICHAEL".
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Icon } from '@/components/Icon';
+import { Icon } from '@office/components/Icon';
 import { useStore } from '@office/store/store';
 
 /** Mirrors the `window.cth.onRealtimeCompletion` payload (preload). `summary` is the

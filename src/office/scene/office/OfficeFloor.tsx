@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Application, Container, Graphics, Ticker, Texture } from 'pixi.js';
-// PixiJS uses new Function() internally, blocked by Electron CSP — this patches it.
-import 'pixi.js/unsafe-eval';
 import { useStore, type Agent } from '@office/store/store';
 import { TiledMapRenderer } from './TiledMapRenderer';
 import { Camera } from './Camera';
@@ -17,6 +15,7 @@ import {
   installContextLossRecovery, planInitFailure, DEFAULT_MAX_INIT_RETRIES
 } from './glRecovery';
 import type { Tile, Facing, ErrandKind, ErrandSpot } from './themeRegistry';
+import { ConferenceDirector, type ConferenceSpot, type ConferenceMember } from './ConferenceDirector';
 
 // The map, tileset atlases, desk-claim order, errand spots, coffee-economy
 // tiles, prop anchors, monitor gids and palette all come from the active
@@ -56,6 +55,7 @@ interface CoffeeRun {
 }
 
 
+
 interface Runtime {
   character: Character;
   seatIndex: number | null;
@@ -67,7 +67,9 @@ interface Runtime {
   prevPrompt?: string;
   prevThoughtBubble?: string;
   prevToolBubble?: string;
+  prevStation?: string;
   brk?: CafeBreak;
+  conf?: ConferenceMember;
   /** This desk's monitor overlay — lit while its agent is seated. */
   screen?: DeskScreen;
   /** Walking a fresh coffee from the break room home to the desk. */
@@ -151,9 +153,23 @@ function loadTexture(url: string): Promise<Texture> {
  *  gave it, then to a caller-supplied generic. Returns '' for the working state
  *  with nothing concrete yet — the bubble renders an animated "…" for that. */
 function liveActivity(agent: Agent, fallback = ''): string {
-  if (agent.thoughtBubble && agent.thoughtBubble.trim()) return agent.thoughtBubble.trim();
+  if (agent.thoughtBubble && agent.thoughtBubble.trim()) {
+    const raw = agent.thoughtBubble.trim();
+    if (/^(ready for assignments|completed|assigned:|done:|standing by|idle at station)/i.test(raw)) {
+      return '';
+    }
+    return raw;
+  }
   const action = (agent.action || '').trim();
-  if (action) return action;
+  if (action) {
+    // If the action is a status placeholder, suppress it so idle characters don't clutter the floor
+    if (/^(ready for assignments|ready to orchestrate|idle at station|standing by|online)/i.test(action)) {
+      return '';
+    }
+    // Clean up "Assigned: " or "Completed: " or "Done: " prefix if present so bubble text reads naturally
+    const cleaned = action.replace(/^(assigned:\s*|completed:\s*|done:\s*)/i, '').trim();
+    return cleaned;
+  }
   return firstWords(agent.lastPrompt) || fallback;
 }
 
@@ -796,6 +812,36 @@ export function OfficeFloor() {
         startBreak(agent.id, rt);
       };
 
+      // ─── Executive Boardroom Conference & Standup Director ─────────────────
+      const conferenceDirector = new ConferenceDirector({
+        runtimes: runtimes as any,
+        getAgents: () => useStore.getState().agents,
+        updateAgent: (id, patch) => useStore.getState().updateAgent(id, patch),
+        onPinToNoticeBoard: (task) => {
+          visualTasks.set(task.id, { status: 'todo', assignee: task.assignee });
+          redrawVisual();
+        },
+        onConferenceStatus: (statusText, stage) => {
+          window.dispatchEvent(
+            new CustomEvent('cth:conference-status', {
+              detail: { status: statusText, stage }
+            })
+          );
+        },
+        releaseBreak: (rt: any) => releaseBreak(rt),
+        releaseErrand: (rt: any) => releaseErrand(rt),
+        releaseRun: (rt: any) => releaseRun(rt)
+      });
+
+      const releaseConference = (rt: Runtime): void => {
+        if (!rt.conf) return;
+        rt.conf = undefined;
+      };
+
+      const startTeamConference = (taskTitle?: string, assigneeHint?: string): void => {
+        conferenceDirector.startConference(taskTitle, assigneeHint);
+      };
+
       // ─── Idle errands: small purposeful busywork for a quiet floor ─────────
       // Plants get watered, windows opened for a breeze, the dispenser poured,
       // the fridge inspected, the shelf browsed, scrap paper binned. Every spot
@@ -1317,10 +1363,18 @@ export function OfficeFloor() {
       let firstPoll = true;
       const pollTaskBoard = async (): Promise<void> => {
         try {
+          const globalTasks = (window as any).__officeTasks;
           const raw = (typeof window.cth?.hiveTasks === 'function'
             ? await window.cth.hiveTasks()
             : { tasks: [] }) as { tasks?: Array<{ id?: string; status?: string; assignee?: string; humanQA?: Array<{ q?: string; a?: string }> }> } | null;
-          const arr = (raw && Array.isArray(raw.tasks)) ? raw.tasks : [];
+          let arr = (raw && Array.isArray(raw.tasks) && raw.tasks.length > 0) ? raw.tasks : [];
+          if (arr.length === 0 && Array.isArray(globalTasks) && globalTasks.length > 0) {
+            arr = globalTasks.map((t: any) => ({
+              id: t.id,
+              status: t.col === 'done' ? 'done' : t.col === 'in_progress' ? 'doing' : 'todo',
+              assignee: t.assignee
+            }));
+          }
           const ledger: LedgerTask[] = arr.map((t, i) => ({
             id: typeof t?.id === 'string' && t.id ? t.id : `idx-${i}`,
             status: String(t?.status ?? 'todo'),
@@ -1460,7 +1514,8 @@ export function OfficeFloor() {
           || rt.prevCarrying !== agent.carrying
           || rt.prevPrompt !== agent.lastPrompt
           || rt.prevThoughtBubble !== agent.thoughtBubble
-          || rt.prevToolBubble !== agent.toolBubble;
+          || rt.prevToolBubble !== agent.toolBubble
+          || rt.prevStation !== agent.currentStation;
         if (!changed) return;
         // Finishing real work (working/thinking/compacting → done) earns a
         // little celebration before the avatar goes back to roaming — but only
@@ -1480,9 +1535,43 @@ export function OfficeFloor() {
         rt.prevPrompt = agent.lastPrompt;
         rt.prevThoughtBubble = agent.thoughtBubble;
         rt.prevToolBubble = agent.toolBubble;
+        rt.prevStation = agent.currentStation;
 
         const c = rt.character;
         c.setBaseAlpha(agent.status === 'ghost' ? 0.5 : 1);
+
+        // While an agent is participating in a conference, the conference director owns its avatar
+        if (rt.conf) {
+          return;
+        }
+
+        // ── Direct Station Dispatch Handling ─────────────────────────────────
+        if (agent.currentStation === 'web') {
+          // Breakroom: release any errand/work and send avatar to cafeteria/kitchen
+          if (rt.err) releaseErrand(rt);
+          if (rt.run) releaseRun(rt);
+          if (!rt.brk) {
+            startBreak(agent.id, rt);
+          }
+          return;
+        }
+
+        if (agent.currentStation === 'board') {
+          // Conference Room / Presentation Whiteboard in Boardroom
+          if (rt.brk) releaseBreak(rt);
+          if (rt.err) releaseErrand(rt);
+          if (rt.run) releaseRun(rt);
+          startTeamConference('Executive Boardroom Standup', agent.name);
+          return;
+        }
+
+        // When desk is requested or falling back from break
+        if (agent.currentStation === 'desk') {
+          if (rt.brk) releaseBreak(rt);
+          if (rt.err) releaseErrand(rt);
+          if (rt.run) releaseRun(rt);
+          c.sitAtDesk(agent.status === 'working' || agent.status === 'thinking');
+        }
 
         // While an agent is on a coffee break the director owns its avatar — a
         // mere idle/success refresh must not yank it back to wandering. Any
@@ -1522,7 +1611,12 @@ export function OfficeFloor() {
           case 'thinking':
             c.setStatusGlyph('none');
             c.sitAtDesk(true);
-            c.showThought(liveActivity(agent), agent.toolBubble || agent.carrying);
+            const workAct = liveActivity(agent);
+            if (workAct) {
+              c.showThought(workAct, agent.toolBubble || agent.carrying);
+            } else {
+              c.hideThought();
+            }
             break;
           case 'waiting':
             // Parked at the desk awaiting god / another agent — not actively
@@ -1554,7 +1648,19 @@ export function OfficeFloor() {
           case 'done':
             c.setStatusGlyph('success');
             c.sitAtDesk(false);
-            c.showThought(liveActivity(agent), agent.toolBubble || '✅ Done');
+            const doneAct = liveActivity(agent);
+            if (doneAct) {
+              c.showThought(doneAct, agent.toolBubble || '✅ Done');
+            } else {
+              c.hideThought();
+            }
+            // Auto-clear the thought bubble after 3.5s so it does not linger forever on screen
+            setTimeout(() => {
+              if (agent.status === 'done' || agent.status === 'idle') {
+                c.hideThought();
+                c.setStatusGlyph('none');
+              }
+            }, 3500);
             break;
           case 'success':
             c.setStatusGlyph('success');
@@ -1563,6 +1669,7 @@ export function OfficeFloor() {
             if (finishedWork) {
               c.cheer();
               c.showThought(t(CHEER_KEYS[Math.floor(Math.random() * CHEER_KEYS.length)]));
+              setTimeout(() => { c.hideThought(); }, 3500);
             } else {
               c.hideThought();
             }
@@ -1575,15 +1682,25 @@ export function OfficeFloor() {
           case 'idle':
           default:
             c.setStatusGlyph('none');
-            // The god runs the floor from its desk; everyone else wanders when idle.
-            if (agent.isGod) { c.sitAtDesk(true); c.showThought(liveActivity(agent, t('office.activity.runningFloor'))); }
-            else if (finishedWork) {
+            // The god runs the floor from its desk; everyone else wanders or stays at station when idle.
+            if (agent.isGod) {
+              c.sitAtDesk(true);
+              const godAct = liveActivity(agent, t('office.activity.runningFloor'));
+              if (godAct) c.showThought(godAct); else c.hideThought();
+            } else if (finishedWork) {
               // Task done → a quick cheer on the spot, then back to roaming.
               c.startWandering();
               c.cheer();
               c.showThought(t(CHEER_KEYS[Math.floor(Math.random() * CHEER_KEYS.length)]));
+              setTimeout(() => { c.hideThought(); }, 3500);
+            } else if (agent.currentStation === 'desk') {
+              c.sitAtDesk(false);
+              c.hideThought();
+            } else {
+              c.startWandering();
+              const idleAct = liveActivity(agent);
+              if (idleAct) c.showThought(idleAct); else c.hideThought();
             }
-            else { c.startWandering(); if (agent.thoughtBubble) { c.showThought(liveActivity(agent)); } else { c.hideThought(); } }
             break;
         }
       };
@@ -1670,9 +1787,18 @@ export function OfficeFloor() {
         if (d) spawnHandoff(d.from, d.to, d.act, false);
       };
       window.addEventListener('cth:demo-handoff', onDemoHandoff);
+
+      const onCallConference = (ev: Event) => {
+        const d = (ev as CustomEvent<{ taskTitle?: string; assigneeId?: string }>).detail;
+        startTeamConference(d?.taskTitle, d?.assigneeId);
+      };
+      window.addEventListener('cth:call-conference', onCallConference);
+
       (app as any).__offMessage = () => {
         offMessage();
         window.removeEventListener('cth:demo-handoff', onDemoHandoff);
+        window.removeEventListener('cth:call-conference', onCallConference);
+        conferenceDirector.destroy();
       };
 
       // Keep two nearby thought clouds from covering each other: stack the
@@ -1720,6 +1846,7 @@ export function OfficeFloor() {
             rt.character.setBubbleZoom(zoom);
             rt.character.update(dt);
           }
+          conferenceDirector.update(dt);
           updateCafeteria(dt);
           updateCoffeeRuns(dt);
           updateErrands(dt);

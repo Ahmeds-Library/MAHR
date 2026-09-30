@@ -1,3 +1,5 @@
+import { SlideVectorGraphic } from "./infographics/infographicTypes";
+
 export type SlideLayout =
   | "title"
   | "bullets"
@@ -50,6 +52,7 @@ export interface Slide {
   videoId?: string;
   citations?: SlideWebCitation[];
   mediaItems?: SlideMediaItem[];
+  vectorGraphic?: SlideVectorGraphic;
 }
 
 export interface SlideTheme {

@@ -1,7 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Memory, MemoryCategory } from "../lib/memoryTypes";
 import { DailyTask, SubAgent, PRESET_SUBAGENTS } from "../lib/subagentTypes";
 import { dbGet, dbSet, getSkillsFromDB } from "../lib/db";
+import { 
+  loadDailyTasksFromStorage, 
+  saveDailyTasksToStorage, 
+  normalizeDailyTask, 
+  getLocalTodayDateString 
+} from "../lib/taskSchema";
 
 export function useDailyTasksAndMemories(isStorageInitialized: boolean) {
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
@@ -12,18 +18,29 @@ export function useDailyTasksAndMemories(isStorageInitialized: boolean) {
   const [skills, setSkills] = useState<any[]>([]);
   const [activeSkill, setActiveSkill] = useState<any | null>(null);
 
+  const todayStr = useMemo(() => getLocalTodayDateString(), []);
+
+  // Filter tasks for current date (including active rollover tasks)
+  const todayDailyTasks = useMemo(() => {
+    return dailyTasks.filter(
+      (t) => t.date === todayStr || (!t.completed && (!t.date || t.date <= todayStr))
+    );
+  }, [dailyTasks, todayStr]);
+
+  const todayTasksCount = todayDailyTasks.length;
+
   // Load initial tasks & skills from DB
   useEffect(() => {
     if (!isStorageInitialized) return;
 
     const loadData = async () => {
       try {
-        const savedTasks = await dbGet("myraa_daily_tasks");
-        if (savedTasks && Array.isArray(savedTasks)) {
+        const savedTasks = await loadDailyTasksFromStorage();
+        if (savedTasks && savedTasks.length > 0) {
           setDailyTasks(savedTasks);
         } else {
-          const today = new Date().toISOString().split("T")[0];
-          setDailyTasks([
+          const today = getLocalTodayDateString();
+          const defaultTasks: DailyTask[] = [
             {
               id: "1",
               title: "Review Feynman Technique Study Pad Notes",
@@ -57,7 +74,9 @@ export function useDailyTasksAndMemories(isStorageInitialized: boolean) {
               reminder: false,
               createdAt: new Date().toISOString(),
             },
-          ]);
+          ];
+          setDailyTasks(defaultTasks);
+          await saveDailyTasksToStorage(defaultTasks);
         }
 
         const loadedSkills = await getSkillsFromDB();
@@ -74,7 +93,7 @@ export function useDailyTasksAndMemories(isStorageInitialized: boolean) {
   const saveDailyTasksToDB = async (updated: DailyTask[]) => {
     setDailyTasks(updated);
     if (isStorageInitialized) {
-      await dbSet("myraa_daily_tasks", updated);
+      await saveDailyTasksToStorage(updated);
     }
   };
 
@@ -84,17 +103,18 @@ export function useDailyTasksAndMemories(isStorageInitialized: boolean) {
     timeBlock: string = "Morning Focus"
   ) => {
     if (!title.trim()) return;
-    const newTask: DailyTask = {
+    const today = getLocalTodayDateString();
+    const newTask = normalizeDailyTask({
       id: Date.now().toString(),
       title: title.trim(),
       completed: false,
       priority,
       timeBlock,
       category: "study",
-      date: new Date().toISOString().split("T")[0],
+      date: today,
       reminder: true,
       createdAt: new Date().toISOString(),
-    };
+    }, today);
     const updated = [newTask, ...dailyTasks];
     await saveDailyTasksToDB(updated);
   };
@@ -137,6 +157,8 @@ export function useDailyTasksAndMemories(isStorageInitialized: boolean) {
   return {
     dailyTasks,
     setDailyTasks,
+    todayDailyTasks,
+    todayTasksCount,
     handleCreateDailyTask,
     handleToggleDailyTask,
     handleDeleteDailyTask,

@@ -317,12 +317,18 @@ export async function syncOfficeTasksToDailyTasks(): Promise<number> {
 
     for (const ot of officeState.tasks) {
       if (!existingIds.has(ot.id)) {
+        const taskTitle = `[${ot.assignee}] ${ot.title}`;
+        const taskDate = ot.createdAt ? ot.createdAt.split("T")[0] : new Date().toISOString().split("T")[0];
         merged.push({
           id: ot.id,
-          text: `[${ot.assignee}] ${ot.title}`,
+          title: taskTitle,
+          text: taskTitle,
           completed: ot.col === "done",
           priority: ot.prio === "high" ? "high" : ot.prio === "med" ? "medium" : "low",
           category: "Office Task",
+          timeBlock: "Office Sprint",
+          date: taskDate,
+          reminder: true,
           createdAt: ot.createdAt || new Date().toISOString()
         });
         addedCount++;
@@ -330,6 +336,10 @@ export async function syncOfficeTasksToDailyTasks(): Promise<number> {
         const match = merged.find((t: any) => t.id === ot.id);
         if (match) {
           match.completed = ot.col === "done";
+          if (!match.title && match.text) match.title = match.text;
+          if (!match.text && match.title) match.text = match.title;
+          if (!match.date) match.date = match.createdAt ? match.createdAt.split("T")[0] : new Date().toISOString().split("T")[0];
+          if (!match.timeBlock) match.timeBlock = "Office Sprint";
         }
       }
     }
@@ -556,7 +566,7 @@ Output ONLY a valid JSON array matching this schema:
         dbUpdateOfficeAgent({
           id: `agent-${task.assignee.toLowerCase()}`,
           status: "thinking",
-          action: `Assigned: ${task.title}`
+          action: task.title
         });
 
         // Log to terminal
@@ -866,7 +876,7 @@ INSTRUCTIONS:
           m.thoughtBubble = undefined;
           m.toolBubble = undefined;
           m.status = "idle";
-          m.action = "Ready for assignments";
+          m.action = "Standing by";
           await saveOfficeState(s);
         }
         emitOfficeEvent({
@@ -874,7 +884,7 @@ INSTRUCTIONS:
           data: {
             memberId,
             status: "idle",
-            action: "Ready for assignments",
+            action: "Standing by",
             thoughtBubble: undefined,
             toolBubble: undefined
           },
@@ -957,83 +967,48 @@ export async function processMahrOfficeCommand(params: {
 }> {
   const { command, userMessage } = params;
   const rawInput = command || userMessage || "";
-  const parsePrompt = `
-You are the brain of MAHR, the Lead AI Tutor & Orchestrator of the Virtual Office Floor.
-A student or user issued an instruction: "${rawInput}"
 
-Your office team consists of:
-- Jim (UI/UX & Frontend Architect): React, Tailwind, Canvas/PixiJS, visual designs, UI bugs, component styling.
-- Dwight (Code Reviewer & Security Auditor): Type safety, verification, vulnerability scans, linting, tests, strict correctness.
-- Pam (Pedagogical Companion & Visual Scribe): Mind maps, whiteboard diagrams, Feynman explanations, study notes, student roadmaps.
-- Ryan (Fullstack Temp & WebSocket Engineer): Node.js/Python backend, APIs, WebSockets, real-time data feeds, server pipelines.
-- Stanley (Database Architect & Performance Optimizer): SQLite/PostgreSQL/MongoDB queries, indexing, latency tuning, test benchmarks.
-- MAHR (Lead Tutor & Boss): High-level system architecture, curriculum coordination, cross-agent delegation.
-
-Analyze the user's intent and choose the single best agent to execute it.
-Generate a concise task title, priority, category, and an actionable dispatch prompt for that agent.
-
-Respond ONLY with valid JSON in this exact structure:
-{
-  "agentName": "Jim" | "Dwight" | "Pam" | "Ryan" | "Stanley" | "MAHR",
-  "agentRole": "string",
-  "taskTitle": "string",
-  "priority": "high" | "med" | "low",
-  "category": "Frontend" | "Auditing" | "Chalkboard" | "Backend" | "Database" | "Architecture",
-  "dispatchPrompt": "string"
-}
-`;
-
-  let parsed: any;
-  try {
-    const { text: parseText } = await callOfficeGemini(parsePrompt, { responseMimeType: "application/json" });
-    parsed = JSON.parse(parseText || "{}");
-  } catch (e: any) {
-    console.warn("[MahrCommand] Gemini JSON parse failed, using heuristic:", e.message);
-    const lower = rawInput.toLowerCase();
-    let agentName = "Jim";
-    let agentRole = "UI/UX & Frontend Architect";
-    let category = "Frontend";
-    if (lower.includes("security") || lower.includes("audit") || lower.includes("type") || lower.includes("dwight")) {
-      agentName = "Dwight";
-      agentRole = "Code Reviewer & Security Auditor";
-      category = "Auditing";
-    } else if (lower.includes("chalkboard") || lower.includes("note") || lower.includes("diagram") || lower.includes("pam")) {
-      agentName = "Pam";
-      agentRole = "Pedagogical Companion & Visual Scribe";
-      category = "Chalkboard";
-    } else if (lower.includes("db") || lower.includes("database") || lower.includes("query") || lower.includes("stanley") || lower.includes("perf")) {
-      agentName = "Stanley";
-      agentRole = "Database Architect & Performance Optimizer";
-      category = "Database";
-    } else if (lower.includes("api") || lower.includes("server") || lower.includes("socket") || lower.includes("ryan")) {
-      agentName = "Ryan";
-      agentRole = "Fullstack Temp & WebSocket Engineer";
-      category = "Backend";
-    }
-
-    parsed = {
-      agentName,
-      agentRole,
-      taskTitle: rawInput.slice(0, 40),
-      priority: "high",
-      category,
-      dispatchPrompt: rawInput
-    };
+  // 1. Ensure MAHROrchestrator is initialized
+  let orch = getOrchestrator();
+  if (!orch) {
+    initOrchestrator();
+    orch = getOrchestrator();
   }
 
-  const agentName = parsed.agentName || "Jim";
-  const agentRole = parsed.agentRole || "AI Specialist";
-  const taskTitle = parsed.taskTitle || rawInput.slice(0, 40) || "Office Mission";
-  const priority = (parsed.priority === "high" || parsed.priority === "low") ? parsed.priority : "med";
-  const category = parsed.category || "Development";
-  const dispatchPrompt = parsed.dispatchPrompt || rawInput;
+  let assignedAgentId = "agent-jim";
+  let agentName = "Jim";
+  let routingReason = "Defaulting to lead frontend architect";
 
-  // 1. Create a real OfficeTask in Kanban (status: in-progress)
+  if (orch) {
+    try {
+      const routing = await orch.routeTask(rawInput);
+      assignedAgentId = routing.assignedAgent;
+      agentName = routing.agentName;
+      routingReason = routing.reason;
+    } catch (e: any) {
+      console.warn("[MAHROrchestrator] Dynamic routing failed, using fallback:", e.message);
+    }
+  }
+
+  // Map to member role and category
+  const roleMap: Record<string, { role: string; category: string }> = {
+    "agent-jim": { role: "Frontend Architect & PixiJS Engineer", category: "Frontend" },
+    "agent-dwight": { role: "Assistant to RM & Code Auditor", category: "Auditing" },
+    "agent-pam": { role: "Visual Synthesis & Chalkboard Artist", category: "Chalkboard" },
+    "agent-ryan": { role: "Fullstack Temp & WebSocket Engineer", category: "Backend" },
+    "agent-stanley": { role: "Database Architect & QA Lead", category: "Database" }
+  };
+
+  const agentRole = roleMap[assignedAgentId]?.role || "AI Specialist";
+  const category = roleMap[assignedAgentId]?.category || "Development";
+  const taskTitle = rawInput.slice(0, 45) || "Office Mission";
+
+  // 2. Create Kanban Task (status: in-progress)
   const task: OfficeTask = {
     id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     title: taskTitle,
     assignee: agentName,
-    prio: priority,
+    prio: "high",
     category,
     col: "in-progress",
     delegated_by: "MAHR (Lead)",
@@ -1053,15 +1028,56 @@ Respond ONLY with valid JSON in this exact structure:
 
   emitOfficeEvent("task-update", { task });
 
-  // 2. Dispatch the command to the chosen agent
+  // 3. Envelope Animation & Immediate SSE Status: Agent Thinking
+  emitOfficeEvent({
+    type: "envelope-fly",
+    data: {
+      from: "agent-mahr",
+      to: assignedAgentId,
+      act: "request"
+    },
+    timestamp: Date.now()
+  });
+
+  const thinkingAction = `Routing: "${taskTitle.slice(0, 30)}..."`;
+  const thoughtBubbleText = `Analyzing: ${taskTitle.slice(0, 40)}...`;
+
+  emitOfficeEvent({
+    type: "agent-status-change",
+    data: {
+      memberId: assignedAgentId,
+      status: "thinking",
+      thoughtBubble: thoughtBubbleText,
+      toolBubble: "🧠 Processing...",
+      action: thinkingAction,
+      currentTask: {
+        id: task.id,
+        title: task.title,
+        assignedBy: "MAHR (Lead)",
+        startedAt: task.createdAt,
+        status: "running"
+      }
+    },
+    timestamp: Date.now()
+  });
+
+  emitOfficeEvent("agent-update", {
+    id: assignedAgentId,
+    name: agentName,
+    status: "thinking",
+    action: thinkingAction,
+    thoughtBubble: thoughtBubbleText
+  });
+
+  // 4. Dispatch the command via MAHROrchestrator worker or dispatchOfficeAgentCommand
   const dispatchResult = await dispatchOfficeAgentCommand({
     agentName,
     agentRole,
-    prompt: dispatchPrompt,
-    userContext: `Conversational command: "${rawInput}"`
+    prompt: rawInput,
+    userContext: `MAHROrchestrator Route: ${routingReason}`
   });
 
-  // 3. Mark task as done
+  // 5. Mark task as done in Kanban and persist
   task.col = "done";
   task.completedAt = new Date().toISOString();
   dbSaveOfficeTask({
