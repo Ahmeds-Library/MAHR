@@ -143,6 +143,56 @@ export function initMahrDatabase(): DatabaseSync {
   if (sqliteDb && isInitialized) return sqliteDb;
 
   try {
+    // Pre-initialization Zero-Loss Migration & Backup Guard
+    if (DATA_DIR !== process.cwd()) {
+      try {
+        // If mahr_brain.db exists in process.cwd() but not in DATA_DIR, migrate it
+        const cwdDb = path.join(process.cwd(), "mahr_brain.db");
+        if (!fs.existsSync(DB_PATH) && fs.existsSync(cwdDb)) {
+          console.log(`[MAHR DB] Migrating brain database from legacy directory ${process.cwd()} to persistent DATA_DIR ${DATA_DIR}`);
+          fs.copyFileSync(cwdDb, DB_PATH);
+          for (const ext of ["-wal", "-shm"]) {
+            if (fs.existsSync(cwdDb + ext)) {
+              try { fs.copyFileSync(cwdDb + ext, DB_PATH + ext); } catch (_) {}
+            }
+          }
+        }
+        // Also migrate any state JSON files if not present in DATA_DIR
+        const stateFiles = [
+          "memories.json",
+          "deleted_memories.json",
+          "daily_tasks.json",
+          "knowledge_graph.json",
+          "office_state.json",
+          "server_chat_history.json",
+          "token_telemetry.json",
+          "db_config.json"
+        ];
+        for (const file of stateFiles) {
+          const srcFile = path.join(process.cwd(), file);
+          const destFile = path.join(DATA_DIR, file);
+          if (fs.existsSync(srcFile) && !fs.existsSync(destFile)) {
+            try {
+              fs.copyFileSync(srcFile, destFile);
+              console.log(`[MAHR State] Copied legacy state file ${file} to ${DATA_DIR}`);
+            } catch (_) {}
+          }
+        }
+      } catch (migrationErr) {
+        console.warn("[MAHR DB] Migration from legacy path check completed:", migrationErr);
+      }
+    }
+
+    // Safety Pre-Update Snapshot Backup
+    if (fs.existsSync(DB_PATH)) {
+      try {
+        const backupDir = path.join(DATA_DIR, "backups");
+        fs.mkdirSync(backupDir, { recursive: true });
+        const backupPath = path.join(backupDir, "mahr_brain.db.backup");
+        fs.copyFileSync(DB_PATH, backupPath);
+      } catch (_) {}
+    }
+
     sqliteDb = new DatabaseSync(DB_PATH);
 
     // Enable WAL mode (Write-Ahead Logging) for multi-connection concurrent reads & safe crash recovery

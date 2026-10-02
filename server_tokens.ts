@@ -2,9 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 
-const TOKEN_TELEMETRY_FILE = path.join(process.cwd(), "token_telemetry.json");
-const MEMORIES_FILE = path.join(process.cwd(), "memories.json");
-const CHAT_FILE = path.join(process.cwd(), "server_chat_history.json");
+const DATA_DIR = process.env.MAHR_DATA_DIR || process.cwd();
+const TOKEN_TELEMETRY_FILE = path.join(DATA_DIR, "token_telemetry.json");
+const MEMORIES_FILE = path.join(DATA_DIR, "memories.json");
+const CHAT_FILE = path.join(DATA_DIR, "server_chat_history.json");
 
 // Sequential write queue for token telemetry file
 let tokenWriteQueue: Promise<any> = Promise.resolve();

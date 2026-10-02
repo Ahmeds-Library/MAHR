@@ -71,6 +71,7 @@ import {
   dbLogTerminal,
   dbUpdateOfficeAgent
 } from "./server_db.ts";
+import { updaterRouter } from "./src/server/updaterEndpoint.ts";
 
 dotenv.config();
 
@@ -217,6 +218,9 @@ async function startServer() {
       tamperProtected: true
     });
   });
+
+  // Automated GitHub Releases & App Updater Endpoints
+  app.use("/api", updaterRouter);
 
   // Token Telemetry API Endpoints (Real Gemini API Telemetry)
   app.get("/api/tokens/usage", (req, res) => {

@@ -75,6 +75,8 @@ import { DailyTaskManager } from "@components/DailyTaskManager";
 import { HeaderNav } from "@components/HeaderNav";
 import { DesktopAndRemoteModal } from "@components/desktop/DesktopAndRemoteModal";
 import { useDesktopApp } from "@hooks/useDesktopApp";
+import { useAppUpdater } from "@/hooks/updater/useAppUpdater";
+import { UpdateNotificationModal } from "@/components/updater/UpdateNotificationModal";
 import { registerGlobalSummonListener } from "@/services/platformAdapter";
 import { MAHROfficeModal } from "@office/MAHROfficeModal";
 import { GlobalAlerts } from "@components/GlobalAlerts";
@@ -236,6 +238,12 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isDesktopRemoteModalOpen, setIsDesktopRemoteModalOpen] = useState<boolean>(false);
   const { isBrowser } = useDesktopApp();
+
+  // Autonomous Continuous Releases & Auto-Updater Engine (GitHub Actions CI/CD)
+  const appUpdater = useAppUpdater({
+    autoCheckIntervalMs: 20 * 60 * 1000,
+    enableVoiceNotification: true
+  });
 
   // Global Summon Hotkey Listener (Ctrl+Shift+M / Alt+M / Electron)
   useEffect(() => {
@@ -3670,6 +3678,9 @@ export default function App() {
       {/* HEADER SECTION - Modular Glass Nav */}
       {!isFocusMode && (
         <HeaderNav
+          hasUpdate={appUpdater.hasUpdate}
+          latestVersion={appUpdater.updateInfo?.latestVersion}
+          onOpenUpdateModal={appUpdater.openModal}
           onOpenDesktopRemoteModal={() => setIsDesktopRemoteModalOpen(true)}
           psychologyProfile={psychologyProfile}
           autoShiftBackground={autoShiftBackground}
@@ -4295,6 +4306,18 @@ export default function App() {
           closeAllPanels();
           setIsSlidesStudioOpen(true);
         }}
+      />
+
+      {/* 🚀 Autonomous GitHub Actions Auto-Updater Dialog */}
+      <UpdateNotificationModal
+        isOpen={appUpdater.isModalOpen}
+        onClose={appUpdater.closeModal}
+        status={appUpdater.status}
+        updateInfo={appUpdater.updateInfo}
+        downloadProgress={appUpdater.downloadProgress}
+        errorMessage={appUpdater.errorMessage}
+        onStartDownload={appUpdater.startDownload}
+        onInstallAndRestart={appUpdater.installAndRestart}
       />
     </div>
   );

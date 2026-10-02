@@ -7,6 +7,7 @@ import { formatTokenCount, estimateActiveContextTokens } from "../lib/tokenUtils
 import { THEME_COLOR_CONFIGS, getThemeConfig } from "../services/themeService";
 import { HumanMoodType, HUMAN_MOOD_CONFIGS } from "../services/humanEmotionEngine";
 import { MahrEmblemLogo } from "./brand/MahrEmblemLogo";
+import { UpdateStatusBadge } from "./updater/UpdateStatusBadge";
 
 interface HeaderNavProps {
   activeModelId: string;
@@ -58,6 +59,9 @@ interface HeaderNavProps {
   isRLStudioOpen?: boolean;
   onToggleRLStudio?: () => void;
   deficitsCount?: number;
+  hasUpdate?: boolean;
+  latestVersion?: string;
+  onOpenUpdateModal?: () => void;
 }
 
 export const HeaderNav = ({
@@ -82,6 +86,9 @@ export const HeaderNav = ({
   isSlidesStudioOpen = false,
   isMobileMenuOpen,
   setIsMobileMenuOpen,
+  hasUpdate = false,
+  latestVersion,
+  onOpenUpdateModal,
   onToggleModelSwitcher,
   onToggleSubAgents,
   onToggleDailyTasks,
@@ -858,6 +865,15 @@ export const HeaderNav = ({
               <Monitor size={14} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-cyan-400 shrink-0" : "text-slate-400 shrink-0"} />
               <span className="hidden lg:inline">{isScreenSharing ? "Sharing" : "Screen"}</span>
             </button>
+
+            {hasUpdate && onOpenUpdateModal && (
+              <UpdateStatusBadge
+                status="available"
+                latestVersion={latestVersion}
+                hasUpdate={hasUpdate}
+                onClick={onOpenUpdateModal}
+              />
+            )}
 
             {isLocalDesktopApp ? (
               <button

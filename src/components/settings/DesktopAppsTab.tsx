@@ -18,9 +18,12 @@ import {
   Lock,
   Power,
   HardDrive,
-  Cpu
+  Cpu,
+  RefreshCw,
+  ExternalLink
 } from "lucide-react";
 import { useDesktopApp } from "../../hooks/useDesktopApp";
+import { useAppUpdater } from "../../hooks/updater/useAppUpdater";
 
 interface DesktopAppsTabProps {
   onStatusAlert?: (msg: string) => void;
@@ -35,6 +38,14 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
     installDesktopApp,
     canInstallDesktop
   } = useDesktopApp();
+
+  const {
+    status: updateStatus,
+    updateInfo,
+    checkNow,
+    hasUpdate,
+    openModal
+  } = useAppUpdater({ enableVoiceNotification: false });
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
@@ -133,6 +144,68 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
             <span className="text-[10px] px-2 py-1 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 font-bold font-mono">
               Running Desktop
             </span>
+          )}
+        </div>
+      </div>
+
+      {/* Continuous GitHub Releases & In-App Auto Updater Card */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/30 via-slate-900/60 to-cyan-950/30 border border-purple-500/30 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-amber-400" />
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+              Continuous GitHub Actions Releases
+            </h4>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-semibold border border-cyan-500/30">
+              CI/CD Auto-Sync
+            </span>
+          </div>
+          <p className="text-xs text-slate-300">
+            Whenever code is committed to GitHub, the workflow compiles and publishes new binaries. Existing desktop users receive automatic in-app update notifications.
+          </p>
+          <div className="flex items-center gap-3 pt-1 text-[11px] font-mono text-slate-400">
+            <span>Installed: <strong className="text-white">v2.4.0</strong></span>
+            <span>•</span>
+            <span>Latest: <strong className="text-purple-300">v{updateInfo?.latestVersion || "2.4.0"}</strong></span>
+            {hasUpdate && (
+              <span className="text-amber-400 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                Update Ready
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+          {hasUpdate ? (
+            <button
+              onClick={openModal}
+              className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-mono text-xs font-bold shadow-md shadow-purple-950/50 flex items-center justify-center gap-1.5 cursor-pointer transition"
+            >
+              <Download size={13} />
+              <span>Get Update v{updateInfo?.latestVersion}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => checkNow()}
+              disabled={updateStatus === "checking"}
+              className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 text-slate-200 hover:text-white font-mono text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={updateStatus === "checking" ? "animate-spin text-cyan-400" : "text-cyan-400"} />
+              <span>{updateStatus === "checking" ? "Checking..." : "Check for Updates"}</span>
+            </button>
+          )}
+
+          {updateInfo?.githubReleaseUrl && (
+            <a
+              href={updateInfo.githubReleaseUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+              title="View on GitHub Releases"
+            >
+              <ExternalLink size={14} />
+            </a>
           )}
         </div>
       </div>

@@ -15,6 +15,7 @@ import {
   expandNodeWithVectorMemory,
   MINDMAP_PRESETS,
 } from "../services/mindMapVectorService";
+import { useSmartLayoutEngine } from "./mindmap/useSmartLayoutEngine";
 
 export interface UseInteractiveMindMapProps {
   initialPresetId?: string;
@@ -103,6 +104,19 @@ export function useInteractiveMindMap({
     return () => observer.disconnect();
   }, []);
 
+  const [isDraggingNode, setIsDraggingNode] = useState<boolean>(false);
+
+  // Autonomous Smart Layout Engine (Invisible, topic-density driven, GSAP fluid easing)
+  const { triggerSmartLayout, isAnimating: isSmartLayoutAnimating } = useSmartLayoutEngine({
+    nodes,
+    edges,
+    containerSize,
+    layoutMode,
+    setNodes,
+    setLayoutMode,
+    isDragging: isDraggingNode || isPanning,
+  });
+
   // Update a single node
   const handleUpdateNode = useCallback((nodeId: string, patch: Partial<InteractiveMindMapNode>) => {
     setNodes((prev) => prev.map((n) => (n.id === nodeId ? { ...n, ...patch } : n)));
@@ -125,6 +139,7 @@ export function useInteractiveMindMap({
       const targetNode = nodes.find((n) => n.id === nodeId);
       if (!targetNode) return;
 
+      setIsDraggingNode(true);
       const initialPointerX = startEvent.clientX;
       const initialPointerY = startEvent.clientY;
       const initialNodeX = targetNode.x;
@@ -148,6 +163,7 @@ export function useInteractiveMindMap({
       };
 
       const onPointerUp = () => {
+        setIsDraggingNode(false);
         window.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerup", onPointerUp);
       };
@@ -318,22 +334,10 @@ export function useInteractiveMindMap({
   const handleApplyLayout = useCallback(
     (mode: MindMapLayoutMode) => {
       setLayoutMode(mode);
-      const center = {
-        x: containerSize.width ? containerSize.width / 2 : 700,
-        y: containerSize.height ? containerSize.height / 2 : 500,
-      };
-
-      if (mode === "radial" || mode === "organic") {
-        const rebalanced = calculateRadialLayout(nodes, edges, center);
-        setNodes(rebalanced);
-        onToast?.("🌀 Applied Radial Mind Map Layout.");
-      } else if (mode === "tree-horizontal") {
-        const rebalanced = calculateHorizontalTreeLayout(nodes, edges, 200, center.y);
-        setNodes(rebalanced);
-        onToast?.("🌿 Applied Horizontal Tree Layout.");
-      }
+      triggerSmartLayout();
+      onToast?.("✨ Smart Layout aligned to conceptual density.");
     },
-    [nodes, edges, containerSize, onToast]
+    [setLayoutMode, triggerSmartLayout, onToast]
   );
 
   // Load Preset
@@ -462,5 +466,7 @@ export function useInteractiveMindMap({
     handleSelectPreset,
     handleExportMarkdown,
     handleZoomToFit,
+    triggerSmartLayout,
+    isSmartLayoutAnimating,
   };
 }

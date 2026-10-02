@@ -35,7 +35,7 @@ export interface InteractiveMindMapEdge {
   color?: string;
 }
 
-export type MindMapLayoutMode = "radial" | "tree-horizontal" | "tree-vertical" | "organic";
+export type MindMapLayoutMode = "radial" | "tree-horizontal" | "tree-vertical" | "organic" | "grid";
 
 export interface RecalledMemorySummary {
   id: string;

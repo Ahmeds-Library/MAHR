@@ -9,6 +9,12 @@
     "electron/**/*",
     "public/**/*"
   ],
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "perMachine": false
+  },
   "win": {
     "target": [
       "nsis",

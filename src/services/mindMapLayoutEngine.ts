@@ -28,6 +28,11 @@ export function generateOrganicSplinePath(
     return `M ${from.x} ${from.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${to.x} ${to.y}`;
   }
 
+  if (mode === "grid") {
+    const midX = (from.x + to.x) / 2;
+    return `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`;
+  }
+
   // Radial / Organic mode: curve perpendicular to displacement line for gentle wave
   const midX = (from.x + to.x) / 2;
   const midY = (from.y + to.y) / 2;
