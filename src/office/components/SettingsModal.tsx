@@ -20,6 +20,7 @@ import { Icon } from './Icon';
 import { OfficeThemePicker } from './OfficeThemePicker';
 import { McpDefaultsSettings } from './McpDefaultsSettings';
 import { IntegrationsRegistry } from './IntegrationsRegistry';
+import { GoogleWorkspaceOfficeSection } from './GoogleWorkspaceOfficeSection';
 import { AiEnginesSettings } from './AiEnginesSettings';
 import { REALTIME_MODEL } from '@shared/realtimePricing';
 import { RealtimeDevicePicker } from '@office/realtime/DevicePicker';
@@ -1424,9 +1425,11 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                     </>
                   )}
 
-                  {/* CONNECTIONS — everything external (MCP + Slack + webhook + REST) */}
+                  {/* CONNECTIONS — everything external (MCP + Slack + webhook + REST + Google Workspace) */}
                   {activeSection === 'Connections' && (
                     <>
+                      <GoogleWorkspaceOfficeSection />
+                      <div style={sectionRule} />
                       <McpDefaultsSettings config={config} />
                       <div style={{ height: 1, background: 'var(--cth-ink-300)' }} />
                     </>

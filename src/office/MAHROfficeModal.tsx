@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDesktopApp } from '../hooks/useDesktopApp';
+import { DEB_FILENAME, EXE_FILENAME } from '../config/appVersion';
 
 interface MAHROfficeModalProps {
   isOpen: boolean;
@@ -81,13 +82,13 @@ export function MAHROfficeModal({
 
     const handleDownloadWin = () => {
       downloadWindowsExe();
-      setDownloadSuccess("Windows Setup Installer (MAHR-Setup-v2.4.0.exe) download shuru ho gaya hai!");
+      setDownloadSuccess(`Windows Setup Installer (${EXE_FILENAME}) download shuru ho gaya hai!`);
       setTimeout(() => setDownloadSuccess(null), 4500);
     };
 
     const handleDownloadLinux = () => {
       downloadLinuxDeb();
-      setDownloadSuccess("Linux Debian Package (mahr-desktop_2.4.0_amd64.deb) download shuru ho gaya hai!");
+      setDownloadSuccess(`Linux Debian Package (${DEB_FILENAME}) download shuru ho gaya hai!`);
       setTimeout(() => setDownloadSuccess(null), 4500);
     };
 

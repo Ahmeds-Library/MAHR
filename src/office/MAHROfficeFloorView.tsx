@@ -11,6 +11,7 @@ import {
 import { initOfficeBridge } from './bridge/officeBridge';
 import { paintCastPortrait, OFFICE_CAST, type OfficeCharacterName } from './scene/office/cast';
 import confetti from 'canvas-confetti';
+import { DEB_FILENAME } from '../config/appVersion';
 import { 
   Building2, 
   Coffee, 
@@ -1480,7 +1481,7 @@ export function MAHROfficeFloorView({
           )}
           <a
             href="/api/download/linux-deb-payload"
-            download="mahr-desktop_2.4.0_amd64.deb"
+            download={DEB_FILENAME}
             className="hidden sm:flex px-2.5 py-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 text-slate-300 text-[11px] font-mono items-center gap-1.5 transition"
             title="Download Native Desktop App (.deb / .exe)"
           >

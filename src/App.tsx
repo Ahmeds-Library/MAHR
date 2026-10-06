@@ -58,6 +58,7 @@ import { layoutVisualDiagram } from "@lib/diagramLayout";
 import { useStudyPad } from "@hooks/useStudyPad";
 import { useWakeWordEngine } from "@hooks/useWakeWordEngine";
 import { useDailyTasksAndMemories } from "@hooks/useDailyTasksAndMemories";
+import { useGoogleTasks } from "@hooks/google/useGoogleTasks";
 import { useAudioSessionManager } from "@hooks/useAudioSessionManager";
 import { useAskMahr } from "@hooks/useAskMahr";
 import { detectEmotionFromText, evaluateVoiceAnswerScore } from "@/services/speechToneEngine";
@@ -72,6 +73,7 @@ import { SkillsManager } from "@components/SkillsManager";
 import { ModelSwitcherModal } from "@components/ModelSwitcherModal";
 import { SubAgentsStudio } from "@components/SubAgentsStudio";
 import { DailyTaskManager } from "@components/DailyTaskManager";
+import { GoogleClassroomHubModal } from "@components/classroom/GoogleClassroomHubModal";
 import { HeaderNav } from "@components/HeaderNav";
 import { DesktopAndRemoteModal } from "@components/desktop/DesktopAndRemoteModal";
 import { useDesktopApp } from "@hooks/useDesktopApp";
@@ -86,6 +88,7 @@ import { QuickRoutinesDrawer } from "@components/assistant/QuickRoutinesDrawer";
 import { AskMahrModal, AskMahrModal as AskMyraaModal } from "@components/AskMahrModal";
 import { KeyboardShortcutsModal } from "@components/KeyboardShortcutsModal";
 import { SettingsModal } from "@components/settings/SettingsModal";
+import { AlexaAssistantFloatingHud } from "@components/assistant/AlexaAssistantFloatingHud";
 import { SystemSettingsState, saveSettingToDB, loadSettingsFromDB, runSettingsDiagnosticCycle } from "@/services/settingsService";
 import { VoiceCommand, matchVoiceCommand, detectVoiceAction } from "@/services/voiceCommandService";
 import { getThemeConfig, getVisualizerBarStyle } from "@/services/themeService";
@@ -619,15 +622,44 @@ export default function App() {
   const [activeSubAgent, setActiveSubAgent] = useState<SubAgent>(PRESET_SUBAGENTS[0]);
   const [customSubAgents, setCustomSubAgents] = useState<SubAgent[]>([]);
 
-  // Daily Tasks & Schedule Manager States
+  // Daily Tasks & Schedule Manager States (Google Tasks Cloud Sync Engine)
   const [isDailyTaskManagerOpen, setIsDailyTaskManagerOpen] = useState<boolean>(false);
+  const [isClassroomOpen, setIsClassroomOpen] = useState<boolean>(false);
   const [isQuickRoutinesOpen, setIsQuickRoutinesOpen] = useState<boolean>(false);
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
+
+  // Google Tasks Cloud & Offline Sync Engine (Layer 2)
+  const {
+    tasks: googleDailyTasks,
+    taskLists: googleTaskLists,
+    activeListId: googleActiveListId,
+    isGoogleConnected: isGoogleTasksConnected,
+    isSyncing: isGoogleTasksSyncing,
+    userEmail: googleTasksUserEmail,
+    userName: googleTasksUserName,
+    lastSyncedAt: googleTasksLastSyncedAt,
+    addTask: addGoogleTask,
+    toggleTask: toggleGoogleTask,
+    updateTask: updateGoogleTask,
+    deleteTask: deleteGoogleTask,
+    clearCompleted: clearCompletedGoogleTasks,
+    refresh: refreshGoogleTasks,
+    switchTaskList: switchGoogleTaskList,
+    createTaskList: createGoogleTaskList,
+    connectGoogle: connectGoogleForTasks,
+  } = useGoogleTasks();
+
+  // Sync Google Tasks to active dailyTasks state so assistant and office floor reflect them
+  useEffect(() => {
+    if (googleDailyTasks) {
+      setDailyTasks(googleDailyTasks);
+    }
+  }, [googleDailyTasks]);
 
   // Ask Myraa Text Assistant States
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState<boolean>(false);
 
-  // Load Model, SubAgents, and Daily Tasks on initialization
+  // Load Model, SubAgents on initialization
   useEffect(() => {
     (async () => {
       // 1. Load active model & custom subagents safely from IndexedDB
@@ -657,35 +689,6 @@ export default function App() {
         }
       } catch (err) {
         console.warn("Local model/subagent persistence check:", err);
-      }
-
-      // 2. Load daily tasks from local IndexedDB cache first, then sync with backend
-      try {
-        const todayStr = getLocalTodayDateString();
-        const localTasks = await loadDailyTasksFromStorage();
-        if (localTasks.length > 0) {
-          setDailyTasks(localTasks);
-        }
-
-        const res = await fetch("/api/daily-tasks");
-        if (res.ok) {
-          const data = await res.json();
-          const serverTasks = normalizeDailyTaskList(data, todayStr);
-          if (serverTasks.length > 0) {
-            setDailyTasks(serverTasks);
-            await saveDailyTasksToStorage(serverTasks);
-          } else if (localTasks.length > 0) {
-            // Keep local tasks and sync to server
-            await fetch("/api/daily-tasks", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tasks: localTasks })
-            }).catch(() => {});
-          }
-        }
-      } catch (taskErr) {
-        // Backend still spinning up or offline; offline local IndexedDB cache is already in place
-        console.info("Daily tasks loaded from local offline store:", taskErr);
       }
     })();
   }, []);
@@ -764,71 +767,19 @@ export default function App() {
   };
 
   const handleAddDailyTask = async (taskData: Omit<DailyTask, "id" | "createdAt">) => {
-    const todayStr = getLocalTodayDateString();
-    const newTask = normalizeDailyTask({
-      ...taskData,
-      id: "task-" + Math.random().toString(36).substring(2, 9),
-      createdAt: new Date().toISOString()
-    }, todayStr);
-    const updated = [newTask, ...dailyTasks];
-    setDailyTasks(updated);
-    await saveDailyTasksToStorage(updated);
-    try {
-      await fetch("/api/daily-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks: updated })
-      });
-    } catch {
-      // Saved offline to IndexedDB
-    }
+    await addGoogleTask(taskData);
   };
 
   const handleToggleDailyTask = async (id: string) => {
-    const updated = dailyTasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
-    setDailyTasks(updated);
-    await saveDailyTasksToStorage(updated);
-    try {
-      await fetch("/api/daily-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks: updated })
-      });
-    } catch {
-      // Saved offline to IndexedDB
-    }
+    await toggleGoogleTask(id);
   };
 
   const handleDeleteDailyTask = async (id: string) => {
-    const updated = dailyTasks.filter(t => t.id !== id);
-    setDailyTasks(updated);
-    await saveDailyTasksToStorage(updated);
-    try {
-      await fetch("/api/daily-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks: updated })
-      });
-    } catch {
-      // Saved offline to IndexedDB
-    }
+    await deleteGoogleTask(id);
   };
 
   const handleUpdateDailyTask = async (updatedTask: DailyTask) => {
-    const todayStr = getLocalTodayDateString();
-    const normalized = normalizeDailyTask(updatedTask, todayStr);
-    const updated = dailyTasks.map(t => t.id === normalized.id ? normalized : t);
-    setDailyTasks(updated);
-    await saveDailyTasksToStorage(updated);
-    try {
-      await fetch("/api/daily-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks: updated })
-      });
-    } catch {
-      // Saved offline to IndexedDB
-    }
+    await updateGoogleTask(updatedTask);
   };
 
   const handleAutoGenerateDailyTasks = async () => {
@@ -868,6 +819,14 @@ export default function App() {
       stopAllSpeech();
     };
   }, []);
+
+  const handleStudyClassroomAssignment = (assignment: any, chalkboardContent: string) => {
+    closeAllPanels();
+    setWhiteboardText(chalkboardContent);
+    setWhiteboardActiveMode("split");
+    setIsWhiteboardOpen(true);
+    speakNotification(`Loaded ${assignment?.title || "assignment"} onto your digital chalkboard. Let's work through it!`);
+  };
 
   const speakNotification = (msg: string | { ur?: string; en?: string }, overrideEmotion?: MyraaEmotion) => {
     const textToSpeak = typeof msg === "string" ? msg : (msg.en || msg.ur || "");
@@ -1471,9 +1430,10 @@ export default function App() {
     lastSleepTriggerTimeRef.current = Date.now();
     setSleepRipple(Date.now());
     const agentName = activeSubAgent?.name?.split(" ")[0] || "MAHR";
-    const sleepGreeting = agentMode === "anime"
-      ? { ur: `Oyasumi nasai! ${agentName} standby mode main hai.`, en: `Oyasumi nasai! ${agentName} is entering sleep standby mode.` }
-      : { ur: `Ji zaroor! ${agentName} standby mode par hai, jab zaroorat ho 'Hey ${agentName}' ya awaken boliyega.`, en: `${agentName} is entering low-power sleep standby mode. Say 'Hey ${agentName}' whenever you need me!` };
+    const sleepGreeting = {
+      ur: `${agentName} standby mode par hai. Jab zaroorat ho, batayen.`,
+      en: `${agentName} is entering standby mode. Say 'Hey ${agentName}' whenever you need me.`
+    };
     
     // Explicitly abort background wake-word speech recognition if active
     if (wakeWordRecognitionRef.current) {
@@ -1648,6 +1608,7 @@ export default function App() {
     setIsMunderDifflinOpen(false);
     setIsSlidesStudioOpen(false);
     setIsDailyTaskManagerOpen(false);
+    setIsClassroomOpen(false);
     setShowKeyboardShortcuts(false);
     setIsHumanMoodStudioOpen(false);
     setIsRLStudioOpen(false);
@@ -1856,7 +1817,7 @@ export default function App() {
         setAutoInterrupt(loadedSettings.autoInterrupt);
         setIsWakeWordEnabled(loadedSettings.isWakeWordEnabled);
         setNoiseGate(loadedSettings.noiseGate);
-        setAgentMode(loadedSettings.agentMode);
+        setAgentMode(loadedSettings.agentMode === "anime" ? "human" : (loadedSettings.agentMode || "human"));
         setVoiceModel(loadedSettings.voiceModel);
         setAutoShiftBackground(loadedSettings.autoShiftBackground);
         setChatMaxMessages(loadedSettings.chatMaxMessages);
@@ -3218,16 +3179,11 @@ export default function App() {
               try { rec.abort(); } catch (e) {}
               wakeWordRecognitionRef.current = null;
 
-              // Voice confirmation greeting
-              const wakeUpGreeting = agentMode === "anime"
-                ? {
-                    ur: `Ohayou! ${agentName} jag chuki hai, let's learn together! Yaay!`,
-                    en: `Ohayou! ${agentName} is awake now, let's learn together! Yay!`
-                  }
-                : {
-                    ur: `Ji haan! ${agentName} active ho chuki hai, aayen study shuru karte hain.`,
-                    en: `Yes! ${agentName} is awake and active, let's start studying.`
-                  };
+              // Voice confirmation greeting (Natural Human Tone)
+              const wakeUpGreeting = {
+                ur: `Main active hoon, aayen shuru karte hain.`,
+                en: `I am active and ready. What shall we work on?`
+              };
               
               speakNotification(wakeUpGreeting);
               setNotesStatusAlert(`🎙️ Wake word detected! Waking up ${agentName}...`);
@@ -3632,15 +3588,10 @@ export default function App() {
           onManualWakeRequested={() => {
             setWakeWordRipple(Date.now());
             const agentName = activeSubAgent?.name?.split(" ")[0] || "MAHR";
-            const wakeUpGreeting = agentMode === "anime"
-              ? {
-                  ur: `Ohayou! ${agentName} active hai, let's learn together! Yaay!`,
-                  en: `Ohayou! ${agentName} is awake now, let's learn together! Yay!`
-                }
-              : {
-                  ur: `Ji haan! ${agentName} active ho chuki hai, aayen study shuru karte hain.`,
-                  en: `Yes! ${agentName} is awake and active, let's start studying.`
-                };
+            const wakeUpGreeting = {
+              ur: `Main active hoon, aayen shuru karte hain.`,
+              en: `I am active and ready. What shall we work on?`
+            };
             speakNotification(wakeUpGreeting);
             setNotesStatusAlert(`✨ Awaken ${agentName}...`);
 
@@ -3712,6 +3663,7 @@ export default function App() {
           isMunderDifflinOpen={isMunderDifflinOpen}
           isSlidesStudioOpen={isWhiteboardOpen && whiteboardDiagramType === "slides"}
           isDailyTaskManagerOpen={isDailyTaskManagerOpen}
+          isClassroomOpen={isClassroomOpen}
           isMobileMenuOpen={isMobileMenuOpen}
           setIsMobileMenuOpen={setIsMobileMenuOpen}
           onToggleModelSwitcher={() => {
@@ -3739,6 +3691,11 @@ export default function App() {
             const next = !isDailyTaskManagerOpen;
             closeAllPanels();
             setIsDailyTaskManagerOpen(next);
+          }}
+          onToggleClassroom={() => {
+            const next = !isClassroomOpen;
+            closeAllPanels();
+            setIsClassroomOpen(next);
           }}
           onToggleMemory={() => {
             const next = !showMemoryDashboard;
@@ -3801,37 +3758,15 @@ export default function App() {
       <main className="relative z-10 flex-1 w-full max-w-4xl mx-auto flex flex-col items-center justify-between py-6 pointer-events-none">
         {/* Invisible spatial spacer to maintain layout balance without any obstructing text */}
         <div className="h-10 sm:h-20" />
-
-        {/* System Settings & Command Map Modal */}
-        <div className="pointer-events-auto">
-          <SettingsModal
-            isOpen={showSettings}
-            onClose={() => setShowSettings(false)}
-            settings={currentSystemSettings}
-            onUpdateSetting={handleUpdateSystemSetting}
-            onExecuteCommand={handleExecuteVoiceShortcut}
-            onResetAllSettings={() => {
-              setAutoInterrupt(false);
-              setIsWakeWordEnabled(true);
-              setNoiseGate(0.005);
-              setAgentMode("human");
-              setVoiceModel("Warm");
-              setAutoShiftBackground(true);
-              setChatMaxMessages(50);
-              setChatRetentionTime(60);
-              setThemeColor("violet");
-              setSoundEffectsEnabled(true);
-              setSpeechRate(1.0);
-              setSpeechPitch(1.0);
-            }}
-            speakNotification={(txt) => speakNotification(txt)}
-            onStatusAlert={(msg) => {
-              setNotesStatusAlert(msg);
-              setTimeout(() => setNotesStatusAlert(null), 3500);
-            }}
-          />
-        </div>
       </main>
+
+      {/* Alexa-Style AI Ambient Personal Assistant HUD & Voice Trigger */}
+      <AlexaAssistantFloatingHud
+        onOpenSettings={() => {
+          closeAllPanels();
+          setShowSettings(true);
+        }}
+      />
 
       {/* Voice & Dialogue Floating Toast Notification Popup */}
       <VoiceDialogueToast
@@ -4162,17 +4097,34 @@ export default function App() {
         onNotifyUser={(msg) => setWhiteboardStatusAlert(`🏢 ${msg}`)}
       />
 
-      {/* Daily Task & Memory Tracker Modal */}
+      {/* Daily Task & Memory Tracker Modal (100% Pure Google Tasks API) */}
       <DailyTaskManager
         isOpen={isDailyTaskManagerOpen}
         onClose={() => setIsDailyTaskManagerOpen(false)}
-        tasks={dailyTasks}
+        tasks={googleDailyTasks}
         onAddTask={handleAddDailyTask}
         onToggleTask={handleToggleDailyTask}
         onDeleteTask={handleDeleteDailyTask}
         onUpdateTask={handleUpdateDailyTask}
-        onAutoGenerateTasks={handleAutoGenerateDailyTasks}
-        themeColor={themeColor}
+        isGoogleConnected={isGoogleTasksConnected}
+        userEmail={googleTasksUserEmail}
+        userName={googleTasksUserName}
+        taskLists={googleTaskLists}
+        activeListId={googleActiveListId}
+        isSyncing={isGoogleTasksSyncing}
+        lastSyncedAt={googleTasksLastSyncedAt}
+        onSwitchList={switchGoogleTaskList}
+        onCreateTaskList={createGoogleTaskList}
+        onRefresh={refreshGoogleTasks}
+        onConnectGoogle={connectGoogleForTasks}
+        onClearCompleted={clearCompletedGoogleTasks}
+      />
+
+      {/* 🎓 Google Classroom Hub & Interactive Homework Tutor Modal */}
+      <GoogleClassroomHubModal
+        isOpen={isClassroomOpen}
+        onClose={() => setIsClassroomOpen(false)}
+        onStudyAssignment={handleStudyClassroomAssignment}
       />
 
       {/* Floating 'Ask MAHR' Button - Hidden when Whiteboard or Simulation Studio is open */}
@@ -4318,6 +4270,34 @@ export default function App() {
         errorMessage={appUpdater.errorMessage}
         onStartDownload={appUpdater.startDownload}
         onInstallAndRestart={appUpdater.installAndRestart}
+      />
+
+      {/* ⚙️ Central System Settings & Workspace Hub Modal Dialogue */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        settings={currentSystemSettings}
+        onUpdateSetting={handleUpdateSystemSetting}
+        onExecuteCommand={handleExecuteVoiceShortcut}
+        onResetAllSettings={() => {
+          setAutoInterrupt(false);
+          setIsWakeWordEnabled(true);
+          setNoiseGate(0.005);
+          setAgentMode("human");
+          setVoiceModel("Warm");
+          setAutoShiftBackground(true);
+          setChatMaxMessages(50);
+          setChatRetentionTime(60);
+          setThemeColor("violet");
+          setSoundEffectsEnabled(true);
+          setSpeechRate(1.0);
+          setSpeechPitch(1.0);
+        }}
+        speakNotification={(txt) => speakNotification(txt)}
+        onStatusAlert={(msg) => {
+          setNotesStatusAlert(msg);
+          setTimeout(() => setNotesStatusAlert(null), 3500);
+        }}
       />
     </div>
   );

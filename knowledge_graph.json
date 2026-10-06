@@ -1,42 +1,4 @@
 {
-  "nodes": [
-    {
-      "id": "ent_1790081038811_uohv",
-      "name": "Pam Milestone",
-      "type": "project",
-      "description": "Executed task \"Draft sequence diagram for client-side state recovery after ...\": *Pulls a fresh sheet of paper from the printer, walks over to the central white",
-      "importance": 4,
-      "mentionCount": 3,
-      "lastMentioned": "2026-09-26T18:42:37.507Z"
-    },
-    {
-      "id": "ent_1790447424459_h3ie",
-      "name": "Ryan Milestone",
-      "type": "project",
-      "description": "Executed task \"Audit...\": # 📋 Classroom Chalkboard: The Developer's Audit — Checking Under the Hood\n\nHey TECH-san! \"Audit,\" huh? Excellent reques...",
-      "importance": 4,
-      "mentionCount": 9,
-      "lastMentioned": "2026-09-27T08:03:40.906Z"
-    },
-    {
-      "id": "ent_1790447427572_o1ng",
-      "name": "Dwight Milestone",
-      "type": "project",
-      "description": "Executed task \"Hardening WebSocket handshake against unauthorized origin he...\": # 📋 Classroom Chalkboard: Perimeter Defense — Hardening the WebSocket Handshak",
-      "importance": 4,
-      "mentionCount": 3,
-      "lastMentioned": "2026-09-26T18:42:36.129Z"
-    },
-    {
-      "id": "ent_1790448149616_4wk6",
-      "name": "Jim Milestone",
-      "type": "project",
-      "description": "Executed task \"Implement the 'clear' command to reset or clear the main int...\": *Slides my chair over, a half-eaten bag of chips in one hand, gesturing with th",
-      "importance": 4,
-      "mentionCount": 3,
-      "lastMentioned": "2026-09-27T07:50:53.703Z"
-    }
-  ],
-  "edges": [],
-  "lastUpdated": "2026-09-22T12:43:58.813Z"
+  "nodes": [],
+  "edges": []
 }

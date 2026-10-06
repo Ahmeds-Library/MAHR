@@ -58,23 +58,13 @@ export function generateTaskReminderSpeech(
   let speechText = "";
   let emotion = "warm";
 
-  if (agentMode === "anime") {
-    const animePhrases = [
-      `Umm, TECH-san? I noticed it's been a little quiet! Just a gentle reminder that you have '${taskTitle}' on your schedule. Let's do our best together!`,
-      `TECH-san, don't forget about '${taskTitle}'! Whenever you're ready, I'm right here to help you finish it!`,
-      `Hey TECH-san! Taking a little break? When you get back, '${taskTitle}' is waiting for us on our task list!`
-    ];
-    speechText = animePhrases[Math.floor(Math.random() * animePhrases.length)];
-    emotion = "playful";
-  } else {
-    const humanPhrases = [
-      `Hey TECH, I noticed you've been quiet for a bit! Friendly reminder that you have '${taskTitle}' coming up on your task schedule. Let me know if you want to tackle it together!`,
-      `Just checking in, TECH! You still have '${taskTitle}' pending on your daily checklist whenever you're ready to dive in.`,
-      `Hey TECH! Taking a quick breather? Don't forget '${taskTitle}' is on our study plan for today. I'm right here if you need any assistance!`
-    ];
-    speechText = humanPhrases[Math.floor(Math.random() * humanPhrases.length)];
-    emotion = "happy";
-  }
+  const humanPhrases = [
+    `Friendly reminder that you have '${taskTitle}' on your schedule. Let me know if you would like to work on it together!`,
+    `Just checking in! You still have '${taskTitle}' pending on your daily checklist whenever you are ready.`,
+    `A quick reminder that '${taskTitle}' is on your schedule for today. I am right here whenever you need assistance!`
+  ];
+  speechText = humanPhrases[Math.floor(Math.random() * humanPhrases.length)];
+  emotion = "warm";
 
   return { speechText, taskTitle, emotion };
 }

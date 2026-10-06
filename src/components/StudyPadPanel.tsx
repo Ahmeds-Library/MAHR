@@ -103,33 +103,48 @@ export const StudyPadPanel: React.FC<StudyPadPanelProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
-          initial={{ opacity: 0, x: 100 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 100 }}
-          className="fixed top-0 right-0 h-full w-[440px] max-w-full z-50 bg-slate-950/95 border-l border-white/10 flex flex-col backdrop-blur-2xl shadow-[0_0_100px_rgba(52,211,153,0.15)] overflow-hidden"
-        >
-          {/* Header */}
-          <div className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-white/5 bg-slate-950/80 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/15 rounded-xl text-emerald-400">
-                <BookOpen size={18} />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <h3 className="font-mono text-xs uppercase tracking-widest text-emerald-400 font-bold">Exam Preparation Pad</h3>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md">
+          {/* Backdrop click to dismiss */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0"
+          />
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="relative w-full max-w-4xl max-h-[88vh] bg-slate-950/95 border border-white/15 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex flex-col backdrop-blur-2xl overflow-hidden text-slate-100 z-10"
+          >
+            {/* Ambient Top Glow Line */}
+            <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-60 pointer-events-none" />
+
+            {/* Header */}
+            <div className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/[0.03] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl text-emerald-400">
+                  <BookOpen size={20} />
                 </div>
-                <p className="text-sm font-semibold text-white">Your Personal Study Guide</p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <h3 className="font-mono text-xs uppercase tracking-widest text-emerald-400 font-bold">Exam Preparation Pad</h3>
+                  </div>
+                  <p className="text-sm font-semibold text-white">Your Personal Study Guide & Interactive Notes</p>
+                </div>
               </div>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-rose-500/80 hover:border-rose-400 text-slate-400 hover:text-white transition duration-200 cursor-pointer"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-rose-500 hover:border-rose-400 text-slate-400 hover:text-white transition duration-200 cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-          </div>
 
           {/* Floating Status Notification Overlay */}
           <AnimatePresence>
@@ -455,6 +470,7 @@ export const StudyPadPanel: React.FC<StudyPadPanelProps> = ({
             )}
           </div>
         </motion.div>
+      </div>
       )}
     </AnimatePresence>
   );

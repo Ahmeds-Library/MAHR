@@ -1,14 +1,14 @@
 {
-  "version": "2.4.0",
-  "releaseName": "MAHR Horizon v2.4.0 — Autonomous AI Companion",
-  "releaseDate": "2026-09-30",
+  "version": "2.4.1",
+  "releaseName": "MAHR Horizon v2.4.1 — Autonomous AI Companion",
+  "releaseDate": "2026-10-01",
   "minSupportedVersion": "1.0.0",
   "mandatory": false,
   "releaseNotes": [
-    "Autonomous Presentation Pipeline with Gemini & Vector Infographics in background",
-    "PixiJS v8 idempotent extension registration & rendering optimization",
-    "Alexa-grade interactive voice dialogue & adaptive psychology tuning",
-    "Continuous GitHub Actions CI/CD with automatic update notifications for existing desktop users"
+    "Autonomous Smart Layout Engine for Whiteboard & Mind Map with fluid GSAP physics",
+    "Concentric circular, hierarchical tree, and categorical grid density classification",
+    "Seamless in-place desktop upgrade engine preserving all user brain memories and cognitive states",
+    "Automated CI/CD release pipeline with real-time update notifications"
   ],
   "downloadUrls": {
     "windows": "/api/download/windows-exe",

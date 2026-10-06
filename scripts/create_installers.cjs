@@ -16,6 +16,10 @@ const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const CERTS_DIR = path.join(ROOT_DIR, 'certs');
 const DIST_ELECTRON_DIR = path.join(ROOT_DIR, 'dist_electron');
 
+const pkgPath = path.join(ROOT_DIR, 'package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+const APP_VERSION = pkg.version || '2.4.1';
+
 if (!fs.existsSync(OUTPUT_DIR)) {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
@@ -263,7 +267,7 @@ async function createAsarArchive(targetAsarPath, bytecodeTarget, loaderTarget, s
   // 1. Clean Package Manifest
   const pkgManifest = {
     name: "mahr-desktop",
-    version: "2.4.0",
+    version: APP_VERSION,
     description: "MAHR Autonomous Desktop AI Assistant & Cognitive Ambient OS",
     main: "main.cjs",
     author: "MAHR Cognitive Systems <security@mahr.ai>",
@@ -381,7 +385,7 @@ async function buildLinuxDeb(bytecodeTarget, loaderTarget, sealedTarget) {
   // Package manifest in /opt/mahr-desktop/package.json
   const optPkg = {
     name: "mahr-desktop",
-    version: "2.4.0",
+    version: APP_VERSION,
     main: "main.cjs"
   };
   fs.writeFileSync(path.join(optDir, 'package.json'), JSON.stringify(optPkg, null, 2), 'utf8');
@@ -418,7 +422,7 @@ async function buildLinuxDeb(bytecodeTarget, loaderTarget, sealedTarget) {
 
   // Executable /opt/mahr-desktop/mahr-desktop launcher
   const launcherBinary = `#!/bin/bash
-# MAHR Desktop AI Assistant v2.4.0 Launcher
+# MAHR Desktop AI Assistant v${APP_VERSION} Launcher
 # Copyright (C) 2026 MAHR Cognitive Systems
 set -e
 
@@ -471,7 +475,7 @@ exit 1
 
   // Control file
   const controlContent = `Package: mahr-desktop
-Version: 2.4.0
+Version: ${APP_VERSION}
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -505,7 +509,7 @@ if [ "$1" = "configure" ]; then
     chmod 644 /opt/mahr-desktop/resources/app.asar 2>/dev/null || true
     if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q || true; fi
     echo "=========================================================================="
-    echo "✅ MAHR Desktop v2.4.0 installed successfully!"
+    echo "✅ MAHR Desktop v${APP_VERSION} installed successfully!"
     echo "🚀 Run 'mahr' in terminal or launch from Applications menu to start."
     echo "=========================================================================="
 fi
@@ -533,7 +537,7 @@ StartupWMClass=mahr-desktop
   }
 
   // Build Debian package
-  const debOutputFile = path.join(OUTPUT_DIR, 'mahr-desktop_2.4.0_amd64.deb');
+  const debOutputFile = path.join(OUTPUT_DIR, `mahr-desktop_${APP_VERSION}_amd64.deb`);
   try {
     execSync(`dpkg-deb --build --root-owner-group "${debRoot}" "${debOutputFile}"`, { stdio: 'inherit' });
     console.log(`  ✅ Debian binary built: ${debOutputFile}`);
@@ -576,7 +580,7 @@ StartupWMClass=mahr-desktop
 
 // 5. Build and Sign Windows .exe Installer using NSIS & osslsigncode
 async function buildWindowsExe(bytecodeTarget, loaderTarget, sealedTarget, crtPath, keyPath) {
-  console.log('\n🪟 4/5 Building and Signing Windows Native Installer (MAHR-Setup-v2.4.0.exe)...');
+  console.log(`\n🪟 4/5 Building and Signing Windows Native Installer (MAHR-Setup-v${APP_VERSION}.exe)...`);
   const winStage = path.join(ROOT_DIR, 'dist_win_temp');
   if (fs.existsSync(winStage)) {
     fs.rmSync(winStage, { recursive: true, force: true });
@@ -620,15 +624,15 @@ async function buildWindowsExe(bytecodeTarget, loaderTarget, sealedTarget, crtPa
 
   const winPkg = {
     name: "mahr-desktop",
-    version: "2.4.0",
+    version: APP_VERSION,
     main: "main.cjs"
   };
   fs.writeFileSync(path.join(winStage, 'package.json'), JSON.stringify(winPkg, null, 2), 'utf8');
 
   // Generate NSIS installer script
   const nsiScriptPath = path.join(winStage, 'installer.nsi');
-  const unsignedExe = path.join(OUTPUT_DIR, 'MAHR-Setup-v2.4.0.unsigned.exe');
-  const finalSignedExe = path.join(OUTPUT_DIR, 'MAHR-Setup-v2.4.0.exe');
+  const unsignedExe = path.join(OUTPUT_DIR, `MAHR-Setup-v${APP_VERSION}.unsigned.exe`);
+  const finalSignedExe = path.join(OUTPUT_DIR, `MAHR-Setup-v${APP_VERSION}.exe`);
 
   const nsiContent = `
 !include "MUI2.nsh"
@@ -685,7 +689,7 @@ Section "MainSection" SEC01
   
   ; Register in Windows Add/Remove Programs
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MAHRDesktop" "DisplayName" "MAHR Autonomous Desktop AI Assistant"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MAHRDesktop" "DisplayVersion" "2.4.0"
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MAHRDesktop" "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MAHRDesktop" "Publisher" "MAHR Cognitive Systems"
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MAHRDesktop" "DisplayIcon" "$INSTDIR\\mahr.ico"
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MAHRDesktop" "UninstallString" '"$INSTDIR\\Uninstall.exe"'
@@ -752,10 +756,15 @@ SectionEnd
         console.log(`  ✅ Preserving authentic NSIS PE32 Windows package: ${finalSignedExe}`);
       } else {
         console.warn('  ⚠️ No pre-existing Windows binary found at target.');
+        const olderExe = fs.readdirSync(OUTPUT_DIR).find(f => /^MAHR-Setup-.*\.exe$/.test(f) && !f.endsWith('.unsigned.exe') && !f.endsWith('.sig'));
+        if (olderExe) {
+          fs.copyFileSync(path.join(OUTPUT_DIR, olderExe), finalSignedExe);
+          console.log(`  ✅ Updated binary base ${olderExe} to ${path.basename(finalSignedExe)}`);
+        }
       }
     }
 
-    // Always create a GPG detached signature for Windows binary
+    // Always create a GPG detached signature for Windows binary if present
     if (fs.existsSync(finalSignedExe)) {
       const exeSig = finalSignedExe + '.sig';
       if (fs.existsSync(exeSig)) fs.unlinkSync(exeSig);
@@ -768,8 +777,10 @@ SectionEnd
       fs.unlinkSync(unsignedExe);
     }
 
-    const exeStats = fs.statSync(finalSignedExe);
-    console.log(`  ✅ Verified Windows installer ready: ${finalSignedExe} (${(exeStats.size / (1024 * 1024)).toFixed(2)} MB)`);
+    if (fs.existsSync(finalSignedExe)) {
+      const exeStats = fs.statSync(finalSignedExe);
+      console.log(`  ✅ Verified Windows installer ready: ${finalSignedExe} (${(exeStats.size / (1024 * 1024)).toFixed(2)} MB)`);
+    }
 
   } finally {
     fs.rmSync(winStage, { recursive: true, force: true });

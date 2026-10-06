@@ -104,28 +104,31 @@ export function ChatJournal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md">
           {/* Backdrop Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/75 z-[100] backdrop-blur-md"
+            className="absolute inset-0"
           />
 
-          {/* Slide-over Container */}
+          {/* Centered Modal Container */}
           <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed inset-y-0 right-0 w-full max-w-lg bg-[#020206]/95 border-l border-white/15 backdrop-blur-2xl z-[101] flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.8)]"
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="relative w-full max-w-3xl max-h-[85vh] bg-slate-950/95 border border-white/15 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex flex-col backdrop-blur-2xl overflow-hidden text-slate-100 z-10"
           >
+            {/* Ambient Top Glow Line */}
+            <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-purple-400 to-transparent opacity-60 pointer-events-none" />
+
             {/* Header */}
-            <div className="p-6 border-b border-white/10 flex items-center justify-between">
+            <div className="p-6 border-b border-white/10 bg-white/[0.03] flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl border ${getThemeBadgeGlow()}`}>
+                <div className={`p-2.5 rounded-2xl border ${getThemeBadgeGlow()}`}>
                   <MessageSquare size={22} className="animate-pulse" />
                 </div>
                 <div>
@@ -140,7 +143,8 @@ export function ChatJournal({
               </div>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-rose-500/80 hover:border-rose-400 text-slate-400 hover:text-white transition duration-200 cursor-pointer"
+                title="Close"
               >
                 <X size={18} />
               </button>
@@ -295,7 +299,7 @@ export function ChatJournal({
               <span>INDEXEDDB DURABLE STATE</span>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
     </AnimatePresence>
   );

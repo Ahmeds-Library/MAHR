@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { detectPlatform, PlatformInfo } from '../../services/platformAdapter';
 import { useDesktopApp } from '../../hooks/useDesktopApp';
+import { APP_VERSION, DEB_FILENAME, LINUX_INSTALL_CMD } from '../../config/appVersion';
 
 interface DesktopAndRemoteModalProps {
   isOpen: boolean;
@@ -56,7 +57,7 @@ export const DesktopAndRemoteModal: React.FC<DesktopAndRemoteModalProps> = ({
   };
 
   const copyInstallCommand = () => {
-    const cmd = "cd ~/Downloads && sudo apt install -y ./mahr-desktop_2.4.0_amd64.deb && mahr";
+    const cmd = "cd ~/Downloads && " + LINUX_INSTALL_CMD;
     navigator.clipboard.writeText(cmd);
     setCopiedCommand(true);
     setTimeout(() => setCopiedCommand(false), 2500);
@@ -237,7 +238,7 @@ export const DesktopAndRemoteModal: React.FC<DesktopAndRemoteModalProps> = ({
                 </button>
               </div>
               <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 select-all overflow-x-auto">
-                sudo dpkg -i ~/Downloads/mahr-desktop_2.4.0_amd64.deb
+                sudo apt install --reinstall -y ~/Downloads/{DEB_FILENAME}
               </div>
               <p className="text-[10.5px] text-slate-500 mt-1">
                 Then open <strong>MAHR</strong> from your Ubuntu Applications menu or type <code className="text-purple-300 font-mono">mahr</code>.
@@ -248,7 +249,7 @@ export const DesktopAndRemoteModal: React.FC<DesktopAndRemoteModalProps> = ({
 
         {/* Minimal Footer */}
         <div className="px-5 py-3 bg-slate-900/40 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
-          <span>MAHR Autonomous Engine v2.4.0 (Authentic ASAR + V8 Encrypted)</span>
+          <span>MAHR Autonomous Engine v{APP_VERSION} (Authentic ASAR + V8 Encrypted)</span>
           <button
             onClick={onClose}
             className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition-colors cursor-pointer"

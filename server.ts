@@ -227,13 +227,31 @@ async function startServer() {
     res.json(getLiveTokenStats());
   });
 
+  // Helper to dynamically find latest installer binary (.exe or .deb)
+  function getLatestInstallerFile(pattern: RegExp): string | null {
+    const candidateDirs = [
+      path.join(process.cwd(), "public", "downloads"),
+      path.join(process.cwd(), "dist", "downloads"),
+    ];
+    for (const dir of candidateDirs) {
+      if (fs.existsSync(dir)) {
+        const files = fs.readdirSync(dir).filter((f) => pattern.test(f) && !f.endsWith(".sig") && !f.endsWith(".unsigned.exe"));
+        if (files.length > 0) {
+          // Sort descending so newer versions (e.g. 2.4.1 > 2.4.0) take priority
+          files.sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: "base" }));
+          return path.join(dir, files[0]);
+        }
+      }
+    }
+    return null;
+  }
+
   // Native Installer Binary Downloads (.exe and .deb)
-  app.get(["/api/download/windows-exe", "/downloads/MAHR-Setup-v2.4.0.exe"], (req, res) => {
-    const publicPath = path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.0.exe");
-    const distPath = path.join(process.cwd(), "dist", "downloads", "MAHR-Setup-v2.4.0.exe");
-    const exePath = fs.existsSync(publicPath) ? publicPath : distPath;
+  app.get(["/api/download/windows-exe", "/downloads/MAHR-Setup*", "/downloads/*.exe"], (req, res) => {
+    const exePath = getLatestInstallerFile(/^MAHR-Setup-.*\.exe$/) || path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.0.exe");
     if (fs.existsSync(exePath)) {
-      res.setHeader("Content-Disposition", 'attachment; filename="MAHR-Setup-v2.4.0.exe"');
+      const filename = path.basename(exePath);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.microsoft.portable-executable");
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
       res.setHeader("Pragma", "no-cache");
@@ -244,28 +262,26 @@ async function startServer() {
   });
 
   app.get("/api/download/windows-exe-payload", (req, res) => {
-    const publicPath = path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.0.exe");
-    const distPath = path.join(process.cwd(), "dist", "downloads", "MAHR-Setup-v2.4.0.exe");
-    const exePath = fs.existsSync(publicPath) ? publicPath : distPath;
+    const exePath = getLatestInstallerFile(/^MAHR-Setup-.*\.exe$/) || path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.0.exe");
     if (fs.existsSync(exePath)) {
+      const filename = path.basename(exePath);
       const buffer = fs.readFileSync(exePath);
       return res.json({
         success: true,
-        filename: "MAHR-Setup-v2.4.0.exe",
+        filename,
         mimeType: "application/vnd.microsoft.portable-executable",
         size: buffer.length,
-        base64: buffer.toString("base64")
+        base64: buffer.toString("base64"),
       });
     }
     res.status(404).json({ error: "Installer file not found on server." });
   });
 
-  app.get(["/api/download/linux-deb", "/downloads/mahr-desktop_2.4.0_amd64.deb"], (req, res) => {
-    const publicPath = path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.0_amd64.deb");
-    const distPath = path.join(process.cwd(), "dist", "downloads", "mahr-desktop_2.4.0_amd64.deb");
-    const debPath = fs.existsSync(publicPath) ? publicPath : distPath;
+  app.get(["/api/download/linux-deb", "/downloads/mahr-desktop*", "/downloads/*.deb"], (req, res) => {
+    const debPath = getLatestInstallerFile(/^mahr-desktop_.*\.deb$/) || path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.0_amd64.deb");
     if (fs.existsSync(debPath)) {
-      res.setHeader("Content-Disposition", 'attachment; filename="mahr-desktop_2.4.0_amd64.deb"');
+      const filename = path.basename(debPath);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.debian.binary-package");
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
       res.setHeader("Pragma", "no-cache");
@@ -276,17 +292,16 @@ async function startServer() {
   });
 
   app.get("/api/download/linux-deb-payload", (req, res) => {
-    const publicPath = path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.0_amd64.deb");
-    const distPath = path.join(process.cwd(), "dist", "downloads", "mahr-desktop_2.4.0_amd64.deb");
-    const debPath = fs.existsSync(publicPath) ? publicPath : distPath;
+    const debPath = getLatestInstallerFile(/^mahr-desktop_.*\.deb$/) || path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.0_amd64.deb");
     if (fs.existsSync(debPath)) {
+      const filename = path.basename(debPath);
       const buffer = fs.readFileSync(debPath);
       return res.json({
         success: true,
-        filename: "mahr-desktop_2.4.0_amd64.deb",
+        filename,
         mimeType: "application/vnd.debian.binary-package",
         size: buffer.length,
-        base64: buffer.toString("base64")
+        base64: buffer.toString("base64"),
       });
     }
     res.status(404).json({ error: "Debian package not found on server." });

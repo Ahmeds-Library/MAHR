@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Sliders, Terminal, Mic, Bot, Palette, Sparkles, ChevronRight, ShieldCheck, Monitor, Database } from "lucide-react";
+import { X, Sliders, Terminal, Mic, Bot, Palette, Sparkles, ChevronRight, ShieldCheck, Monitor, Database, Cloud } from "lucide-react";
 import { SystemSettingsState } from "../../services/settingsService";
 import { VoiceCommand } from "../../services/voiceCommandService";
 import { CommandMapTab } from "./CommandMapTab";
@@ -9,6 +9,7 @@ import { PersonaAiTab } from "./PersonaAiTab";
 import { StorageThemeTab } from "./StorageThemeTab";
 import { DesktopAppsTab } from "./DesktopAppsTab";
 import { DatabaseSettingsTab } from "./DatabaseSettingsTab";
+import { GoogleWorkspaceTab } from "./GoogleWorkspaceTab";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ interface SettingsModalProps {
   onResetAllSettings: () => void;
   speakNotification?: (text: { ur?: string; en?: string } | string) => void;
   onStatusAlert?: (msg: string) => void;
-  initialTab?: "command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync";
+  initialTab?: "command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync" | "google_workspace";
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -31,13 +32,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetAllSettings,
   speakNotification,
   onStatusAlert,
-  initialTab = "command_map"
+  initialTab = "google_workspace"
 }) => {
-  const [activeTab, setActiveTab] = useState<"command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync">(
+  const [activeTab, setActiveTab] = useState<"command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync" | "google_workspace">(
     initialTab
   );
 
+  // Synchronize active tab whenever initialTab or isOpen updates
+  useEffect(() => {
+    if (initialTab && isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
+
   const sidebarTabs = [
+    {
+      id: "google_workspace",
+      label: "Google Workspace & Accounts",
+      sublabel: "Slides, Drive, Docs, Sheets, Gmail, Calendar, Tasks",
+      icon: Cloud,
+      badge: "Google"
+    },
     {
       id: "command_map",
       label: "Shortcuts & Commands",
@@ -88,7 +103,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-3 sm:p-5 md:p-6 bg-black/85 backdrop-blur-xl">
           {/* Backdrop Overlay - Click outside to close */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -96,194 +111,204 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="fixed inset-0 z-[299] bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 cursor-pointer"
           />
 
-          {/* Slide-in Right Side Panel */}
+          {/* Standardized Centered Modal Dialogue */}
           <motion.div
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", damping: 28, stiffness: 260 }}
-            className="fixed inset-y-0 right-0 z-[300] w-full sm:w-[580px] md:w-[680px] lg:w-[740px] max-w-full bg-[#080914]/98 border-l border-white/15 backdrop-blur-3xl shadow-[-25px_0_70px_rgba(0,0,0,0.85)] flex flex-col md:flex-row h-full overflow-hidden font-sans text-left"
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            data-testid="settings-modal-dialog"
+            className="relative w-full max-w-5xl h-[88vh] max-h-[840px] bg-slate-950/95 border border-white/15 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex flex-col md:flex-row backdrop-blur-2xl overflow-hidden text-slate-100 z-10"
           >
-            {/* LEFT SIDEBAR NAVIGATION */}
-          <div className="w-full md:w-64 bg-slate-950/80 border-b md:border-b-0 md:border-r border-white/10 flex flex-col shrink-0 p-3.5 sm:p-4 justify-between select-none">
-            {/* Sidebar Brand Header */}
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2.5 pb-3 border-b border-white/10">
-                <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-purple-500/30 to-indigo-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 shadow-md shrink-0">
-                  <Sliders size={18} className="animate-pulse" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xs font-extrabold font-mono tracking-wider uppercase text-white flex items-center gap-1.5">
-                    <span>MAHR SETUP</span>
-                  </h3>
-                  <p className="text-[10px] font-mono text-slate-400 truncate">
-                    System & Intelligence Suite
-                  </p>
-                </div>
-              </div>
+            {/* Ambient Top Glow Line */}
+            <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-70 pointer-events-none" />
 
-              {/* Sidebar Category Navigation Buttons */}
-              <div className="flex flex-row md:flex-col gap-1.5 overflow-x-auto md:overflow-y-auto no-scrollbar py-1">
-                {sidebarTabs.map((tab) => {
-                  const Icon = tab?.icon || Terminal;
-                  const isActive = activeTab === tab?.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-2.5 rounded-2xl text-left flex items-center justify-between transition-all duration-200 cursor-pointer shrink-0 md:shrink border ${
-                        isActive
-                          ? "bg-gradient-to-r from-purple-600/30 to-indigo-600/20 border-purple-400/60 text-white shadow-lg shadow-purple-950/50"
-                          : "bg-white/5 md:bg-transparent border-white/5 md:border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div
-                          className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${
-                            isActive
-                              ? "bg-purple-500 text-white border-purple-400 shadow-sm"
-                              : "bg-white/5 text-slate-400 border-white/10"
-                          }`}
-                        >
-                          <Icon size={14} />
-                        </div>
-                        <div className="hidden md:flex flex-col min-w-0">
-                          <span
-                            className={`text-xs font-bold font-mono tracking-wide truncate ${
-                              isActive ? "text-white" : "text-slate-300"
+            {/* LEFT SIDEBAR NAVIGATION */}
+            <div className="w-full md:w-64 bg-slate-950/80 border-b md:border-b-0 md:border-r border-white/10 flex flex-col shrink-0 p-3.5 sm:p-4 justify-between select-none">
+              {/* Sidebar Brand Header */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2.5 pb-3 border-b border-white/10">
+                  <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-purple-500/30 to-indigo-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 shadow-md shrink-0">
+                    <Sliders size={18} className="animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-extrabold font-mono tracking-wider uppercase text-white flex items-center gap-1.5">
+                      <span>MAHR SETUP</span>
+                    </h3>
+                    <p className="text-[10px] font-mono text-slate-400 truncate">
+                      System & Intelligence Suite
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sidebar Category Navigation Buttons */}
+                <div className="flex flex-row md:flex-col gap-1.5 overflow-x-auto md:overflow-y-auto no-scrollbar py-1">
+                  {sidebarTabs.map((tab) => {
+                    const Icon = tab?.icon || Terminal;
+                    const isActive = activeTab === tab?.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        data-testid={`settings-tab-${tab.id}`}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`p-2.5 rounded-2xl text-left flex items-center justify-between transition-all duration-200 cursor-pointer shrink-0 md:shrink border ${
+                          isActive
+                            ? "bg-gradient-to-r from-purple-600/30 to-indigo-600/20 border-purple-400/60 text-white shadow-lg shadow-purple-950/50"
+                            : "bg-white/5 md:bg-transparent border-white/5 md:border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${
+                              isActive
+                                ? "bg-purple-500 text-white border-purple-400 shadow-sm"
+                                : "bg-white/5 text-slate-400 border-white/10"
                             }`}
                           >
-                            {tab.label}
-                          </span>
-                          <span className="text-[9px] font-mono text-slate-400 truncate">
-                            {tab.sublabel}
+                            <Icon size={14} />
+                          </div>
+                          <div className="hidden md:flex flex-col min-w-0">
+                            <span
+                              className={`text-xs font-bold font-mono tracking-wide truncate ${
+                                isActive ? "text-white" : "text-slate-300"
+                              }`}
+                            >
+                              {tab.label}
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-400 truncate">
+                              {tab.sublabel}
+                            </span>
+                          </div>
+                          {/* Mobile label */}
+                          <span className="md:hidden text-xs font-bold font-mono whitespace-nowrap">
+                            {tab.label.split(" ")[0]}
                           </span>
                         </div>
-                        {/* Mobile label */}
-                        <span className="md:hidden text-xs font-bold font-mono whitespace-nowrap">
-                          {tab.label.split(" ")[0]}
-                        </span>
-                      </div>
 
-                      <ChevronRight
-                        size={14}
-                        className={`hidden md:block transition-transform duration-200 ${
-                          isActive ? "text-purple-300 translate-x-0.5" : "text-slate-600"
-                        }`}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Sidebar Footer System Status Widget */}
-            <div className="hidden md:flex flex-col gap-2 p-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-mono">
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="flex items-center gap-1 text-slate-400">
-                  <ShieldCheck size={12} className="text-emerald-400" />
-                  Active Model
-                </span>
-                <span className="font-bold text-cyan-300 truncate max-w-[90px]">
-                  {settings.voiceModel || "2.5 Pro"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-slate-300">
-                <span className="text-slate-400">Persona</span>
-                <span className="font-bold text-purple-300">
-                  {settings.agentMode === "human" ? "Human Tutor" : "Anime Mode"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT MAIN CONTENT PANEL */}
-          <div className="flex-1 flex flex-col min-w-0 bg-[#090a14]/90 overflow-hidden">
-            {/* Content Top Header */}
-            <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-white/10 bg-slate-950/40">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 shrink-0">
-                  <CurrentTabIcon size={15} />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xs sm:text-sm font-extrabold font-mono tracking-wider uppercase text-white truncate">
-                    {currentTabInfo.label}
-                  </h3>
-                  <p className="text-[10px] font-mono text-slate-400 truncate">
-                    {currentTabInfo.sublabel}
-                  </p>
+                        <ChevronRight
+                          size={14}
+                          className={`hidden md:block transition-transform duration-200 ${
+                            isActive ? "text-purple-300 translate-x-0.5" : "text-slate-600"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer border border-white/10 shrink-0"
-                title="Close settings"
-              >
-                <X size={16} />
-              </button>
+              {/* Sidebar Footer System Status Widget */}
+              <div className="hidden md:flex flex-col gap-2 p-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-mono">
+                <div className="flex items-center justify-between text-slate-300">
+                  <span className="flex items-center gap-1 text-slate-400">
+                    <ShieldCheck size={12} className="text-emerald-400" />
+                    Active Model
+                  </span>
+                  <span className="font-bold text-cyan-300 truncate max-w-[90px]">
+                    {settings.voiceModel || "2.5 Pro"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-300">
+                  <span className="text-slate-400">Persona</span>
+                  <span className="font-bold text-purple-300">
+                    {settings.agentMode === "human" ? "Human Tutor" : "Anime Mode"}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Content Body View */}
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
-              {activeTab === "command_map" && (
-                <CommandMapTab
-                  onExecuteCommand={(cmd) => {
-                    onExecuteCommand(cmd);
-                    if (cmd.id.startsWith("open_") || cmd.id === "generate_schedule" || cmd.id === "voice_sleep") {
-                      onClose();
-                    }
-                  }}
-                  speakNotification={speakNotification}
-                />
-              )}
+            {/* RIGHT MAIN CONTENT PANEL */}
+            <div className="flex-1 flex flex-col min-w-0 bg-[#090a14]/90 overflow-hidden">
+              {/* Content Top Header */}
+              <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-white/10 bg-slate-950/40">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 shrink-0">
+                    <CurrentTabIcon size={15} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-extrabold font-mono tracking-wider uppercase text-white truncate">
+                      {currentTabInfo.label}
+                    </h3>
+                    <p className="text-[10px] font-mono text-slate-400 truncate">
+                      {currentTabInfo.sublabel}
+                    </p>
+                  </div>
+                </div>
 
-              {activeTab === "audio_voice" && (
-                <AudioVoiceTab
-                  settings={settings}
-                  onUpdateSetting={onUpdateSetting}
-                  speakNotification={speakNotification}
-                />
-              )}
+                <button
+                  onClick={onClose}
+                  data-testid="settings-close-button"
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer border border-white/10 shrink-0"
+                  title="Close settings"
+                >
+                  <X size={16} />
+                </button>
+              </div>
 
-              {activeTab === "persona_ai" && (
-                <PersonaAiTab
-                  settings={settings}
-                  onUpdateSetting={onUpdateSetting}
-                  speakNotification={speakNotification}
-                  onStatusAlert={onStatusAlert}
-                />
-              )}
+              {/* Content Body View */}
+              <div className="flex-1 p-4 sm:p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+                {activeTab === "google_workspace" && (
+                  <GoogleWorkspaceTab onStatusAlert={onStatusAlert} />
+                )}
 
-              {activeTab === "storage_theme" && (
-                <StorageThemeTab
-                  settings={settings}
-                  onUpdateSetting={onUpdateSetting}
-                  onResetAllSettings={onResetAllSettings}
-                  speakNotification={speakNotification}
-                  onStatusAlert={onStatusAlert}
-                />
-              )}
+                {activeTab === "command_map" && (
+                  <CommandMapTab
+                    onExecuteCommand={(cmd) => {
+                      onExecuteCommand(cmd);
+                      if (cmd.id.startsWith("open_") || cmd.id === "generate_schedule" || cmd.id === "voice_sleep") {
+                        onClose();
+                      }
+                    }}
+                    speakNotification={speakNotification}
+                  />
+                )}
 
-              {activeTab === "desktop_apps" && (
-                <DesktopAppsTab
-                  onStatusAlert={onStatusAlert}
-                />
-              )}
+                {activeTab === "audio_voice" && (
+                  <AudioVoiceTab
+                    settings={settings}
+                    onUpdateSetting={onUpdateSetting}
+                    speakNotification={speakNotification}
+                  />
+                )}
 
-              {activeTab === "database_sync" && (
-                <DatabaseSettingsTab
-                  onStatusAlert={onStatusAlert}
-                />
-              )}
+                {activeTab === "persona_ai" && (
+                  <PersonaAiTab
+                    settings={settings}
+                    onUpdateSetting={onUpdateSetting}
+                    speakNotification={speakNotification}
+                    onStatusAlert={onStatusAlert}
+                  />
+                )}
+
+                {activeTab === "storage_theme" && (
+                  <StorageThemeTab
+                    settings={settings}
+                    onUpdateSetting={onUpdateSetting}
+                    onResetAllSettings={onResetAllSettings}
+                    speakNotification={speakNotification}
+                    onStatusAlert={onStatusAlert}
+                  />
+                )}
+
+                {activeTab === "desktop_apps" && (
+                  <DesktopAppsTab
+                    onStatusAlert={onStatusAlert}
+                  />
+                )}
+
+                {activeTab === "database_sync" && (
+                  <DatabaseSettingsTab
+                    onStatusAlert={onStatusAlert}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        </motion.div>
-      </>
-    )}
-  </AnimatePresence>
-);
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
 };

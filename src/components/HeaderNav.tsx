@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Cpu, Bot, Calendar, Brain, MessageSquare, BookOpen, PenTool, Compass, Settings, Monitor, Menu, X, Sparkles, Keyboard, Palette, Network, Orbit, Check, BrainCircuit, Building2, Globe, Download, Presentation } from "lucide-react";
+import { Cpu, Bot, Calendar, Brain, MessageSquare, BookOpen, PenTool, Compass, Settings, Monitor, Menu, X, Sparkles, Keyboard, Palette, Network, Orbit, Check, BrainCircuit, Building2, Globe, Download, Presentation, GraduationCap } from "lucide-react";
 import { SUPPORTED_AI_MODELS, AIModelConfig, SubAgent, DailyTask } from "../lib/subagentTypes";
 import { ChatMessage } from "../lib/memoryTypes";
 import { PsychologyProfile } from "../services/colorPsychologyEngine";
@@ -8,6 +8,7 @@ import { THEME_COLOR_CONFIGS, getThemeConfig } from "../services/themeService";
 import { HumanMoodType, HUMAN_MOOD_CONFIGS } from "../services/humanEmotionEngine";
 import { MahrEmblemLogo } from "./brand/MahrEmblemLogo";
 import { UpdateStatusBadge } from "./updater/UpdateStatusBadge";
+import { DEB_FILENAME, EXE_FILENAME } from "../config/appVersion";
 
 interface HeaderNavProps {
   activeModelId: string;
@@ -27,6 +28,7 @@ interface HeaderNavProps {
   isModelSwitcherOpen: boolean;
   isSubAgentsStudioOpen: boolean;
   isDailyTaskManagerOpen: boolean;
+  isClassroomOpen?: boolean;
   isMunderDifflinOpen?: boolean;
   isSlidesStudioOpen?: boolean;
   isMobileMenuOpen: boolean;
@@ -34,6 +36,7 @@ interface HeaderNavProps {
   onToggleModelSwitcher: () => void;
   onToggleSubAgents: () => void;
   onToggleDailyTasks: () => void;
+  onToggleClassroom?: () => void;
   onToggleMunderDifflin?: () => void;
   onToggleSlidesStudio?: () => void;
   onToggleMemory: () => void;
@@ -82,6 +85,7 @@ export const HeaderNav = ({
   isModelSwitcherOpen,
   isSubAgentsStudioOpen,
   isDailyTaskManagerOpen,
+  isClassroomOpen = false,
   isMunderDifflinOpen = false,
   isSlidesStudioOpen = false,
   isMobileMenuOpen,
@@ -92,6 +96,7 @@ export const HeaderNav = ({
   onToggleModelSwitcher,
   onToggleSubAgents,
   onToggleDailyTasks,
+  onToggleClassroom,
   onToggleMunderDifflin,
   onToggleSlidesStudio,
   onToggleMemory,
@@ -211,7 +216,7 @@ export const HeaderNav = ({
         isWindows: true,
         label: "Windows (.exe)",
         downloadUrl: "/api/download/windows-exe",
-        filename: "MAHR-Setup-v2.4.0.exe",
+        filename: EXE_FILENAME,
       };
     }
     const ua = (navigator.userAgent || "").toLowerCase();
@@ -224,7 +229,7 @@ export const HeaderNav = ({
         isWindows: false,
         label: "Linux (.deb)",
         downloadUrl: "/api/download/linux-deb",
-        filename: "mahr-desktop_2.4.0_amd64.deb",
+        filename: DEB_FILENAME,
       };
     }
 
@@ -233,7 +238,7 @@ export const HeaderNav = ({
       isWindows: isWindows,
       label: isWindows ? "Windows (.exe)" : "Desktop App",
       downloadUrl: "/api/download/windows-exe",
-      filename: "MAHR-Setup-v2.4.0.exe",
+      filename: EXE_FILENAME,
     };
   }, []);
 
@@ -349,23 +354,6 @@ export const HeaderNav = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {isLocalDesktopApp ? (
-              <div className="h-8 px-2 rounded-xl bg-emerald-950/40 text-emerald-300 border border-emerald-500/40 text-[11px] font-mono font-medium flex items-center gap-1 shrink-0 select-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>v2.4</span>
-              </div>
-            ) : onOpenDesktopRemoteModal ? (
-              <button
-                id="mobile-header-download-app-btn"
-                onClick={handleDownloadApp}
-                className="h-8 px-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-slate-200 border border-slate-700/60 hover:border-slate-500 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
-                title={`Download App (${platformDownloadInfo.label})`}
-              >
-                <Download size={13} className="text-cyan-400 shrink-0" />
-                <span className="text-[11px] font-medium text-slate-200">App</span>
-              </button>
-            ) : null}
-
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-2 rounded-xl bg-white/5 border border-white/10 text-slate-200 hover:bg-white/10 transition-colors cursor-pointer"
@@ -379,21 +367,6 @@ export const HeaderNav = ({
         {/* Mobile Slide-down Menu Drawer */}
         {isMobileMenuOpen && (
           <div className="flex md:hidden flex-col gap-2 mt-3 pt-3 border-t border-white/10 animate-fade-in">
-            {onOpenDesktopRemoteModal && (
-              <button
-                id="mobile-drawer-download-app-btn"
-                onClick={() => { handleDownloadApp(); setIsMobileMenuOpen(false); }}
-                className="p-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 border border-slate-700/60 text-slate-200 text-xs font-medium flex items-center justify-between transition-colors active:scale-[0.99] cursor-pointer"
-              >
-                <div className="flex items-center gap-2">
-                  <Download size={15} className="text-cyan-400 shrink-0" />
-                  <span>Download App</span>
-                </div>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {platformDownloadInfo.label}
-                </span>
-              </button>
-            )}
             <button
               id="mobile-model-token-meter-btn"
               onClick={() => { onToggleModelSwitcher(); setIsMobileMenuOpen(false); }}
@@ -480,6 +453,21 @@ export const HeaderNav = ({
               </span>
             </button>
 
+            {onToggleClassroom && (
+              <button
+                onClick={() => { onToggleClassroom(); setIsMobileMenuOpen(false); }}
+                className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs font-mono flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <GraduationCap size={14} className="text-emerald-400" />
+                  <span>Google Classroom</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/30 font-bold border border-emerald-400/30 text-emerald-200">
+                  Tutor
+                </span>
+              </button>
+            )}
+
             <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 onClick={() => { onToggleMemory(); setIsMobileMenuOpen(false); }}
@@ -524,9 +512,9 @@ export const HeaderNav = ({
               )}
               <button
                 onClick={() => { onToggleSettings(); setIsMobileMenuOpen(false); }}
-                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${showSettings ? "bg-slate-700 text-white" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
+                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${showSettings ? "bg-purple-600/30 border-purple-400 text-purple-200" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
               >
-                <Settings size={14} /> Setup
+                <Settings size={14} /> Settings
               </button>
               {onToggleShortcuts && (
                 <button
@@ -576,19 +564,20 @@ export const HeaderNav = ({
           </div>
 
           {/* Core AI Engines Group */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* 🏢 MAHR Office Button */}
             <button
               id="header-mahr-office-btn"
+              data-testid="header-mahr-office-btn"
               onClick={onToggleMunderDifflin || onToggleSubAgents}
-              className={`h-9 px-3 rounded-xl border text-xs font-mono font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] ${
+              className={`h-9 px-2.5 sm:px-3 rounded-xl border text-xs font-mono font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                 isMunderDifflinOpen
-                  ? "bg-purple-600 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.45)]"
-                  : "bg-purple-950/40 hover:bg-purple-900/60 border-purple-500/30 hover:border-purple-400 text-purple-200"
+                  ? "bg-purple-600/30 text-purple-200 border-purple-400 shadow-lg shadow-purple-950/40 font-bold"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-purple-500/40"
               }`}
               title="MAHR Office // Multi-Agent Virtual Floor"
             >
-              <Building2 size={14} className={isMunderDifflinOpen ? "text-white animate-pulse shrink-0" : "text-purple-300 shrink-0"} />
+              <Building2 size={14} className={isMunderDifflinOpen ? "text-purple-300 animate-pulse shrink-0" : "text-purple-400 shrink-0"} />
               <span className="hidden sm:inline">MAHR Office</span>
               <span className="sm:hidden">Office</span>
             </button>
@@ -597,45 +586,70 @@ export const HeaderNav = ({
             {onToggleSlidesStudio && (
               <button
                 id="header-slides-studio-btn"
+                data-testid="header-slides-studio-btn"
                 onClick={onToggleSlidesStudio}
-                className={`h-9 px-3 rounded-xl border text-xs font-mono font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] ${
+                className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                   isSlidesStudioOpen
-                    ? "bg-amber-500 border-amber-300 text-zinc-950 font-bold shadow-[0_0_15px_rgba(245,158,11,0.5)]"
-                    : "bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 hover:border-amber-400 text-amber-200"
+                    ? "bg-amber-500/30 text-amber-200 border-amber-400 shadow-lg shadow-amber-950/40 font-bold"
+                    : "bg-slate-900/60 hover:bg-slate-800/80 text-amber-300 border-white/10 hover:border-amber-400/50"
                 }`}
                 title="Google Slides Studio // AI Presentation Architect"
               >
-                <Presentation size={14} className={isSlidesStudioOpen ? "text-zinc-950 shrink-0" : "text-amber-400 shrink-0"} />
-                <span className="hidden sm:inline">Google Slides</span>
-                <span className="sm:hidden">Slides</span>
+                <Presentation size={15} className={isSlidesStudioOpen ? "text-amber-200 animate-pulse shrink-0" : "text-amber-400 shrink-0"} />
+                <span className="hidden sm:inline">Slides</span>
               </button>
             )}
 
             <button
+              id="header-today-tasks-btn"
+              data-testid="header-today-tasks-btn"
               onClick={onToggleDailyTasks}
-              className="h-9 px-3 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/35 text-amber-200 text-xs font-mono font-semibold flex items-center gap-2 transition-all duration-200 shadow-sm hover:border-amber-400/70 hover:scale-[1.02] cursor-pointer shrink-0"
+              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
+                isDailyTaskManagerOpen
+                  ? "bg-amber-500/30 text-amber-200 border-amber-400 shadow-lg shadow-amber-950/40 font-bold"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-amber-400/40"
+              }`}
               title="Daily Task & Schedule Tracker (Today's Progress)"
             >
-              <Calendar size={14} className="text-amber-400 shrink-0" />
+              <Calendar size={15} className="text-amber-400 shrink-0" />
               <span className="hidden lg:inline">Today</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/25 text-amber-200 font-bold border border-amber-400/30 font-mono">
                 {todayTasks.length > 0 ? `${completedTodayTasksCount}/${todayTasks.length}` : `${completedTasksCount}/${dailyTasks.length}`}
               </span>
             </button>
+
+            {onToggleClassroom && (
+              <button
+                id="header-classroom-btn"
+                data-testid="header-classroom-btn"
+                onClick={onToggleClassroom}
+                className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
+                  isClassroomOpen
+                    ? "bg-emerald-500/30 text-emerald-200 border-emerald-400 shadow-lg shadow-emerald-950/40 font-bold"
+                    : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-emerald-400/40"
+                }`}
+                title="Google Classroom Hub & MAHR Homework Tutor"
+              >
+                <GraduationCap size={15} className="text-emerald-400 shrink-0" />
+                <span className="hidden lg:inline">Classroom</span>
+              </button>
+            )}
           </div>
 
           {/* Secondary Workspaces & Utilities Group */}
           <div className="flex items-center gap-1.5 shrink-0 border-l border-slate-800/80 pl-2 lg:pl-3">
             <button
+              id="header-memory-btn"
+              data-testid="header-memory-btn"
               onClick={onToggleMemory}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer border shrink-0 ${
+              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                 showMemoryDashboard
-                  ? "bg-purple-500/25 text-purple-200 border-purple-500/60 shadow-md shadow-purple-950/60 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-slate-700/60 hover:border-slate-500"
+                  ? "bg-purple-500/30 text-purple-200 border-purple-400 shadow-lg shadow-purple-950/40 font-bold"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-purple-400/40"
               }`}
               title="Recollections Memory Database"
             >
-              <Brain size={14} className={showMemoryDashboard ? "animate-pulse text-purple-300 shrink-0" : "text-slate-400 shrink-0"} />
+              <Brain size={15} className={showMemoryDashboard ? "animate-pulse text-purple-300 shrink-0" : "text-purple-400 shrink-0"} />
               <span className="hidden lg:inline">Recalls</span>
               {offlineDeletedQueueLength > 0 && (
                 <span className="text-[9px] px-1 bg-amber-500/30 text-amber-300 rounded font-mono font-bold">
@@ -660,55 +674,63 @@ export const HeaderNav = ({
             )}
 
             <button
+              id="header-journal-btn"
+              data-testid="header-journal-btn"
               onClick={onToggleJournal}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer border shrink-0 ${
+              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                 showChatJournal
-                  ? "bg-purple-500/25 text-purple-200 border-purple-500/60 shadow-md shadow-purple-950/60 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-slate-700/60 hover:border-slate-500"
+                  ? "bg-indigo-500/30 text-indigo-200 border-indigo-400 shadow-lg shadow-indigo-950/40 font-bold"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-indigo-400/40"
               }`}
               title="Conversation Journal & Logs"
             >
-              <MessageSquare size={14} className={showChatJournal ? "animate-pulse text-purple-300 shrink-0" : "text-slate-400 shrink-0"} />
+              <MessageSquare size={15} className={showChatJournal ? "animate-pulse text-indigo-300 shrink-0" : "text-indigo-400 shrink-0"} />
               <span className="hidden lg:inline">Journal</span>
             </button>
 
             <button
+              id="header-studypad-btn"
+              data-testid="header-studypad-btn"
               onClick={onToggleStudyPad}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer border shrink-0 ${
+              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                 isStudyPadOpen
-                  ? "bg-emerald-500/25 text-emerald-200 border-emerald-500/60 shadow-md shadow-emerald-950/60 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-slate-700/60 hover:border-slate-500"
+                  ? "bg-emerald-500/30 text-emerald-200 border-emerald-400 shadow-lg shadow-emerald-950/40 font-bold"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-emerald-400/40"
               }`}
               title="Interactive Exam Study Notepad"
             >
-              <BookOpen size={14} className={isStudyPadOpen ? "animate-pulse text-emerald-300 shrink-0" : "text-slate-400 shrink-0"} />
+              <BookOpen size={15} className={isStudyPadOpen ? "animate-pulse text-emerald-300 shrink-0" : "text-emerald-400 shrink-0"} />
               <span className="hidden lg:inline">Study Pad</span>
             </button>
 
             <button
+              id="header-whiteboard-btn"
+              data-testid="header-whiteboard-btn"
               onClick={onToggleWhiteboard}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer border shrink-0 ${
+              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                 isWhiteboardOpen
-                  ? "bg-cyan-500/25 text-cyan-200 border-cyan-500/60 shadow-md shadow-cyan-950/60 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-slate-700/60 hover:border-slate-500"
+                  ? "bg-cyan-500/30 text-cyan-200 border-cyan-400 shadow-lg shadow-cyan-950/40 font-bold"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-cyan-400/40"
               }`}
               title="Classroom Interactive Blackboard Whiteboard"
             >
-              <PenTool size={14} className={isWhiteboardOpen ? "animate-pulse text-cyan-300 shrink-0" : "text-slate-400 shrink-0"} />
+              <PenTool size={15} className={isWhiteboardOpen ? "animate-pulse text-cyan-300 shrink-0" : "text-cyan-400 shrink-0"} />
               <span className="hidden lg:inline">Whiteboard</span>
             </button>
 
             {onToggleSimulationStudio && (
               <button
+                id="header-sim-engine-btn"
+                data-testid="header-sim-engine-btn"
                 onClick={onToggleSimulationStudio}
-                className={`h-9 px-2.5 lg:px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer border shrink-0 ${
+                className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                   isSimulationStudioOpen
-                    ? "bg-gradient-to-r from-cyan-500/30 to-blue-600/30 text-cyan-200 border-cyan-400 shadow-lg shadow-cyan-950/60 font-bold"
-                    : "bg-slate-900/60 hover:bg-slate-800/80 text-cyan-300 border-slate-700/60 hover:border-cyan-500/60"
+                    ? "bg-cyan-500/30 text-cyan-200 border-cyan-400 shadow-lg shadow-cyan-950/40 font-bold"
+                    : "bg-slate-900/60 hover:bg-slate-800/80 text-cyan-300 border-white/10 hover:border-cyan-500/50"
                 }`}
                 title="Universal AI Simulation Engine (2D Liquid State & 3D WebGL Physics)"
               >
-                <Orbit size={14} className={isSimulationStudioOpen ? "animate-spin text-cyan-300 shrink-0" : "text-cyan-400 shrink-0"} />
+                <Orbit size={15} className={isSimulationStudioOpen ? "animate-spin text-cyan-300 shrink-0" : "text-cyan-400 shrink-0"} />
                 <span className="hidden lg:inline">Sim Engine</span>
                 <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 font-mono">
                   2D/3D
@@ -717,16 +739,18 @@ export const HeaderNav = ({
             )}
 
             <button
+              id="header-settings-btn"
+              data-testid="header-settings-btn"
               onClick={onToggleSettings}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer border shrink-0 ${
+              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                 showSettings
-                  ? "bg-slate-700 text-white border-slate-500 font-bold shadow-md"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-slate-700/60 hover:border-slate-500"
+                  ? "bg-purple-600/30 text-purple-200 border-purple-400 shadow-lg shadow-purple-950/40 font-bold"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-purple-400/40"
               }`}
-              title="Voice & System Setup"
+              title="Settings & System Configuration"
             >
-              <Settings size={14} className="text-slate-400 shrink-0" />
-              <span className="hidden lg:inline">Setup</span>
+              <Settings size={15} className={showSettings ? "text-purple-300 animate-spin" : "text-slate-400 shrink-0"} style={{ animationDuration: '6s' }} />
+              <span className="hidden sm:inline">Settings</span>
             </button>
 
             {/* Human Mood & Emotion Persona Trigger (Internal to MAHR; hidden from main user UI) */}
@@ -874,29 +898,6 @@ export const HeaderNav = ({
                 onClick={onOpenUpdateModal}
               />
             )}
-
-            {isLocalDesktopApp ? (
-              <button
-                id="header-desktop-status-badge"
-                onClick={handleDownloadApp}
-                className="h-9 px-2.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-medium flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors shadow-sm"
-                title="MAHR Autonomous Engine Active (Local Desktop)"
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                <span className="hidden xl:inline">Native</span>
-                <span>v2.4</span>
-              </button>
-            ) : onOpenDesktopRemoteModal ? (
-              <button
-                id="header-download-app-btn"
-                onClick={handleDownloadApp}
-                className="h-9 px-3 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 text-slate-200 hover:text-white border border-slate-700/60 hover:border-slate-500 text-xs font-medium flex items-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-95 shrink-0"
-                title={`Download App (${platformDownloadInfo.label})`}
-              >
-                <Download size={14} className="text-cyan-400 shrink-0" />
-                <span>Download App</span>
-              </button>
-            ) : null}
           </div>
         </div>
       </div>

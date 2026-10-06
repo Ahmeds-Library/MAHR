@@ -23,6 +23,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { useDesktopApp } from "../../hooks/useDesktopApp";
+import { APP_VERSION, DEB_FILENAME, EXE_FILENAME } from "../../config/appVersion";
 import { useAppUpdater } from "../../hooks/updater/useAppUpdater";
 
 interface DesktopAppsTabProps {
@@ -82,8 +83,8 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
   };
 
   const originUrl = typeof window !== "undefined" ? window.location.origin : "https://mahr.ai";
-  const linuxInstallCmd = `sudo dpkg -i mahr-desktop_2.4.0_amd64.deb`;
-  const linuxCurlInstallCmd = `curl -fSL "${originUrl}/api/download/linux-deb" -o mahr-desktop_2.4.0_amd64.deb && sudo dpkg -i mahr-desktop_2.4.0_amd64.deb`;
+  const linuxInstallCmd = `sudo apt install --reinstall -y ./${DEB_FILENAME}`;
+  const linuxCurlInstallCmd = `curl -fSL "${originUrl}/api/download/linux-deb" -o ${DEB_FILENAME} && sudo apt install --reinstall -y ./${DEB_FILENAME}`;
 
   const handleCopy = async (text: string, key: string) => {
     try {
@@ -98,14 +99,14 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
 
   const handleDownloadWin = async () => {
     await downloadWindowsExe();
-    setDownloadSuccess("Windows Setup Installer (MAHR-Setup-v2.4.0.exe) download initiated!");
+    setDownloadSuccess(`Windows Setup Installer (${EXE_FILENAME}) download initiated!`);
     onStatusAlert?.("Downloading Windows .exe installer...");
     setTimeout(() => setDownloadSuccess(null), 4000);
   };
 
   const handleDownloadLinux = async () => {
     await downloadLinuxDeb();
-    setDownloadSuccess("Linux Debian Package (mahr-desktop_2.4.0_amd64.deb) download initiated!");
+    setDownloadSuccess(`Linux Debian Package (${DEB_FILENAME}) download initiated!`);
     onStatusAlert?.("Downloading Linux .deb package...");
     setTimeout(() => setDownloadSuccess(null), 4000);
   };

@@ -116,31 +116,38 @@ export const QuickRoutinesDrawer: React.FC<QuickRoutinesDrawerProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm transition-all duration-300">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md">
+      {/* Backdrop click to dismiss */}
+      <div onClick={onClose} className="absolute inset-0" />
+
       <div 
-        className="w-full max-w-md h-full bg-slate-950 border-l border-slate-800 flex flex-col shadow-2xl p-6 overflow-y-auto animate-in slide-in-from-right duration-300"
+        className="relative w-full max-w-2xl max-h-[85vh] bg-slate-950/95 border border-white/15 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex flex-col backdrop-blur-2xl overflow-hidden text-slate-100 z-10 animate-in fade-in zoom-in-95 duration-200"
       >
+        {/* Ambient Top Glow Line */}
+        <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-60 pointer-events-none" />
+
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800/80">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-cyan-950/60 border border-cyan-800/50 flex items-center justify-center text-cyan-400">
-              <Sparkles className="w-4 h-4" />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/[0.03] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-100">Mahr Smart Routines</h2>
-              <p className="text-xs text-slate-400">Pre-programmed autonomous actions for Mahr</p>
+              <h2 className="text-base font-bold text-white tracking-wide">Mahr Smart Routines</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Pre-programmed autonomous actions for your assistant</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-rose-500/80 hover:border-rose-400 text-slate-400 hover:text-white transition duration-200 cursor-pointer"
+            title="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Routines List */}
-        <div className="flex-1 py-6 space-y-3">
+        {/* Routines List Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-thin scrollbar-thumb-white/10">
           <div className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
             Available Assistant Routines
           </div>

@@ -8,18 +8,42 @@ import {
   User
 } from "firebase/auth";
 import firebaseConfig from "../../../firebase-applet-config.json";
+import { purgeUserTenantSession } from "./userTenantIsolation";
 
 // Initialize Firebase App instance safely (singleton pattern)
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
+// All confirmed Google Workspace scopes across presentation, drive, docs, sheets, calendar, gmail, tasks, classroom
+export const GOOGLE_WORKSPACE_SCOPES = [
+  "https://www.googleapis.com/auth/presentations",
+  "https://www.googleapis.com/auth/presentations.readonly",
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/spreadsheets.readonly",
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/tasks",
+  "https://www.googleapis.com/auth/classroom.courses.readonly",
+  "https://www.googleapis.com/auth/classroom.coursework.me",
+  "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+  "https://www.googleapis.com/auth/classroom.announcements.readonly",
+  "https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly",
+  "https://www.googleapis.com/auth/classroom.rosters.readonly",
+  "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly"
+];
+
 // Configure Google Auth Provider with requested Google Workspace scopes
 const provider = new GoogleAuthProvider();
-provider.addScope("https://www.googleapis.com/auth/presentations");
-provider.addScope("https://www.googleapis.com/auth/presentations.readonly");
-provider.addScope("https://www.googleapis.com/auth/drive.file");
-provider.addScope("https://www.googleapis.com/auth/drive.readonly");
-provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
+GOOGLE_WORKSPACE_SCOPES.forEach((scope) => provider.addScope(scope));
+// Allow any user to select their account dynamically
+provider.setCustomParameters({
+  prompt: "select_account"
+});
 
 // In-memory access token cache per Google Workspace security guidelines
 // (Never stored in localStorage or sessionStorage)
@@ -99,10 +123,12 @@ export const getAccessToken = async (): Promise<string | null> => {
  * Sign out user and clear in-memory tokens.
  */
 export const googleSignOut = async (): Promise<void> => {
+  const currentUid = auth.currentUser?.uid;
   try {
     await signOut(auth);
   } finally {
     cachedAccessToken = null;
+    purgeUserTenantSession(currentUid);
   }
 };
 

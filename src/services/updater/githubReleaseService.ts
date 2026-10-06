@@ -5,8 +5,9 @@
  */
 
 import { VersionManifest, UpdateCheckResult } from "./versionTypes";
+import { APP_VERSION } from "../../config/appVersion";
 
-export const CURRENT_APP_VERSION = "2.4.0";
+export const CURRENT_APP_VERSION = APP_VERSION;
 export const GITHUB_REPO = "Ahmeds-Library/MAHR";
 
 /**

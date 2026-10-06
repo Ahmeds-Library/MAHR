@@ -10,6 +10,12 @@ import {
   onInstallPromptChange, 
   promptPWAInstall 
 } from "../services/platformAdapter";
+import {
+  APP_VERSION,
+  DEB_FILENAME,
+  EXE_FILENAME,
+  LINUX_DPKG_CMD,
+} from "../config/appVersion";
 
 export interface DesktopOptimizations {
   enableHardwareAcceleration: boolean;
@@ -156,11 +162,11 @@ export function useDesktopApp(): UseDesktopAppReturn {
   };
 
   const downloadWindowsExe = useCallback(async () => {
-    await downloadBinary("/api/download/windows-exe", "MAHR-Setup-v2.4.0.exe");
+    await downloadBinary("/api/download/windows-exe", EXE_FILENAME);
   }, []);
 
   const downloadLinuxDeb = useCallback(async () => {
-    await downloadBinary("/api/download/linux-deb", "mahr-desktop_2.4.0_amd64.deb");
+    await downloadBinary("/api/download/linux-deb", DEB_FILENAME);
   }, []);
 
   const downloadWindowsLauncher = useCallback(async () => {
@@ -173,14 +179,14 @@ export function useDesktopApp(): UseDesktopAppReturn {
 
   const mahrDesktopInfo: MahrDesktopAppInfo = {
     appName: "MAHR Desktop AI Assistant",
-    version: "2.4.0",
+    version: APP_VERSION,
     author: "MAHR Cognitive Systems",
     windowsExePath: "/api/download/windows-exe",
     linuxDebPath: "/api/download/linux-deb",
     windowsLauncherPath: "/api/download/windows-exe",
     linuxLauncherPath: "/api/download/linux-deb",
-    windowsCommand: "MAHR-Setup-v2.4.0.exe",
-    linuxCommand: "sudo dpkg -i mahr-desktop_2.4.0_amd64.deb",
+    windowsCommand: EXE_FILENAME,
+    linuxCommand: LINUX_DPKG_CMD,
     bytecodeProtected: true
   };
 

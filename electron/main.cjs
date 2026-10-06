@@ -105,7 +105,7 @@ function startFallbackStaticServer(port, appDir, resolve) {
       res.end(JSON.stringify({
         status: 'ok',
         platform: process.platform,
-        version: '2.4.0',
+        version: '2.4.1',
         engine: 'MAHR Embedded Desktop Engine'
       }));
       return;

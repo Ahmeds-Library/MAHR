@@ -31,13 +31,14 @@ function getLocalManifest(): VersionManifest {
   }
 
   return {
-    version: "2.4.0",
-    releaseName: "MAHR Horizon v2.4.0",
+    version: "2.4.1",
+    releaseName: "MAHR Horizon v2.4.1",
     releaseDate: new Date().toISOString(),
     releaseNotes: [
-      "Autonomous Presentation Pipeline with Gemini & Vector Infographics",
-      "Continuous GitHub Actions CI/CD with automated update notifications",
-      "PixiJS v8 idempotent extension handlers and desktop optimizations"
+      "Autonomous Smart Layout Engine for Whiteboard & Mind Map with fluid GSAP physics",
+      "Concentric circular, hierarchical tree, and categorical grid density classification",
+      "Seamless in-place desktop upgrade engine preserving all user brain memories and cognitive states",
+      "Continuous GitHub Actions CI/CD with automated update notifications"
     ],
     downloadUrls: {
       windows: "/api/download/windows-exe",

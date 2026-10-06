@@ -177,48 +177,8 @@ export async function loadDeletedMemoryIds(): Promise<string[]> {
 
 const DAILY_TASKS_FILE = path.join(DATA_DIR, "daily_tasks.json");
 
-function getDefaultDailyTasks(todayStr: string) {
-  return [
-    {
-      id: "task_seed_1",
-      title: "Master React Fiber Architecture & Concurrent Mode (Feynman Technique)",
-      text: "Master React Fiber Architecture & Concurrent Mode (Feynman Technique)",
-      timeBlock: "Morning Focus",
-      priority: "high",
-      category: "study",
-      completed: false,
-      date: todayStr,
-      reminder: true,
-      notes: "Explain reconciliation tree diffing in simple words on chalkboard",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "task_seed_2",
-      title: "Implement High-Throughput WebSocket Streaming Pipeline",
-      text: "Implement High-Throughput WebSocket Streaming Pipeline",
-      timeBlock: "Afternoon Sprint",
-      priority: "high",
-      category: "coding",
-      completed: false,
-      date: todayStr,
-      reminder: true,
-      notes: "Optimize backpressure and token-by-token payload transmission",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "task_seed_3",
-      title: "Solve Daily Active Recall Flashcards & Algorithmic Quiz",
-      text: "Solve Daily Active Recall Flashcards & Algorithmic Quiz",
-      timeBlock: "Evening Review",
-      priority: "medium",
-      category: "study",
-      completed: false,
-      date: todayStr,
-      reminder: false,
-      notes: "Review spaced repetition queue with MAHR interactive companion",
-      createdAt: new Date().toISOString()
-    }
-  ];
+function getDefaultDailyTasks(_todayStr: string) {
+  return [];
 }
 
 export async function loadDailyTasks(): Promise<any[]> {
@@ -233,9 +193,7 @@ export async function loadDailyTasks(): Promise<any[]> {
     }
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      const defaults = getDefaultDailyTasks(todayStr);
-      await safeWriteFileAtomic(DAILY_TASKS_FILE, defaults);
-      return defaults;
+      return [];
     }
 
     return parsed.map((t: any) => {
