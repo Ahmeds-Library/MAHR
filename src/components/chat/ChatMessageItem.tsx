@@ -1,46 +1,82 @@
 import React, { useState } from "react";
-import { Bot, User, CheckCircle2, Volume2, Globe, ExternalLink, Play, Image as ImageIcon, Video, X } from "lucide-react";
+import {
+  User,
+  CheckCircle2,
+  Volume2,
+  Globe,
+  ExternalLink,
+  Play,
+  Image as ImageIcon,
+  Video,
+  X,
+  Copy,
+  Check,
+  BrainCircuit,
+  Sparkles,
+} from "lucide-react";
 import { ChatMessageItemData } from "./types";
+import { MahrDroneMiniAvatar } from "./mascot/vector/MahrSphericalDroneMascot";
+import { RichMessageContent } from "./formatters/RichMessageContent";
 
 interface ChatMessageItemProps {
   message: ChatMessageItemData;
   onReplayAudio: (text: string) => void;
+  onSendCodeToChalkboard?: (code: string, language?: string) => void;
   themeColor?: string;
 }
 
 export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   message,
   onReplayAudio,
-  themeColor = "#9D7AFF",
+  onSendCodeToChalkboard,
 }) => {
   const isUser = message.sender === "user";
-  const [activeMediaModal, setActiveMediaModal] = useState<{ type: "image" | "video"; url: string; title?: string } | null>(null);
+  const [copiedFullMsg, setCopiedFullMsg] = useState<boolean>(false);
+  const [activeMediaModal, setActiveMediaModal] = useState<{
+    type: "image" | "video";
+    url: string;
+    title?: string;
+  } | null>(null);
+
+  const handleCopyMessage = () => {
+    navigator.clipboard?.writeText(message.text);
+    setCopiedFullMsg(true);
+    setTimeout(() => setCopiedFullMsg(false), 1800);
+  };
 
   return (
     <div
-      className={`flex gap-2.5 max-w-[92%] sm:max-w-[85%] transition-all duration-200 ${
+      className={`flex gap-2.5 max-w-[94%] sm:max-w-[88%] transition-all duration-200 ${
         isUser ? "ml-auto flex-row-reverse" : "mr-auto"
       }`}
     >
       {/* Avatar */}
-      <div
-        className={`w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[11px] shadow-md border ${
-          isUser
-            ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white border-indigo-400/30"
-            : "bg-slate-900 text-purple-300 border-purple-500/30 shadow-purple-900/20"
-        }`}
-      >
-        {isUser ? <User size={13} /> : <Bot size={13} />}
-      </div>
+      {isUser ? (
+        <div className="w-7 h-7 rounded-xl shrink-0 flex items-center justify-center text-[11px] shadow-md border bg-gradient-to-br from-cyan-500 to-indigo-600 text-white border-cyan-400/30">
+          <User size={13} />
+        </div>
+      ) : (
+        <MahrDroneMiniAvatar size={28} />
+      )}
 
-      <div className="flex flex-col gap-1 min-w-0">
+      <div className="flex flex-col gap-1 min-w-0 flex-1">
         <div
-          className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-md relative group break-words transition-all duration-200 ${
+          className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-lg relative group break-words overflow-hidden transition-all duration-200 ${
             isUser
-              ? "bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-tr-none border border-indigo-400/20 shadow-indigo-950/40"
-              : "bg-slate-900/90 text-slate-100 border border-white/10 rounded-tl-none shadow-black/40 backdrop-blur-sm"
+              ? "bg-gradient-to-br from-indigo-600/95 via-indigo-700/95 to-purple-700/90 text-white rounded-tr-none border border-indigo-400/30 shadow-indigo-950/50"
+              : "bg-slate-900/95 text-slate-100 border border-cyan-500/20 rounded-tl-none shadow-black/50 backdrop-blur-md"
           }`}
         >
+          {/* Mode Pill Tag if sent in a specialized instruction mode */}
+          {message.modeUsed && message.modeUsed !== "auto" && (
+            <div className="mb-1.5 flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/10 border border-white/15 font-mono text-[8.5px] uppercase tracking-wider text-cyan-200 font-semibold">
+                <Sparkles size={8} />
+                <span>{message.modeUsed} instruction</span>
+              </span>
+            </div>
+          )}
+
           {/* Attached Images preview */}
           {message.attachedImages && message.attachedImages.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
@@ -49,16 +85,19 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                   key={i}
                   src={img}
                   alt="attachment"
-                  className="w-20 h-20 object-cover rounded-lg border border-white/20 shadow"
+                  onClick={() => setActiveMediaModal({ type: "image", url: img, title: "Attached Snapshot" })}
+                  className="w-20 h-20 object-cover rounded-lg border border-white/20 shadow cursor-pointer hover:scale-105 transition-transform"
                 />
               ))}
             </div>
           )}
 
-          {/* Transcript / Message Text */}
-          <div className="whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed selection:bg-purple-500/30">
-            {message.text}
-          </div>
+          {/* Element 1: Recreated Rich Structured Message Content with Zero Scrollbars */}
+          <RichMessageContent
+            text={message.text}
+            isUser={isUser}
+            onSendCodeToChalkboard={onSendCodeToChalkboard}
+          />
 
           {/* Live Web Grounding Search Sources */}
           {message.groundingSources && message.groundingSources.length > 0 && (
@@ -104,7 +143,13 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 {message.mediaItems.slice(0, 2).map((item, mIdx) => (
                   <div
                     key={mIdx}
-                    onClick={() => setActiveMediaModal({ type: item.type, url: item.url, title: item.title })}
+                    onClick={() =>
+                      setActiveMediaModal({
+                        type: item.type,
+                        url: item.url,
+                        title: item.title,
+                      })
+                    }
                     className="relative group/card cursor-pointer rounded-lg overflow-hidden border border-white/10 bg-black/40 hover:border-purple-500/50 transition-all hover:scale-[1.02]"
                   >
                     <img
@@ -122,7 +167,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                         ) : (
                           <ImageIcon size={10} className="text-purple-400 shrink-0" />
                         )}
-                        <span className="truncate">{item.title || (item.type === "video" ? "Video Explainer" : "Diagram")}</span>
+                        <span className="truncate">
+                          {item.title || (item.type === "video" ? "Video Explainer" : "Diagram")}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -131,29 +178,73 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
             </div>
           )}
 
-          {/* Action executed indicator */}
-          {message.actionExecuted && (
-            <div className="mt-2 pt-1.5 border-t border-white/10 text-[9px] font-mono text-emerald-300 flex items-center gap-1.5 font-semibold">
-              <CheckCircle2 size={11} className="text-emerald-400" />
-              <span>{message.actionExecuted}</span>
+          {/* Automatic Vector Memory & Workspace Action Badges */}
+          {(message.actionExecuted ||
+            (message.memoryRecalledCount && message.memoryRecalledCount > 0) ||
+            message.memorySavedTitle) && (
+            <div className="mt-2 pt-1.5 border-t border-white/10 flex flex-wrap items-center gap-1.5">
+              {message.memoryRecalledCount && message.memoryRecalledCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-950/70 border border-purple-500/35 text-[8.5px] font-mono text-purple-200 font-semibold"
+                  title={
+                    message.memoryRecalledLabels
+                      ? `Recalled from 128-D Vector Graph: ${message.memoryRecalledLabels.join(", ")}`
+                      : "Grounded with 128-D Vector Memory"
+                  }
+                >
+                  <BrainCircuit size={9} className="text-purple-300" />
+                  <span>
+                    Recalled {message.memoryRecalledCount} Vector{" "}
+                    {message.memoryRecalledCount === 1 ? "Node" : "Nodes"}
+                  </span>
+                </span>
+              )}
+
+              {message.memorySavedTitle && (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cyan-950/70 border border-cyan-500/35 text-[8.5px] font-mono text-cyan-200 font-semibold truncate max-w-[220px]"
+                  title={`Indexed into 128-D Vector Memory: ${message.memorySavedTitle}`}
+                >
+                  <BrainCircuit size={9} className="text-cyan-300" />
+                  <span className="truncate">Indexed: {message.memorySavedTitle}</span>
+                </span>
+              )}
+
+              {message.actionExecuted && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-950/70 border border-emerald-500/35 text-[8.5px] font-mono text-emerald-200 font-semibold">
+                  <CheckCircle2 size={9} className="text-emerald-400" />
+                  <span>{message.actionExecuted}</span>
+                </span>
+              )}
             </div>
           )}
 
-          {/* Replay audio button (for MAHR transcript messages) */}
+          {/* Hover Action Buttons (Replay Voice + Copy Text) for MAHR responses */}
           {!isUser && message.text && (
-            <button
-              onClick={() => onReplayAudio(message.text)}
-              className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 p-1 rounded-full bg-slate-800 border border-purple-500/40 text-purple-300 hover:text-white hover:bg-purple-600 transition-all cursor-pointer shadow-lg"
-              title="Replay MAHR Voice Audio"
-            >
-              <Volume2 size={10} />
-            </button>
+            <div className="absolute -top-2.5 right-2 opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
+              <button
+                type="button"
+                onClick={handleCopyMessage}
+                className="p-1 rounded-full bg-slate-800 border border-white/15 text-slate-300 hover:text-white hover:bg-slate-700 transition-all cursor-pointer shadow-lg"
+                title="Copy response text"
+              >
+                {copiedFullMsg ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => onReplayAudio(message.text)}
+                className="p-1 rounded-full bg-slate-800 border border-cyan-500/40 text-cyan-300 hover:text-white hover:bg-cyan-600 transition-all cursor-pointer shadow-lg"
+                title="Replay MAHR Voice Audio"
+              >
+                <Volume2 size={10} />
+              </button>
+            </div>
           )}
         </div>
 
         {/* Timestamp */}
         <span
-          className={`text-[8.5px] font-mono text-slate-400 px-1 ${
+          className={`text-[8.5px] font-mono text-slate-500 px-1 ${
             isUser ? "text-right" : "text-left"
           }`}
         >
@@ -164,7 +255,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
       {/* Media Preview Modal */}
       {activeMediaModal && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          className="fixed inset-0 z-[260] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
           onClick={() => setActiveMediaModal(null)}
         >
           <div
@@ -173,7 +264,11 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           >
             <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
               <div className="flex items-center gap-2">
-                {activeMediaModal.type === "video" ? <Video size={16} className="text-red-400" /> : <ImageIcon size={16} className="text-purple-400" />}
+                {activeMediaModal.type === "video" ? (
+                  <Video size={16} className="text-red-400" />
+                ) : (
+                  <ImageIcon size={16} className="text-purple-400" />
+                )}
                 <h3 className="text-xs sm:text-sm font-semibold text-white truncate max-w-md">
                   {activeMediaModal.title || "Media Preview"}
                 </h3>
@@ -192,7 +287,10 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                   src={
                     activeMediaModal.url.includes("embed")
                       ? activeMediaModal.url
-                      : `https://www.youtube.com/embed/${activeMediaModal.url.split("v=")[1]?.split("&")[0] || activeMediaModal.url}?autoplay=1`
+                      : `https://www.youtube.com/embed/${
+                          activeMediaModal.url.split("v=")[1]?.split("&")[0] ||
+                          activeMediaModal.url
+                        }?autoplay=1`
                   }
                   title="Educational Video"
                   className="w-full h-full"

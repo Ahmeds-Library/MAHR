@@ -19,6 +19,10 @@ import { TimelineInfographic } from "./studio/infographics/TimelineInfographic";
 import { SummaryInfographic } from "./studio/infographics/SummaryInfographic";
 import { CitationsBar } from "./studio/infographics/CitationsBar";
 import { VectorInfographicRenderer } from "../../services/slides/infographics/svgRenderers";
+import { SlideMultimediaPlayer } from "./presenton/SlideMultimediaPlayer";
+import { BentoMediaStage } from "./presenton/BentoMediaStage";
+import { getAutoLayoutColumnSpans } from "../../slidesStudio/layer2_logic/autoLayoutEngine";
+import { SLIDE_TRANSITION_METADATA } from "../../slidesStudio/layer1_data/presentonTypes";
 
 interface SlideCanvasPreviewProps {
   slide: Slide;
@@ -42,12 +46,49 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
     setIsPlayingVideo(false);
   }, [slide.id, currentSlideIndex]);
 
-  // Trigger GSAP entrance animations whenever active slide changes
+  // Trigger Keynote / PowerPoint-grade GSAP transition & entrance animations on slide change
   useEffect(() => {
-    if (!elementsRef.current) return;
+    if (!elementsRef.current || !containerRef.current) return;
+
+    const transition = slide.transitionPreset || "morph_smooth";
+    const entrance = slide.entrancePreset || "stagger_cascade";
 
     const ctx = gsap.context(() => {
-      // Animate slide content elements
+      // 1. Stage-level Slide Transition Choreography
+      if (transition === "cube_3d") {
+        gsap.fromTo(
+          containerRef.current,
+          { rotateY: -22, scale: 0.94, opacity: 0.25, transformPerspective: 1200 },
+          { rotateY: 0, scale: 1, opacity: 1, duration: 0.65, ease: "power3.out" }
+        );
+      } else if (transition === "parallax_wipe") {
+        gsap.fromTo(
+          containerRef.current,
+          { x: 45, skewX: -2, opacity: 0.2 },
+          { x: 0, skewX: 0, opacity: 1, duration: 0.55, ease: "expo.out" }
+        );
+      } else if (transition === "zoom_spotlight") {
+        gsap.fromTo(
+          containerRef.current,
+          { scale: 1.08, filter: "brightness(1.35)", opacity: 0.2 },
+          { scale: 1, filter: "brightness(1)", opacity: 1, duration: 0.6, ease: "power2.out" }
+        );
+      } else if (transition === "cinematic_fade") {
+        gsap.fromTo(
+          containerRef.current,
+          { opacity: 0.15 },
+          { opacity: 1, duration: 0.5, ease: "sine.inOut" }
+        );
+      } else {
+        // Default: Keynote Magic Morph
+        gsap.fromTo(
+          containerRef.current,
+          { scale: 0.96, y: 12, opacity: 0.35 },
+          { scale: 1, y: 0, opacity: 1, duration: 0.55, ease: "back.out(1.2)" }
+        );
+      }
+
+      // 2. Per-Element Entrance Choreography
       gsap.fromTo(
         ".gsap-slide-header",
         { opacity: 0, y: -18 },
@@ -57,28 +98,41 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
       gsap.fromTo(
         ".gsap-slide-body",
         { opacity: 0, y: 22 },
-        { opacity: 1, y: 0, duration: 0.5, delay: 0.1, ease: "power3.out" }
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.5,
+          delay: 0.08,
+          ease: entrance === "spring_pop" ? "back.out(1.5)" : "power3.out"
+        }
       );
 
       gsap.fromTo(
         ".gsap-slide-item",
-        { opacity: 0, x: -16 },
+        {
+          opacity: 0,
+          x: entrance === "typewriter_reveal" ? -28 : -16,
+          scale: entrance === "spring_pop" ? 0.92 : 1
+        },
         {
           opacity: 1,
           x: 0,
-          duration: 0.4,
+          scale: 1,
+          duration: 0.42,
           stagger: 0.08,
-          delay: 0.2,
-          ease: "power2.out"
+          delay: 0.16,
+          ease: entrance === "spring_pop" ? "back.out(1.6)" : "power2.out"
         }
       );
     }, elementsRef);
 
     return () => ctx.revert();
-  }, [slide.id, currentSlideIndex]);
+  }, [slide.id, currentSlideIndex, slide.transitionPreset, slide.entrancePreset]);
 
-  const hasMedia = Boolean(slide.imageUrl || slide.videoUrl);
+  const hasMedia = true; // Every slide is autonomously enriched with Presenton 4-in-1 Multimedia
   const youtubeVideoId = slide.videoId || (slide.videoUrl ? slide.videoUrl.split("v=")[1]?.split("&")[0] : null);
+  const transitionMeta = SLIDE_TRANSITION_METADATA[slide.transitionPreset || "morph_smooth"];
+  const { textColClass, mediaColClass } = getAutoLayoutColumnSpans(slide);
 
   return (
     <div
@@ -110,12 +164,14 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
               {slide.categoryTag || "MAHR INTELLIGENCE"}
             </span>
 
-            {slide.videoUrl && (
-              <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-950/60 border border-red-500/30 text-red-400">
-                <Video size={10} />
-                <span>VIDEO ATTACHED</span>
-              </span>
-            )}
+            <span className="hidden md:inline-flex items-center gap-1 text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-950/60 border border-purple-500/30 text-purple-300">
+              <span>{transitionMeta?.badge || "MORPH"}</span>
+            </span>
+
+            <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-300">
+              <Video size={10} />
+              <span>AI IMAGE • GIF • 60FPS VIDEO</span>
+            </span>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
@@ -136,12 +192,12 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
           )}
 
           {slide.layout === "title" && (
-            <div className={`space-y-4 sm:space-y-6 ${hasMedia ? "grid grid-cols-1 md:grid-cols-2 gap-6 items-center text-left" : "text-center"}`}>
-              <div className="space-y-3 sm:space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center text-left">
+              <div className="md:col-span-7 space-y-3 sm:space-y-4">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono border backdrop-blur-md"
                   style={{ borderColor: theme.borderCol, color: theme.accentCol }}>
                   <Sparkles size={14} />
-                  <span>Executive Presentation</span>
+                  <span>Presenton Autonomous Presentation</span>
                 </div>
                 <h1
                   className="text-2xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-tight"
@@ -159,42 +215,14 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
                 )}
               </div>
 
-              {hasMedia && (
-                <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/50 aspect-video max-h-56 flex items-center justify-center group">
-                  {isPlayingVideo && youtubeVideoId ? (
-                    <iframe
-                      src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1`}
-                      title={slide.videoTitle || "Video preview"}
-                      className="w-full h-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  ) : (
-                    <>
-                      <img
-                        src={slide.imageUrl || `https://i.ytimg.com/vi/${youtubeVideoId}/hqdefault.jpg`}
-                        alt={slide.title}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-3">
-                        {slide.videoUrl ? (
-                          <button
-                            onClick={() => setIsPlayingVideo(true)}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-medium text-xs shadow-lg transition-transform hover:scale-105 w-fit"
-                          >
-                            <Play size={12} fill="currentColor" />
-                            <span>Play Explainer Clip</span>
-                          </button>
-                        ) : (
-                          <div className="text-[11px] text-zinc-300 font-mono truncate">
-                            {slide.imageCaption || slide.title}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+              <div className="md:col-span-5">
+                <BentoMediaStage
+                  slide={slide}
+                  theme={theme}
+                  onPromoteAsset={() => {}}
+                  onRemoveAsset={() => {}}
+                />
+              </div>
             </div>
           )}
 
@@ -334,8 +362,16 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
 
           {(slide.layout === "bullets" || slide.layout === "media") && (
             <div className={`space-y-4 ${hasMedia ? "grid grid-cols-1 md:grid-cols-12 gap-5 items-center" : ""}`}>
-              {/* Left Column: Text & Bullets */}
-              <div className={hasMedia ? "md:col-span-7 space-y-3 sm:space-y-4" : "space-y-4 sm:space-y-6"}>
+              {/* Text & Bullets Column */}
+              <div
+                className={`${
+                  hasMedia
+                    ? `${textColClass} space-y-3 sm:space-y-4 ${
+                        slide.assetArrangement === "split_left" ? "md:order-2" : "md:order-1"
+                      }`
+                    : "space-y-4 sm:space-y-6"
+                }`}
+              >
                 <div>
                   <h2
                     className="text-lg sm:text-2xl md:text-3xl font-bold tracking-tight mb-1"
@@ -389,11 +425,15 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
                 )}
               </div>
 
-              {/* Right Column: Visual Media Card / Video Player */}
+              {/* Autonomous Bento & 4-in-1 Multimedia Stage Column */}
               {hasMedia && (
-                <div className="md:col-span-5 flex flex-col gap-2">
-                  <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/60 aspect-video flex items-center justify-center group">
-                    {isPlayingVideo && youtubeVideoId ? (
+                <div
+                  className={`${mediaColClass} flex flex-col gap-2 ${
+                    slide.assetArrangement === "split_left" ? "md:order-1" : "md:order-2"
+                  }`}
+                >
+                  {isPlayingVideo && youtubeVideoId ? (
+                    <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/60 aspect-video flex items-center justify-center">
                       <iframe
                         src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1`}
                         title={slide.videoTitle || "Video player"}
@@ -401,39 +441,14 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                       />
-                    ) : (
-                      <>
-                        <img
-                          src={slide.imageUrl || `https://i.ytimg.com/vi/${youtubeVideoId}/hqdefault.jpg`}
-                          alt={slide.title}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-3">
-                          {slide.videoUrl ? (
-                            <button
-                              onClick={() => setIsPlayingVideo(true)}
-                              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-medium text-xs shadow-lg transition-transform hover:scale-105 w-fit"
-                            >
-                              <Play size={12} fill="currentColor" />
-                              <span>Play Video</span>
-                            </button>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-[10px] text-zinc-300 font-mono">
-                              <ImageIcon size={11} className="text-purple-400 shrink-0" />
-                              <span className="truncate">{slide.imageCaption || "Visual Illustration"}</span>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {slide.videoTitle && (
-                    <div className="text-[10px] text-zinc-400 font-mono truncate px-1 flex items-center gap-1">
-                      <Video size={11} className="text-red-400 shrink-0" />
-                      <span className="truncate">{slide.videoTitle}</span>
                     </div>
+                  ) : (
+                    <BentoMediaStage
+                      slide={slide}
+                      theme={theme}
+                      onPromoteAsset={() => {}}
+                      onRemoveAsset={() => {}}
+                    />
                   )}
                 </div>
               )}
@@ -446,7 +461,7 @@ export const SlideCanvasPreview: React.FC<SlideCanvasPreviewProps> = ({
           <CitationsBar citations={slide.citations} theme={theme} />
           <div className="flex flex-wrap items-center justify-between text-[9px] sm:text-[11px] text-zinc-500 font-mono gap-2 pt-1 border-t border-white/5">
             <div className="flex items-center gap-2">
-              <span>MAHR Presentation Studio // Powered by Gemini & Google Slides</span>
+              <span>MAHR Presentation Studio · Powered by Gemini & Google Slides</span>
               {slide.citations && slide.citations.length > 0 && (
                 <span className="hidden sm:inline-flex items-center gap-1 text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-md border border-cyan-500/20">
                   <Globe size={10} />

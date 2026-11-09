@@ -415,7 +415,7 @@ ${dialogueContext}
 - TEXT STYLE: Express memories as clean, concise, third-person declarative summaries (e.g., 'The user is studying computer science and preparing for exams.', 'The user prefers direct, analytical answers over polite fluff.', 'The user is building a web app called Myraa.').
 - ID: For ADD, leave blank/null. For UPDATE or REMOVE, provide the exact 'id' from the "Current user memories" list.`;
 
-    const modelCandidates = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"];
+    const modelCandidates = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-pro"];
     let responseText: string | undefined = undefined;
 
     for (const mName of modelCandidates) {
@@ -672,7 +672,7 @@ ${dialogueStr}
 
 Return structured JSON according to the schema.`;
 
-    const graphModelCandidates = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"];
+    const graphModelCandidates = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-pro"];
     let graphResponseText: string | undefined = undefined;
 
     for (const mName of graphModelCandidates) {

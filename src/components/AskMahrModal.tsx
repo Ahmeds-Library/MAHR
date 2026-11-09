@@ -5,3 +5,4 @@ export * from "./chat/ChatMessageList";
 export * from "./chat/ChatInputBar";
 export * from "./chat/QuickPromptChips";
 export * from "./chat/AskMahrModal";
+export * from "./chat/MahrCuteMascotTrigger";

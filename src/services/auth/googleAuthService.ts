@@ -28,6 +28,8 @@ export const GOOGLE_WORKSPACE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/tasks",
+  "https://www.googleapis.com/auth/keep",
+  "https://www.googleapis.com/auth/keep.readonly",
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",

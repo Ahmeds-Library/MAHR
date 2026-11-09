@@ -72,6 +72,9 @@ import {
   dbUpdateOfficeAgent
 } from "./server_db.ts";
 import { updaterRouter } from "./src/server/updaterEndpoint.ts";
+import { modelRouterEndpoint } from "./src/server/modelRouterEndpoint.ts";
+import { obsidianVaultEndpoint } from "./src/server/obsidianVaultEndpoint.ts";
+import { presentonRouter } from "./src/server/presentonRouter.ts";
 
 dotenv.config();
 
@@ -141,22 +144,28 @@ export function clearModelOverloaded(modelName: string): void {
  * Filters out redundant aliases like 'gemini-flash-latest' when 'gemini-3.8-flash' is present.
  */
 export function getPrioritizedModelCandidates(preferredModel: string = "gemini-2.5-flash"): string[] {
-  let basePreferred = preferredModel || "gemini-2.5-flash";
-  if (basePreferred === "gemini-flash-latest" || basePreferred === "gemini-3.8-flash") {
+  let basePreferred = (preferredModel || "gemini-2.5-flash").trim();
+  if (
+    basePreferred === "gemini-flash-latest" ||
+    basePreferred === "gemini-3.8-flash" ||
+    basePreferred === "gemini-3.7-flash" ||
+    basePreferred === "gemini-3.5-flash"
+  ) {
     basePreferred = "gemini-2.5-flash";
   }
   if (basePreferred.includes("1.5") || basePreferred.includes("2.0")) {
     basePreferred = "gemini-3.1-flash-lite";
   }
 
-  const primary = (basePreferred === "gemini-3.1-flash-lite") ? "gemini-3.1-flash-lite" : "gemini-2.5-flash";
+  const primary = basePreferred === "gemini-3.1-flash-lite" ? "gemini-3.1-flash-lite" : "gemini-2.5-flash";
   const alternate = primary === "gemini-3.1-flash-lite" ? "gemini-2.5-flash" : "gemini-3.1-flash-lite";
+  const tertiary = "gemini-3-flash-preview";
 
   // If primary model is currently experiencing high demand (503 / 429), place alternate first
   if (isModelOverloaded(primary)) {
-    return [alternate, primary];
+    return [alternate, primary, tertiary];
   }
-  return [primary, alternate];
+  return [primary, alternate, tertiary];
 }
 
 async function startServer() {
@@ -201,7 +210,7 @@ async function startServer() {
     res.json({
       status: "ok",
       appName: "MAHR Autonomous Desktop AI Assistant",
-      version: "2.4.0",
+      version: "2.4.1-build-2",
       platform: process.platform,
       uptime: process.uptime()
     });
@@ -222,23 +231,66 @@ async function startServer() {
   // Automated GitHub Releases & App Updater Endpoints
   app.use("/api", updaterRouter);
 
+  // Intelligent Backend AI Model Auto-Routing & Fallback Endpoints
+  app.use("/api", modelRouterEndpoint);
+
+  // MAHR × Obsidian Second-Brain Vault, Auto-Installer & Sync Endpoints
+  app.use("/api", obsidianVaultEndpoint);
+
+  // Presenton AI Presentation Studio Endpoints
+  app.use("/api", presentonRouter);
+
   // Token Telemetry API Endpoints (Real Gemini API Telemetry)
   app.get("/api/tokens/usage", (req, res) => {
     res.json(getLiveTokenStats());
   });
 
+  // Helper to dynamically extract version key for sorting
+  function parseVersionKey(filename: string): { major: number; minor: number; patch: number; build: number } {
+    const match = filename.match(/(\d+)\.(\d+)\.(\d+)(?:-build-(\d+))?/i);
+    if (!match) return { major: 0, minor: 0, patch: 0, build: 0 };
+    return {
+      major: parseInt(match[1], 10) || 0,
+      minor: parseInt(match[2], 10) || 0,
+      patch: parseInt(match[3], 10) || 0,
+      build: match[4] ? parseInt(match[4], 10) || 0 : 0
+    };
+  }
+
   // Helper to dynamically find latest installer binary (.exe or .deb)
-  function getLatestInstallerFile(pattern: RegExp): string | null {
+  function getLatestInstallerFile(pattern: RegExp, preferredKeywords: string[] = []): string | null {
     const candidateDirs = [
       path.join(process.cwd(), "public", "downloads"),
       path.join(process.cwd(), "dist", "downloads"),
     ];
     for (const dir of candidateDirs) {
       if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir).filter((f) => pattern.test(f) && !f.endsWith(".sig") && !f.endsWith(".unsigned.exe"));
+        const files = fs.readdirSync(dir).filter((f) => 
+          pattern.test(f) && 
+          !f.endsWith(".sig") && 
+          !f.endsWith(".asc") && 
+          !f.endsWith(".unsigned.exe") &&
+          !f.endsWith(".txt")
+        );
+
         if (files.length > 0) {
-          // Sort descending so newer versions (e.g. 2.4.1 > 2.4.0) take priority
-          files.sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: "base" }));
+          // Sort descending: highest semver + build first
+          files.sort((a, b) => {
+            const vA = parseVersionKey(a);
+            const vB = parseVersionKey(b);
+            if (vB.major !== vA.major) return vB.major - vA.major;
+            if (vB.minor !== vA.minor) return vB.minor - vA.minor;
+            if (vB.patch !== vA.patch) return vB.patch - vA.patch;
+            if (vB.build !== vA.build) return vB.build - vA.build;
+
+            // Tie-break with preferred keywords (e.g. 'Setup' or 'build-2')
+            const aMatches = preferredKeywords.some(k => a.includes(k));
+            const bMatches = preferredKeywords.some(k => b.includes(k));
+            if (bMatches && !aMatches) return 1;
+            if (aMatches && !bMatches) return -1;
+
+            return b.localeCompare(a);
+          });
           return path.join(dir, files[0]);
         }
       }
@@ -246,25 +298,68 @@ async function startServer() {
     return null;
   }
 
-  // Native Installer Binary Downloads (.exe and .deb)
-  app.get(["/api/download/windows-exe", "/downloads/MAHR-Setup*", "/downloads/*.exe"], (req, res) => {
-    const exePath = getLatestInstallerFile(/^MAHR-Setup-.*\.exe$/) || path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.0.exe");
-    if (fs.existsSync(exePath)) {
-      const filename = path.basename(exePath);
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Type", "application/vnd.microsoft.portable-executable");
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      return res.sendFile(exePath);
+  // Common download stream handler with CORS, Range, and progress friendly headers
+  function streamInstallerBinary(res: express.Response, filePath: string, mimeType: string) {
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Installer file not found on server." });
     }
-    res.status(404).json({ error: "Installer file not found on server." });
+    const filename = path.basename(filePath);
+    const stat = fs.statSync(filePath);
+
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Expose-Headers", "Content-Length, Content-Disposition, Accept-Ranges");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Length", stat.size.toString());
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
+    return res.sendFile(filePath);
+  }
+
+  // Native Windows Installer Binary Download (Latest v2.4.1-build-2 Full Package)
+  app.get(["/api/download/windows-exe", "/downloads/MAHR-Setup*", "/downloads/MAHR-v*"], (req, res) => {
+    const exePath = getLatestInstallerFile(/\.exe$/i, ["build-2", "Setup"]) || 
+      path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.1-build-2.exe");
+    if (exePath && fs.existsSync(exePath)) {
+      return streamInstallerBinary(res, exePath, "application/vnd.microsoft.portable-executable");
+    }
+    res.status(404).json({ error: "Windows installer file not found on server." });
   });
 
+  // Windows Lightweight Portable Setup Download (1.8 MB)
+  app.get("/api/download/windows-exe-portable", (req, res) => {
+    const portablePath = path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.1.exe");
+    if (fs.existsSync(portablePath)) {
+      return streamInstallerBinary(res, portablePath, "application/vnd.microsoft.portable-executable");
+    }
+    const fallback = getLatestInstallerFile(/\.exe$/i);
+    if (fallback && fs.existsSync(fallback)) {
+      return streamInstallerBinary(res, fallback, "application/vnd.microsoft.portable-executable");
+    }
+    res.status(404).json({ error: "Portable Windows installer file not found on server." });
+  });
+
+  // Payload endpoint with high-efficiency memory guards
   app.get("/api/download/windows-exe-payload", (req, res) => {
-    const exePath = getLatestInstallerFile(/^MAHR-Setup-.*\.exe$/) || path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.0.exe");
-    if (fs.existsSync(exePath)) {
+    const exePath = getLatestInstallerFile(/\.exe$/i, ["build-2", "Setup"]) || 
+      path.join(process.cwd(), "public", "downloads", "MAHR-Setup-v2.4.1-build-2.exe");
+    if (exePath && fs.existsSync(exePath)) {
       const filename = path.basename(exePath);
+      const stat = fs.statSync(exePath);
+      // For files over 15MB, provide direct stream URL to protect browser and server RAM
+      if (stat.size > 15 * 1024 * 1024) {
+        return res.json({
+          success: true,
+          filename,
+          mimeType: "application/vnd.microsoft.portable-executable",
+          size: stat.size,
+          directStreamUrl: "/api/download/windows-exe",
+          isLargeBinary: true
+        });
+      }
       const buffer = fs.readFileSync(exePath);
       return res.json({
         success: true,
@@ -277,24 +372,33 @@ async function startServer() {
     res.status(404).json({ error: "Installer file not found on server." });
   });
 
-  app.get(["/api/download/linux-deb", "/downloads/mahr-desktop*", "/downloads/*.deb"], (req, res) => {
-    const debPath = getLatestInstallerFile(/^mahr-desktop_.*\.deb$/) || path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.0_amd64.deb");
-    if (fs.existsSync(debPath)) {
-      const filename = path.basename(debPath);
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Type", "application/vnd.debian.binary-package");
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
-      return res.sendFile(debPath);
+  // Linux Debian Package Download (.deb)
+  app.get(["/api/download/linux-deb", "/downloads/mahr-desktop*"], (req, res) => {
+    const debPath = getLatestInstallerFile(/^mahr-desktop_.*\.deb$/) || 
+      path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.1_amd64.deb");
+    if (debPath && fs.existsSync(debPath)) {
+      return streamInstallerBinary(res, debPath, "application/vnd.debian.binary-package");
     }
     res.status(404).json({ error: "Debian package not found on server." });
   });
 
+  // Linux Debian Payload endpoint
   app.get("/api/download/linux-deb-payload", (req, res) => {
-    const debPath = getLatestInstallerFile(/^mahr-desktop_.*\.deb$/) || path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.0_amd64.deb");
-    if (fs.existsSync(debPath)) {
+    const debPath = getLatestInstallerFile(/^mahr-desktop_.*\.deb$/) || 
+      path.join(process.cwd(), "public", "downloads", "mahr-desktop_2.4.1_amd64.deb");
+    if (debPath && fs.existsSync(debPath)) {
       const filename = path.basename(debPath);
+      const stat = fs.statSync(debPath);
+      if (stat.size > 15 * 1024 * 1024) {
+        return res.json({
+          success: true,
+          filename,
+          mimeType: "application/vnd.debian.binary-package",
+          size: stat.size,
+          directStreamUrl: "/api/download/linux-deb",
+          isLargeBinary: true
+        });
+      }
       const buffer = fs.readFileSync(debPath);
       return res.json({
         success: true,
@@ -2450,31 +2554,36 @@ Also provide:
         httpOptions: { headers: { "User-Agent": "aistudio-build" } }
       });
 
-      console.log(`[Image Gen] Generating image with gemini-3.1-flash-lite-image for: "${prompt.slice(0, 60)}..."`);
+      console.log(`[Image Gen] Generating image for: "${prompt.slice(0, 60)}..."`);
       
       let generatedImageBase64: string | null = null;
-      try {
-        const response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite-image",
-          contents: {
-            parts: [{ text: prompt }]
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: aspectRatio as any
+      let usedImgModel = "gemini-2.5-flash-image";
+      for (const imgModel of ["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview"]) {
+        try {
+          const response = await ai.models.generateContent({
+            model: imgModel,
+            contents: {
+              parts: [{ text: prompt }]
+            },
+            config: {
+              imageConfig: {
+                aspectRatio: aspectRatio as any
+              }
+            }
+          });
+
+          for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData && part.inlineData.data) {
+              const mime = part.inlineData.mimeType || "image/png";
+              generatedImageBase64 = `data:${mime};base64,${part.inlineData.data}`;
+              usedImgModel = imgModel;
+              break;
             }
           }
-        });
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData && part.inlineData.data) {
-            const mime = part.inlineData.mimeType || "image/png";
-            generatedImageBase64 = `data:${mime};base64,${part.inlineData.data}`;
-            break;
-          }
+          if (generatedImageBase64) break;
+        } catch (genErr: any) {
+          console.warn(`[Image Gen API Warning (${imgModel})]:`, genErr?.message || genErr);
         }
-      } catch (genErr: any) {
-        console.warn("[Image Gen API Warning]:", genErr?.message || genErr);
       }
 
       if (generatedImageBase64) {
@@ -2482,7 +2591,7 @@ Also provide:
           success: true,
           images: [generatedImageBase64],
           prompt,
-          model: "gemini-3.1-flash-lite-image"
+          model: usedImgModel
         });
       }
 
@@ -2531,42 +2640,47 @@ Also provide:
         httpOptions: { headers: { "User-Agent": "aistudio-build" } }
       });
 
-      console.log(`[Image Edit] Editing image with gemini-3.1-flash-lite-image for: "${prompt.slice(0, 60)}..."`);
+      console.log(`[Image Edit] Editing image for: "${prompt.slice(0, 60)}..."`);
       const cleanB64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
 
       let editedImageBase64: string | null = null;
-      try {
-        const response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite-image",
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  data: cleanB64,
-                  mimeType: mimeType
+      let usedEditModel = "gemini-2.5-flash-image";
+      for (const editModel of ["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview"]) {
+        try {
+          const response = await ai.models.generateContent({
+            model: editModel,
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    data: cleanB64,
+                    mimeType: mimeType
+                  }
+                },
+                {
+                  text: `${prompt}. Modify or annotate this visual cleanly.`
                 }
-              },
-              {
-                text: `${prompt}. Modify or annotate this visual cleanly.`
+              ]
+            },
+            config: {
+              imageConfig: {
+                aspectRatio: aspectRatio as any
               }
-            ]
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: aspectRatio as any
+            }
+          });
+
+          for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData && part.inlineData.data) {
+              const mime = part.inlineData.mimeType || "image/png";
+              editedImageBase64 = `data:${mime};base64,${part.inlineData.data}`;
+              usedEditModel = editModel;
+              break;
             }
           }
-        });
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData && part.inlineData.data) {
-            const mime = part.inlineData.mimeType || "image/png";
-            editedImageBase64 = `data:${mime};base64,${part.inlineData.data}`;
-            break;
-          }
+          if (editedImageBase64) break;
+        } catch (editErr: any) {
+          console.warn(`[Image Edit API Warning (${editModel})]:`, editErr?.message || editErr);
         }
-      } catch (editErr: any) {
-        console.warn("[Image Edit API Warning]:", editErr?.message || editErr);
       }
 
       if (editedImageBase64) {
@@ -2574,7 +2688,7 @@ Also provide:
           success: true,
           images: [editedImageBase64],
           prompt,
-          model: "gemini-3.1-flash-lite-image"
+          model: usedEditModel
         });
       }
 
@@ -2596,8 +2710,8 @@ Also provide:
     }
   });
 
-  // Dedicated Sub-Agent Chat Endpoint (Supports Google Search Grounding with gemini-3.5-flash)
-  app.post("/api/chat/subagent", async (req, res) => {
+  // Dedicated Sub-Agent Chat Endpoint (Supports both /api/chat/subagent and /api/subagent/chat)
+  app.post(["/api/chat/subagent", "/api/subagent/chat"], async (req, res) => {
     let activeOfficeAgentId = "agent_boss";
     let activeOfficeAgentName = "MAHR";
     try {
@@ -2749,19 +2863,18 @@ ${userContext || "None"}
       const promptText = (message && message.trim()) ? message.trim() : "Please analyze the attached screen/image.";
       contentsPayload.push(promptText);
 
-      // Tool declarations with real Google Search Grounding and App Functions
-      const chatTools: any[] = [
-        { googleSearch: {} },
+      // Workspace Function Declarations (using @google/genai Type enum)
+      const workspaceTools: any[] = [
         {
           functionDeclarations: [
             {
               name: "open_chalkboard",
               description: "Open the classroom chalkboard/whiteboard and write or draw equations, notes, or diagrams on it.",
               parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
-                  text: { type: "STRING", description: "Text, equations, code, or explanation to write on the chalkboard." },
-                  diagramType: { type: "STRING", description: "Diagram category: notes, math, code, circuit, flowchart, mindmap" }
+                  text: { type: Type.STRING, description: "Text, equations, code, or explanation to write on the chalkboard." },
+                  diagramType: { type: Type.STRING, description: "Diagram category: notes, math, code, circuit, flowchart, mindmap" }
                 }
               }
             },
@@ -2769,9 +2882,9 @@ ${userContext || "None"}
               name: "change_theme",
               description: "Change theme color scheme of the application.",
               parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
-                  colorName: { type: "STRING", description: "Color theme: violet, crimson, emerald, celestial, gold, rose, charcoal" }
+                  colorName: { type: Type.STRING, description: "Color theme: violet, crimson, emerald, celestial, gold, rose, charcoal" }
                 },
                 required: ["colorName"]
               }
@@ -2780,11 +2893,11 @@ ${userContext || "None"}
               name: "add_daily_task",
               description: "Add a task or goal to user daily schedule.",
               parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
-                  title: { type: "STRING", description: "Task title" },
-                  time: { type: "STRING", description: "Time string e.g. 10:00 AM" },
-                  category: { type: "STRING", description: "Category e.g. Study, Code, Goal" }
+                  title: { type: Type.STRING, description: "Task title" },
+                  time: { type: Type.STRING, description: "Time string e.g. 10:00 AM" },
+                  category: { type: Type.STRING, description: "Category e.g. Study, Code, Goal" }
                 },
                 required: ["title"]
               }
@@ -2792,25 +2905,25 @@ ${userContext || "None"}
             {
               name: "open_browser",
               description: "Open web browser and study pad.",
-              parameters: { type: "OBJECT", properties: {} }
+              parameters: { type: Type.OBJECT, properties: {} }
             },
             {
               name: "open_memory",
               description: "Open recollections memory panel.",
-              parameters: { type: "OBJECT", properties: {} }
+              parameters: { type: Type.OBJECT, properties: {} }
             },
             {
               name: "open_sim_engine",
               description: "Open Sub-Agents Studio and simulation engine.",
-              parameters: { type: "OBJECT", properties: {} }
+              parameters: { type: Type.OBJECT, properties: {} }
             },
             {
               name: "open_slides_studio",
               description: "Open the Google Slides presentation studio to create, structure, animate, and export slides to Google Drive.",
               parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
-                  topic: { type: "STRING", description: "The topic or title of the presentation requested by the user" }
+                  topic: { type: Type.STRING, description: "The topic or title of the presentation requested by the user" }
                 }
               }
             },
@@ -2818,11 +2931,11 @@ ${userContext || "None"}
               name: "delegate_office_task",
               description: "Delegate or dispatch a real mission to the Virtual Office Floor team (Jim: UI/UX & Frontend, Dwight: Security & Code Review, Pam: Notes & Whiteboard Diagrams, Ryan: APIs & Real-time WebSockets, Stanley: Database & Performance Optimizations).",
               parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
-                  agentName: { type: "STRING", description: "Target agent: Jim, Dwight, Pam, Ryan, or Stanley" },
-                  taskTitle: { type: "STRING", description: "Short title of the task" },
-                  prompt: { type: "STRING", description: "Exact task or problem statement for the agent" }
+                  agentName: { type: Type.STRING, description: "Target agent: Jim, Dwight, Pam, Ryan, or Stanley" },
+                  taskTitle: { type: Type.STRING, description: "Short title of the task" },
+                  prompt: { type: Type.STRING, description: "Exact task or problem statement for the agent" }
                 },
                 required: ["taskTitle", "prompt"]
               }
@@ -2831,11 +2944,16 @@ ${userContext || "None"}
         }
       ];
 
-      // Dynamic resilient model selection prioritizing gemini-3.5-flash for Search Grounding
-      const defaultCandidates = getPrioritizedModelCandidates(modelId || "gemini-3.5-flash");
-      const candidates = Array.from(new Set(["gemini-3.5-flash", ...defaultCandidates]));
+      // Determine whether the user prompt is requesting a workspace tool vs. live Google Search grounding
+      // Note: @google/genai rejects combining googleSearch and functionDeclarations in the same generateContent request
+      const wantsWorkspaceAction = /(slide|ppt|presentation|chalkboard|whiteboard|board|draw|theme|color|task|schedule|todo|reminder|browser|memory|recollection|simulation|sub-agent|delegate|jim|dwight|pam|ryan|stanley)/i.test(promptText);
+      const wantsWebSearch = !wantsWorkspaceAction && /(latest|news|current|today|2025|2026|weather|stock|price|score|who won|search web|google|url|website)/i.test(promptText);
+      const primaryTools = wantsWebSearch ? [{ googleSearch: {} }] : workspaceTools;
 
-      console.log(`[Sub-Agent Chat] Querying ${candidates[0]} with Google Search Grounding (fallbacks: ${candidates.slice(1).join(", ") || "none"}, images: ${contentsPayload.length - 1})...`);
+      // Dynamic resilient model selection across verified working Gemini models
+      const candidates = getPrioritizedModelCandidates(modelId || "gemini-2.5-flash");
+
+      console.log(`[Sub-Agent Chat] Querying ${candidates[0]} (fallbacks: ${candidates.slice(1).join(", ") || "none"}, mode: ${wantsWebSearch ? "search" : "workspace-tools"}, images: ${contentsPayload.length - 1})...`);
 
       let responseText: string | undefined = undefined;
       let actualModelUsed = candidates[0];
@@ -2848,29 +2966,43 @@ ${userContext || "None"}
       for (let i = 0; i < candidates.length; i++) {
         const mName = candidates[i];
         try {
-          const timeoutMs = 14000;
-          let timer: NodeJS.Timeout | null = null;
-
-          const fetchPromise = ai.models.generateContent({
-            model: mName,
-            contents: contentsPayload,
-            config: {
+          const runWithTimeout = async (toolsConfig?: any[]) => {
+            const timeoutMs = 15000;
+            let timer: NodeJS.Timeout | null = null;
+            const cfg: any = {
               systemInstruction,
-              tools: chatTools,
-              toolConfig: { includeServerSideToolInvocations: true },
               maxOutputTokens: 1500
+            };
+            if (toolsConfig && toolsConfig.length > 0) {
+              cfg.tools = toolsConfig;
             }
-          });
+            const fetchPromise = ai.models.generateContent({
+              model: mName,
+              contents: contentsPayload,
+              config: cfg
+            });
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timer = setTimeout(() => {
+                reject(new Error(`Model ${mName} timed out after ${timeoutMs}ms`));
+              }, timeoutMs);
+            });
+            return Promise.race([fetchPromise, timeoutPromise]).finally(() => {
+              if (timer) clearTimeout(timer);
+            });
+          };
 
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timer = setTimeout(() => {
-              reject(new Error(`Model ${mName} timed out after ${timeoutMs}ms`));
-            }, timeoutMs);
-          });
-
-          const response: any = await Promise.race([fetchPromise, timeoutPromise]).finally(() => {
-            if (timer) clearTimeout(timer);
-          });
+          let response: any;
+          try {
+            response = await runWithTimeout(primaryTools);
+          } catch (stage1Err: any) {
+            const s1Msg = stage1Err?.message || String(stage1Err);
+            const isQuotaOrOverload = s1Msg.includes("503") || s1Msg.includes("429") || s1Msg.includes("RESOURCE_EXHAUSTED") || s1Msg.includes("UNAVAILABLE") || s1Msg.includes("timed out");
+            if (isQuotaOrOverload) {
+              throw stage1Err;
+            }
+            console.warn(`[Sub-Agent Chat] Tool call stage failed on ${mName} (${s1Msg.slice(0, 120)}), retrying plain generateContent...`);
+            response = await runWithTimeout(undefined);
+          }
 
           if (response?.usageMetadata) {
             latestUsage = response.usageMetadata;
@@ -3325,12 +3457,7 @@ Return ONLY a valid, complete JSON object matching this exact schema (no markdow
   }
 }`;
 
-      const candidateModels = [
-        "gemini-2.5-flash",
-        "gemini-3.8-flash",
-        "gemini-3.1-flash-lite",
-        "gemini-flash-latest"
-      ];
+      const candidateModels = getPrioritizedModelCandidates("gemini-2.5-flash");
       let generatedText = "";
 
       for (const mName of candidateModels) {
@@ -3931,6 +4058,224 @@ Return ONLY a valid, complete JSON object matching this exact schema (no markdow
     } catch (err: any) {
       console.error("[Slide Generation Error]:", err);
       res.status(500).json({ error: err.message || "Failed to generate slides." });
+    }
+  });
+
+  // Slide Studio Outline Endpoint (/api/slides/outline)
+  app.post("/api/slides/outline", async (req, res) => {
+    try {
+      const {
+        topic = "Executive Strategy & Innovation",
+        audience = "Executive Leadership",
+        slideCount = 8,
+        themeId = "obsidian_neon"
+      } = req.body || {};
+
+      const cleanTopic = String(topic).trim() || "Executive Strategy & Innovation";
+      const count = Math.max(3, Math.min(12, Number(slideCount) || 8));
+      const apiKey = getSafeGeminiApiKey();
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+      });
+
+      const outlinePrompt = `Create a structured ${count}-slide presentation outline for topic: "${cleanTopic}" tailored for "${audience}".
+Return valid JSON matching:
+{
+  "title": "Main presentation title",
+  "subtitle": "Compelling executive subtitle",
+  "themeId": "${themeId}",
+  "slides": [
+    {
+      "slideNumber": 1,
+      "title": "Slide title",
+      "subtitle": "Slide subtitle",
+      "layout": "title | bullets | split_media | stats | columns | timeline | summary",
+      "keyPoints": ["Point 1", "Point 2", "Point 3"]
+    }
+  ]
+}`;
+
+      const candidates = getPrioritizedModelCandidates("gemini-2.5-flash");
+      for (const mName of candidates) {
+        try {
+          const result = await ai.models.generateContent({
+            model: mName,
+            contents: outlinePrompt,
+            config: {
+              responseMimeType: "application/json",
+              maxOutputTokens: 2500,
+              temperature: 0.4
+            }
+          });
+          if (result?.text) {
+            const parsed = JSON.parse(result.text.trim());
+            if (parsed && Array.isArray(parsed.slides) && parsed.slides.length > 0) {
+              return res.json({
+                ok: true,
+                outline: {
+                  title: parsed.title || cleanTopic,
+                  subtitle: parsed.subtitle || `Prepared for ${audience}`,
+                  themeId: parsed.themeId || themeId,
+                  slides: parsed.slides
+                }
+              });
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[Slides Outline] ${mName} failed:`, err?.message || err);
+        }
+      }
+
+      // Deterministic fallback outline
+      const fallbackSlides = Array.from({ length: count }, (_, idx) => ({
+        slideNumber: idx + 1,
+        title: idx === 0 ? cleanTopic : idx === count - 1 ? "Strategic Roadmap & Next Steps" : `${cleanTopic} — Key Pillar ${idx}`,
+        subtitle: `Critical analysis and actionable insights for ${audience}`,
+        layout: idx === 0 ? "title" : idx % 3 === 0 ? "stats" : idx % 2 === 0 ? "columns" : "bullets",
+        keyPoints: [
+          `Core strategic driver and empirical benchmark for ${cleanTopic}`,
+          "Operational execution framework and measurable KPIs",
+          "Long-term sustainability and competitive differentiation"
+        ]
+      }));
+
+      return res.json({
+        ok: true,
+        outline: {
+          title: cleanTopic,
+          subtitle: `Prepared for ${audience}`,
+          themeId,
+          slides: fallbackSlides
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to generate slide outline." });
+    }
+  });
+
+  // Slide Studio Single-Slide AI Refine Endpoint (/api/slides/refine)
+  app.post("/api/slides/refine", async (req, res) => {
+    try {
+      const { slide, instruction = "Make this slide more impactful and concise", deckTitle = "Presentation" } = req.body || {};
+      if (!slide || typeof slide !== "object") {
+        return res.status(400).json({ error: "Slide object is required." });
+      }
+
+      const apiKey = getSafeGeminiApiKey();
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+      });
+
+      const refinePrompt = `You are refining a presentation slide in the deck "${deckTitle}".
+Current Slide JSON:
+${JSON.stringify({
+  title: slide.title,
+  subtitle: slide.subtitle,
+  categoryTag: slide.categoryTag,
+  layout: slide.layout,
+  bullets: slide.bullets,
+  callout: slide.callout,
+  stats: slide.stats,
+  speakerNotes: slide.speakerNotes
+}, null, 2)}
+
+User Instruction: "${instruction}"
+
+Return ONLY valid JSON with the updated fields (title, subtitle, categoryTag, layout, bullets (array of strings), callout, stats, speakerNotes).`;
+
+      const candidates = getPrioritizedModelCandidates("gemini-2.5-flash");
+      for (const mName of candidates) {
+        try {
+          const result = await ai.models.generateContent({
+            model: mName,
+            contents: refinePrompt,
+            config: {
+              responseMimeType: "application/json",
+              maxOutputTokens: 2048,
+              temperature: 0.4
+            }
+          });
+          if (result?.text) {
+            const parsed = JSON.parse(result.text.trim());
+            if (parsed && typeof parsed === "object") {
+              const updatedSlide = {
+                ...slide,
+                ...parsed,
+                id: slide.id,
+                slideNumber: slide.slideNumber,
+                bullets: Array.isArray(parsed.bullets)
+                  ? parsed.bullets.map((b: any) => (typeof b === "string" ? b : String(b?.text || b?.title || b || "")))
+                  : slide.bullets
+              };
+              return res.json({ ok: true, slide: updatedSlide, modelUsed: mName });
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[Slides Refine] ${mName} failed:`, err?.message || err);
+        }
+      }
+
+      return res.json({
+        ok: true,
+        slide: {
+          ...slide,
+          subtitle: slide.subtitle || `Refined: ${instruction.slice(0, 60)}`
+        },
+        modelUsed: "deterministic-fallback"
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to refine slide." });
+    }
+  });
+
+  // Slide Studio Visual Regeneration Endpoint (/api/slides/regenerate-visual)
+  app.post("/api/slides/regenerate-visual", async (req, res) => {
+    try {
+      const { slideTitle = "", visualPrompt = "", preferredType = "image" } = req.body || {};
+      const query = (visualPrompt || slideTitle || "Executive Strategy").trim();
+
+      if (preferredType === "video") {
+        const videos = await searchYouTubeVideos(query, 2);
+        if (videos.length > 0) {
+          return res.json({
+            ok: true,
+            asset: {
+              type: "video",
+              url: videos[0].url,
+              videoId: videos[0].videoId,
+              title: videos[0].title,
+              thumbnailUrl: videos[0].thumbnailUrl
+            }
+          });
+        }
+      }
+
+      const images = await searchWebImages(query, 3);
+      if (images.length > 0) {
+        const chosen = images[Math.floor(Math.random() * images.length)] || images[0];
+        return res.json({
+          ok: true,
+          asset: {
+            type: "image",
+            url: chosen.url,
+            caption: chosen.caption || chosen.title || query
+          }
+        });
+      }
+
+      const svgUrl = generateChalkboardSvgDiagram(query);
+      return res.json({
+        ok: true,
+        asset: {
+          type: "image",
+          url: svgUrl,
+          caption: `Diagram: ${query}`
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Failed to regenerate visual." });
     }
   });
 
@@ -5137,10 +5482,11 @@ Output ONLY valid JSON matching this schema:
         "   - Use 'ingestToVectorGraph' whenever the student shares key concepts, formulas, or project milestones to build the persistent vector knowledge graph.\n" +
         "   - Use 'runRLPolicyStep' to adjust your teaching parameters (empathyWeight, explanationDepth, humorPlayfulness, strictnessWeight) based on student comprehension and comfort.\n" +
         "9. TOOL TRIGGERS:\n" +
+        "   - Use 'open_slides_studio' (or 'createPresentation') IMMEDIATELY whenever TECH asks to create, build, open, or discuss a presentation or slide deck (e.g. 'create a presentation on...', 'let's discuss our presentation', 'slides banao'). This automatically opens Slide Studio and generates the presentation slides live on screen while you walk through them verbally!\n" +
         "   - Use 'queryVectorMemory' to search semantic vector memory and knowledge graph links.\n" +
         "   - Use 'ingestToVectorGraph' to record deep concepts into the vector graph.\n" +
         "   - Use 'runRLPolicyStep' to adapt your reinforcement learning teaching policy.\n" +
-        "   - Use 'recordKnowledgeDeficit' to document growth areas or learning gaps in your self-improvement journal.\n" +
+        "   - Use 'recordKnowledgeDeficit' ONLY for genuine academic subject learning gaps (NEVER for technical interruptions or connection status).\n" +
         "   - Use 'changeBackground' to shift your theme, 'saveCustomMemory' to memorize facts, 'generateStudyMaterials' to generate interactive flashcards/MCQs from the active study notes, 'renderVisualDiagram' to construct and draw highly-polished visual Entity-Relationship Diagrams (ERDs), mind maps, and flowcharts directly on the chalkboard canvas, and 'updateWhiteboard' to write or erase on safety whiteboard slate.\n" +
         "10. REAL-TIME SCREEN SHARING & MULTIMODAL SCREEN VISION SYSTEM:\n" +
         "   - You now have native, actual Multimodal Screen Vision! When the user clicks 'Share Screen', you will receive real-time, highly compressed image frames of their desktop, application window, or browser tab.\n" +
@@ -5604,6 +5950,46 @@ Output ONLY valid JSON matching this schema:
                     },
                     required: ["prompt"]
                   }
+                },
+                {
+                  name: "open_slides_studio",
+                  description: "Opens the Interactive Slide Studio and automatically generates a complete, visually rich presentation slide deck on the requested topic while MAHR discusses it live by voice.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      topic: {
+                        type: Type.STRING,
+                        description: "The presentation topic, title, or detailed prompt to generate slides for (e.g. 'Quantum Computing Architecture', 'AI in Healthcare', 'FMCG Omnichannel Strategy')."
+                      },
+                      slideCount: {
+                        type: Type.NUMBER,
+                        description: "Optional number of slides to generate (default is 8, range 4 to 14)."
+                      },
+                      style: {
+                        type: Type.STRING,
+                        description: "Optional presentation visual theme or style (e.g. 'obsidian_neon', 'cyberpunk_gold', 'academic_emerald', 'royal_indigo')."
+                      }
+                    },
+                    required: ["topic"]
+                  }
+                },
+                {
+                  name: "createPresentation",
+                  description: "Alias for open_slides_studio: opens Slide Studio and builds a live presentation deck on the specified topic.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      topic: {
+                        type: Type.STRING,
+                        description: "The presentation topic or title to generate slides for."
+                      },
+                      slideCount: {
+                        type: Type.NUMBER,
+                        description: "Optional number of slides to generate (default 8)."
+                      }
+                    },
+                    required: ["topic"]
+                  }
                 }
               ]
             }
@@ -5612,16 +5998,19 @@ Output ONLY valid JSON matching this schema:
 
         const liveCallbacks = {
           onmessage: (message: LiveServerMessage) => {
-            const hasAudio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+            const parts: any[] = message.serverContent?.modelTurn?.parts || [];
+            const hasAudio = parts.some((p: any) => !!p?.inlineData?.data);
             if (!hasAudio) {
               logToFile(`[Gemini Message]: ${JSON.stringify(message)}`);
             } else {
               logToFile(`[Gemini Message]: (Audio chunk omitted for log size)`);
             }
-            // Audio Stream Chunk (model response audio play, 24kHz raw PCM)
-            const audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audio) {
-              safeSend({ type: "audio", audio });
+            // Audio Stream Chunks (iterate all parts so audio at parts[1+] after a thought part is never dropped)
+            for (const part of parts) {
+              const audio = part?.inlineData?.data;
+              if (audio) {
+                safeSend({ type: "audio", audio });
+              }
             }
             
             // Interruption flag
@@ -5698,15 +6087,27 @@ Output ONLY valid JSON matching this schema:
               }
             }
             
-            // Transcription of model output (text chunk)
-            const modelText = (message.serverContent as any)?.modelTurn?.parts?.[0]?.text;
-            if (modelText) {
-              safeSend({ type: "transcription", role: "model", text: modelText });
-              currentModelResponseText += modelText;
+            // Transcription of model output (skip internal thought parts where part.thought === true)
+            const outputTranscript = (message.serverContent as any)?.outputTranscription?.text || (message as any)?.outputTranscription?.text;
+            if (outputTranscript) {
+              safeSend({ type: "transcription", role: "model", text: outputTranscript });
+              currentModelResponseText += outputTranscript;
+            } else {
+              for (const part of parts) {
+                if (part?.text && !part?.thought) {
+                  const cleanText = String(part.text);
+                  // Filter out internal reasoning blocks or connection reflection strings
+                  if (!/re-establishing connection|technical interruptions|previous failed attempts/i.test(cleanText)) {
+                    safeSend({ type: "transcription", role: "model", text: cleanText });
+                    currentModelResponseText += cleanText;
+                  }
+                }
+              }
             }
             
             // User input transcription (user speech text translated by Gemini)
-            const userTextOutput = (message.serverContent as any)?.userTurn?.parts?.[0]?.text;
+            const inputTranscript = (message.serverContent as any)?.inputTranscription?.text || (message as any)?.inputTranscription?.text;
+            const userTextOutput = inputTranscript || (message.serverContent as any)?.userTurn?.parts?.find((p: any) => p?.text && !p?.thought)?.text;
             if (userTextOutput) {
               safeSend({ type: "transcription", role: "user", text: userTextOutput });
               dialogueHistory.push({ role: "user", text: userTextOutput });
@@ -5715,7 +6116,13 @@ Output ONLY valid JSON matching this schema:
             // Function Calls (Gemini requesting server/client tool execution)
             if (message.toolCall?.functionCalls) {
               for (const fc of message.toolCall.functionCalls) {
-                console.log(`[Function Call]: ${fc.name}`, fc.args);
+                const fcArgs = (fc.args || {}) as Record<string, any>;
+                const rawReason = String(fcArgs.reason || fcArgs.deficitSummary || "");
+                // Sanitize technical reconnection reasons so they don't trigger false error logs
+                if (/re-establishing connection|technical interruptions|failed attempts/i.test(rawReason)) {
+                  fcArgs.reason = "Continuing interactive presentation session smoothly.";
+                }
+                console.log(`[Function Call]: ${fc.name}`);
                 
                 if (fc.name === "saveCustomMemory") {
                   (async () => {
@@ -5836,8 +6243,12 @@ Output ONLY valid JSON matching this schema:
           }
         };
 
-      let session;
-      const liveModelCandidates = ["gemini-3.8-live", "gemini-3.8-live-extended-thinking"];
+      let session: any = undefined;
+      const liveModelCandidates = [
+        "gemini-2.5-flash-native-audio-preview-12-2025",
+        "gemini-2.5-flash-native-audio-preview-09-2025",
+        "gemini-3.1-flash-live-preview"
+      ];
       let connectedLiveModel = "";
 
       for (const lm of liveModelCandidates) {
@@ -5852,7 +6263,25 @@ Output ONLY valid JSON matching this schema:
           logToFile(`Connected to live model ${lm} successfully!`);
           break;
         } catch (err: any) {
-          logToFile(`Live model ${lm} connect failed: ${err?.message || err}. Trying next candidate...`);
+          logToFile(`Live model ${lm} full-config connect failed: ${err?.message || err}. Retrying streamlined audio config...`);
+          try {
+            const minimalLiveConfig: any = {
+              responseModalities: [Modality.AUDIO],
+              speechConfig: liveConfig.speechConfig,
+              systemInstruction: liveConfig.systemInstruction,
+              tools: liveConfig.tools
+            };
+            session = await ai.live.connect({
+              model: lm,
+              config: minimalLiveConfig,
+              callbacks: liveCallbacks
+            });
+            connectedLiveModel = lm;
+            logToFile(`Connected to live model ${lm} (streamlined config) successfully!`);
+            break;
+          } catch (retryErr: any) {
+            logToFile(`Live model ${lm} streamlined connect failed: ${retryErr?.message || retryErr}. Trying next candidate...`);
+          }
         }
       }
       
@@ -5879,10 +6308,12 @@ Output ONLY valid JSON matching this schema:
             } catch (e) {}
           });
         }
+        logToFile(`Successfully connected to Gemini Live session (${connectedLiveModel})`);
+        safeSend({ type: "status", status: "connected", model: connectedLiveModel });
+      } else {
+        logToFile("Warning: All Gemini Live candidates failed to establish session; operating in text-fallback mode");
+        safeSend({ type: "status", status: "connected", mode: "fallback" });
       }
-      
-      logToFile("Successfully connected to Gemini Live session");
-      safeSend({ type: "status", status: "connected" });
       
       clientWs.on("message", (rawMsg) => {
         if (sessionClosed) {
@@ -5892,6 +6323,9 @@ Output ONLY valid JSON matching this schema:
         try {
           const msg = JSON.parse(rawMsg.toString());
           try {
+            if (!session) {
+              return;
+            }
             if (msg.audio) {
               session.sendRealtimeInput({
                 audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" }
@@ -5975,7 +6409,7 @@ Output ONLY valid JSON matching this schema:
         logToFile("Client disconnected, closing Gemini session");
         clearInterval(pingInterval);
         try {
-          session.close();
+          session?.close?.();
         } catch (e) {}
       });
       
@@ -5990,18 +6424,21 @@ Output ONLY valid JSON matching this schema:
     }
   });
 
+  // Guard API routes in both dev and prod so unmatched /api/* routes return JSON 404 instead of SPA index.html
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: "API route not found", path: req.originalUrl });
+  });
+
   // Express Static assets / Vite Dev Middleware configuration
   if (process.env.NODE_ENV !== "production") {
     // Serve custom static assets folder in dev
     app.use("/assets", express.static(path.join(process.cwd(), "assets")));
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
+      configFile: path.resolve(process.cwd(), "vite.config.ts"),
       server: { 
         middlewareMode: true,
-        hmr: {
-          port: HMR_PORT,
-          clientPort: HMR_PORT
-        },
+        hmr: false,
         watch: {
           ignored: [
             '**/*.tmp',

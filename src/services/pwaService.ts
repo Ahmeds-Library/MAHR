@@ -4,10 +4,34 @@ import { registerBeforeInstallPromptListener } from './platformAdapter';
 export function initializePWA() {
   if (typeof window === 'undefined') return;
 
+  // In development environments, unregister service workers and purge stale caches to ensure updates load live
+  const isDev = import.meta.env.DEV || 
+    window.location.hostname === 'localhost' || 
+    window.location.hostname.includes('ais-dev-') ||
+    window.location.hostname.includes('127.0.0.1');
+
+  if (isDev) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const reg of registrations) {
+          reg.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        for (const name of names) {
+          caches.delete(name);
+        }
+      });
+    }
+    return;
+  }
+
   // Register beforeinstallprompt hook
   registerBeforeInstallPromptListener();
 
-  // Register Service Worker
+  // Register Service Worker in production
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker

@@ -99,6 +99,9 @@ export class MyraaAudioSession {
   
   private currentState: LiveState = "disconnected";
   private isActivated = false;
+  private lastWsUrl: string = "";
+  private warmReconnectAttempts = 0;
+  private reconnectTimer: any = null;
 
   // Real voice WebSocket speech queue and event listeners
   private pendingSpeechQueue: Array<{ text: string; emotion?: string }> = [];
@@ -613,113 +616,9 @@ export class MyraaAudioSession {
 
       sendDiagnosticLog("Initializing WebSocket");
 
-      console.log("[Myraa WS] Initializing WebSocket with URL:", wsUrlStr);
-      this.ws = new WebSocket(wsUrlStr);
-      this.ws.binaryType = "blob";
-
-      this.ws.onopen = () => {
-        console.log("[Myraa] Connected to server side WS bridge");
-        if (!this.isActivated) return;
-        this.setState("listening");
-      };
-
-      this.ws.onmessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Root Error Handler message
-          if (data.type === "error") {
-            this.onError(data.error);
-            this.disconnect();
-            return;
-          }
-
-          // Handle server-side states
-          if (data.type === "status") {
-            console.log("[Myraa WS Status]:", data.status);
-            if (data.status === "connecting_gemini") {
-              // Wait for Gemini Live connection
-            } else if (data.status === "connected") {
-              this.setState("listening");
-              this.flushPendingSpeechQueue();
-            } else if (data.status === "session_closed") {
-              this.disconnect();
-            }
-            return;
-          }
-
-          // Handle audio payload (24kHzPCM model response)
-          if (data.type === "audio" && data.audio) {
-            this.playAudioPCMChunk(data.audio);
-          }
-
-          // Handle interruption signal (e.g. user talked over Myraa)
-          if (data.type === "interrupted") {
-            this.handleInterruption();
-          }
-
-          // Turn complete
-          if (data.type === "turnComplete") {
-            // Once Myraa completes speaking, change visual state back to listening after a safe room decay interval
-            if (this.activeSources.length === 0 && this.currentState === "speaking") {
-              if (this.silenceTimeout) {
-                clearTimeout(this.silenceTimeout);
-              }
-              this.silenceTimeout = setTimeout(() => {
-                if (this.activeSources.length === 0 && this.currentState === "speaking") {
-                  this.setState("listening");
-                }
-              }, 800);
-            }
-          }
-
-          // Handle live captions transcription
-          if (data.type === "transcription") {
-            this.onTranscription(data.role, data.text);
-          }
-
-          // Handle memory synchronization
-          if (data.type === "memory_sync" && data.memories) {
-            if (this.onMemorySync) {
-              this.onMemorySync(data.memories);
-            }
-          }
-
-          // Handle Tool Calling
-          if (data.type === "toolCall") {
-            const { callId, name, args } = data;
-            this.onToolCall(name, args, (result) => {
-              // Send back execution result to server bridge
-              if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({
-                  type: "toolResponse",
-                  id: callId,
-                  name: name,
-                  output: result
-                }));
-              }
-            });
-          }
-
-        } catch (parseError) {
-          console.error("Error reading server packet:", parseError);
-        }
-      };
-
-      this.ws.onerror = (wsError) => {
-        console.warn("WebSocket transport warning:", wsError);
-        sendDiagnosticLog("WebSocket.onerror", String(wsError));
-        if (this.isActivated) {
-          this.onError("Holographic network link lost. Please check connection.");
-        }
-        this.disconnect();
-      };
-
-      this.ws.onclose = () => {
-        console.log("WebSocket connection closed");
-        sendDiagnosticLog("WebSocket.onclose");
-        this.disconnect();
-      };
+      this.lastWsUrl = wsUrlStr;
+      this.warmReconnectAttempts = 0;
+      this.openWebSocketSocket(wsUrlStr, sendDiagnosticLog);
 
     } catch (e: any) {
       console.error("Connection establish sequence failed:", e);
@@ -856,9 +755,167 @@ export class MyraaAudioSession {
     }
   }
 
+  private openWebSocketSocket(wsUrlStr: string, sendDiagnosticLog?: (msg: string, err?: string) => void) {
+    if (!this.isActivated) return;
+
+    if (this.ws) {
+      try {
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        this.ws.onmessage = null;
+        this.ws.close();
+      } catch (e) {}
+      this.ws = null;
+    }
+
+    console.log("[Myraa WS] Initializing WebSocket with URL:", wsUrlStr);
+    const socket = new WebSocket(wsUrlStr);
+    socket.binaryType = "blob";
+    this.ws = socket;
+
+    socket.onopen = () => {
+      console.log("[Myraa] Connected to server side WS bridge");
+      if (!this.isActivated) return;
+      this.setState("listening");
+    };
+
+    socket.onmessage = async (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        // Root Error Handler message
+        if (data.type === "error") {
+          const errStr = String(data.error || "");
+          if (this.isActivated && this.warmReconnectAttempts < 3 && /link error|closed|timeout|reset|network/i.test(errStr)) {
+            this.scheduleWarmReconnect(errStr, sendDiagnosticLog);
+            return;
+          }
+          this.onError(errStr);
+          this.disconnect();
+          return;
+        }
+
+        // Handle server-side states
+        if (data.type === "status") {
+          console.log("[Myraa WS Status]:", data.status);
+          if (data.status === "connecting_gemini") {
+            // Wait for Gemini Live connection
+          } else if (data.status === "connected") {
+            this.warmReconnectAttempts = 0;
+            this.setState("listening");
+            this.flushPendingSpeechQueue();
+          } else if (data.status === "session_closed") {
+            if (this.isActivated && this.warmReconnectAttempts < 3) {
+              this.scheduleWarmReconnect("session_closed", sendDiagnosticLog);
+            } else {
+              this.disconnect();
+            }
+          }
+          return;
+        }
+
+        // Handle audio payload (24kHzPCM model response)
+        if (data.type === "audio" && data.audio) {
+          this.playAudioPCMChunk(data.audio);
+        }
+
+        // Handle interruption signal (e.g. user talked over Myraa)
+        if (data.type === "interrupted") {
+          this.handleInterruption();
+        }
+
+        // Turn complete
+        if (data.type === "turnComplete") {
+          if (this.activeSources.length === 0 && this.currentState === "speaking") {
+            if (this.silenceTimeout) {
+              clearTimeout(this.silenceTimeout);
+            }
+            this.silenceTimeout = setTimeout(() => {
+              if (this.activeSources.length === 0 && this.currentState === "speaking") {
+                this.setState("listening");
+              }
+            }, 800);
+          }
+        }
+
+        // Handle live captions transcription
+        if (data.type === "transcription") {
+          this.onTranscription(data.role, data.text);
+        }
+
+        // Handle memory synchronization
+        if (data.type === "memory_sync" && data.memories) {
+          if (this.onMemorySync) {
+            this.onMemorySync(data.memories);
+          }
+        }
+
+        // Handle Tool Calling
+        if (data.type === "toolCall") {
+          const { callId, name, args } = data;
+          this.onToolCall(name, args, (result) => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              this.ws.send(JSON.stringify({
+                type: "toolResponse",
+                id: callId,
+                name: name,
+                output: result
+              }));
+            }
+          });
+        }
+      } catch (parseError) {
+        console.error("Error reading server packet:", parseError);
+      }
+    };
+
+    socket.onerror = (wsError) => {
+      console.warn("WebSocket transport warning:", wsError);
+      sendDiagnosticLog?.("WebSocket.onerror", String(wsError));
+      if (this.isActivated && this.warmReconnectAttempts < 3) {
+        this.scheduleWarmReconnect("ws_onerror", sendDiagnosticLog);
+        return;
+      }
+      if (this.isActivated) {
+        this.onError("Holographic network link lost. Please check connection.");
+      }
+      this.disconnect();
+    };
+
+    socket.onclose = () => {
+      console.log("WebSocket connection closed");
+      sendDiagnosticLog?.("WebSocket.onclose");
+      if (this.isActivated && this.warmReconnectAttempts < 3) {
+        this.scheduleWarmReconnect("ws_onclose", sendDiagnosticLog);
+        return;
+      }
+      this.disconnect();
+    };
+  }
+
+  private scheduleWarmReconnect(reason: string, sendDiagnosticLog?: (msg: string, err?: string) => void) {
+    if (!this.isActivated || !this.lastWsUrl) {
+      this.disconnect();
+      return;
+    }
+    if (this.reconnectTimer) return; // Already scheduled
+    this.warmReconnectAttempts += 1;
+    console.log(`[Myraa WS] Scheduling seamless warm reconnect (${this.warmReconnectAttempts}/3) due to ${reason}...`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.isActivated || !this.lastWsUrl) return;
+      this.openWebSocketSocket(this.lastWsUrl, sendDiagnosticLog);
+    }, 900);
+  }
+
   // Fully cleanup and release microphones & connection sockets
   public disconnect() {
     this.isActivated = false;
+    this.warmReconnectAttempts = 0;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.setState("disconnected");
 
     if (this.silenceTimeout) {
@@ -869,6 +926,9 @@ export class MyraaAudioSession {
     // Close WS socket
     if (this.ws) {
       try {
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        this.ws.onmessage = null;
         this.ws.close();
       } catch (e) {}
       this.ws = null;
@@ -947,6 +1007,14 @@ export class MyraaAudioSession {
       this.mute();
     }
     return this.isMuted;
+  }
+
+  public getOutputAnalyser(): AnalyserNode | null {
+    return this.outputAnalyser;
+  }
+
+  public getInputAnalyser(): AnalyserNode | null {
+    return this.inputAnalyser;
   }
 
   // Direct realtime text transmission into Gemini Live Session

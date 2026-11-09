@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Sliders, Terminal, Mic, Bot, Palette, Sparkles, ChevronRight, ShieldCheck, Monitor, Database, Cloud } from "lucide-react";
+import { X, Sliders, Terminal, Mic, Bot, Palette, Sparkles, ChevronRight, ShieldCheck, Monitor, Database, Cloud, Puzzle, Cpu } from "lucide-react";
 import { SystemSettingsState } from "../../services/settingsService";
 import { VoiceCommand } from "../../services/voiceCommandService";
+import { InstalledPluginsMap, MahrPluginId } from "../../plugins/layer1_data/pluginTypes";
+import { ModelRoutingPolicy, ModelRouteDecision } from "../../modelRouter/layer1_data/modelRouterTypes";
 import { CommandMapTab } from "./CommandMapTab";
 import { AudioVoiceTab } from "./AudioVoiceTab";
 import { PersonaAiTab } from "./PersonaAiTab";
@@ -10,6 +12,19 @@ import { StorageThemeTab } from "./StorageThemeTab";
 import { DesktopAppsTab } from "./DesktopAppsTab";
 import { DatabaseSettingsTab } from "./DatabaseSettingsTab";
 import { GoogleWorkspaceTab } from "./GoogleWorkspaceTab";
+import { ExtensionsSettingsTab } from "./ExtensionsSettingsTab";
+import { ModelRouterSettingsTab } from "./ModelRouterSettingsTab";
+
+export type SettingsTabId =
+  | "extensions_store"
+  | "model_router"
+  | "google_workspace"
+  | "command_map"
+  | "audio_voice"
+  | "persona_ai"
+  | "storage_theme"
+  | "desktop_apps"
+  | "database_sync";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -20,7 +35,31 @@ interface SettingsModalProps {
   onResetAllSettings: () => void;
   speakNotification?: (text: { ur?: string; en?: string } | string) => void;
   onStatusAlert?: (msg: string) => void;
-  initialTab?: "command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync" | "google_workspace";
+  initialTab?: SettingsTabId;
+  // Extensions & Add-ons Store Props
+  pluginsMap?: InstalledPluginsMap;
+  activePluginsCount?: number;
+  installedPluginsCount?: number;
+  totalAvailablePluginsCount?: number;
+  isPureVoiceMode?: boolean;
+  activeMemoryKb?: number;
+  dormantSavedKb?: number;
+  onInstallPlugin?: (id: MahrPluginId) => void;
+  onUninstallPlugin?: (id: MahrPluginId) => void;
+  onTogglePluginEnabled?: (id: MahrPluginId) => void;
+  onApplyPluginBundle?: (bundleId: string) => void;
+  onInstallAllPlugins?: () => void;
+  onResetToPureVoiceAgent?: () => void;
+  onOpenPluginFeature?: (id: MahrPluginId) => void;
+  // Backend Model Auto-Router Props
+  activeModelId?: string;
+  onSelectModel?: (modelId: string) => void;
+  routingPolicy?: ModelRoutingPolicy;
+  currentModelDecision?: ModelRouteDecision;
+  autoShiftCount?: number;
+  fallbackTriggerCount?: number;
+  onUpdateRoutingPolicy?: (policy: ModelRoutingPolicy, overrideModelId?: string | null) => void;
+  onSimulateFallback?: (failedModelId: string, reason?: string) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -32,9 +71,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetAllSettings,
   speakNotification,
   onStatusAlert,
-  initialTab = "google_workspace"
+  initialTab = "google_workspace",
+  pluginsMap = {},
+  activePluginsCount = 0,
+  installedPluginsCount = 0,
+  totalAvailablePluginsCount = 15,
+  isPureVoiceMode = true,
+  activeMemoryKb = 0,
+  dormantSavedKb = 1233,
+  onInstallPlugin = () => {},
+  onUninstallPlugin = () => {},
+  onTogglePluginEnabled = () => {},
+  onApplyPluginBundle = () => {},
+  onInstallAllPlugins = () => {},
+  onResetToPureVoiceAgent = () => {},
+  onOpenPluginFeature,
+  activeModelId = "gemini-3.1-flash-lite",
+  onSelectModel = () => {},
+  routingPolicy = "auto_intelligent",
+  currentModelDecision,
+  autoShiftCount = 1,
+  fallbackTriggerCount = 0,
+  onUpdateRoutingPolicy,
+  onSimulateFallback,
 }) => {
-  const [activeTab, setActiveTab] = useState<"command_map" | "audio_voice" | "persona_ai" | "storage_theme" | "desktop_apps" | "database_sync" | "google_workspace">(
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(
     initialTab
   );
 
@@ -46,6 +107,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [initialTab, isOpen]);
 
   const sidebarTabs = [
+    {
+      id: "extensions_store",
+      label: "Extensions & Add-ons",
+      sublabel: "Install, hot-swap & launch modular tools",
+      icon: Puzzle,
+      badge: `${activePluginsCount}/${totalAvailablePluginsCount}`
+    },
+    {
+      id: "model_router",
+      label: "AI Engine & Auto-Router",
+      sublabel: "Backend workload & priority model shift",
+      icon: Cpu,
+      badge: routingPolicy === "manual_override" ? "Locked" : "Auto"
+    },
     {
       id: "google_workspace",
       label: "Google Workspace & Accounts",
@@ -250,6 +325,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* Content Body View */}
               <div className="flex-1 p-4 sm:p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+                {activeTab === "extensions_store" && (
+                  <ExtensionsSettingsTab
+                    pluginsMap={pluginsMap}
+                    activeCount={activePluginsCount}
+                    installedCount={installedPluginsCount}
+                    totalAvailableCount={totalAvailablePluginsCount}
+                    isPureVoiceMode={isPureVoiceMode}
+                    activeMemoryKb={activeMemoryKb}
+                    dormantSavedKb={dormantSavedKb}
+                    onInstallPlugin={onInstallPlugin}
+                    onUninstallPlugin={onUninstallPlugin}
+                    onTogglePluginEnabled={onTogglePluginEnabled}
+                    onApplyBundle={onApplyPluginBundle}
+                    onInstallAll={onInstallAllPlugins}
+                    onResetToPureVoiceAgent={onResetToPureVoiceAgent}
+                    onLaunchPluginFeature={
+                      onOpenPluginFeature
+                        ? (id) => {
+                            onClose();
+                            onOpenPluginFeature(id);
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+
+                {activeTab === "model_router" && (
+                  <ModelRouterSettingsTab
+                    activeModelId={activeModelId}
+                    onSelectModel={onSelectModel}
+                    routingPolicy={routingPolicy}
+                    currentDecision={currentModelDecision}
+                    autoShiftCount={autoShiftCount}
+                    fallbackTriggerCount={fallbackTriggerCount}
+                    onUpdateRoutingPolicy={onUpdateRoutingPolicy}
+                    onSimulateFallback={onSimulateFallback}
+                    onStatusAlert={onStatusAlert}
+                  />
+                )}
+
                 {activeTab === "google_workspace" && (
                   <GoogleWorkspaceTab onStatusAlert={onStatusAlert} />
                 )}

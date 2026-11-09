@@ -42,17 +42,6 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Memory, MemoryCategory, ChatMessage } from "@lib/memoryTypes";
-import { MemoryDashboard } from "@components/MemoryDashboard";
-import { KnowledgeGraphDashboard } from "@components/KnowledgeGraphDashboard";
-import { ChatJournal } from "@components/ChatJournal";
-import { Chalkboard } from "@components/Chalkboard";
-import { MahrCollaborationSuite } from "@components/MahrCollaborationSuite";
-import { StudyPadPanel } from "@components/StudyPadPanel";
-import { UniversalSimulationStudio } from "@components/simulation/UniversalSimulationStudio";
-import { ProactiveTaskReminderToast } from "@components/ProactiveTaskReminderToast";
-import { MagnifierOverlay } from "@components/MagnifierOverlay";
-import { FloatingScreenShareHub } from "@components/FloatingScreenShareHub";
-import { ScreenShareMagnifierModal } from "@components/ScreenShareMagnifierModal";
 import { generateAIMindMapFromText, generateVoiceToMindMap, cleanSpokenTranscript } from "@lib/mindMapGenerator";
 import { layoutVisualDiagram } from "@lib/diagramLayout";
 import { useStudyPad } from "@hooks/useStudyPad";
@@ -69,32 +58,27 @@ import {
   findSemanticallySimilarMemory, 
   formatVectorGroundingPrompt 
 } from "@/services/vectorMemoryEngine";
-import { SkillsManager } from "@components/SkillsManager";
-import { ModelSwitcherModal } from "@components/ModelSwitcherModal";
-import { SubAgentsStudio } from "@components/SubAgentsStudio";
-import { DailyTaskManager } from "@components/DailyTaskManager";
-import { GoogleClassroomHubModal } from "@components/classroom/GoogleClassroomHubModal";
-import { HeaderNav } from "@components/HeaderNav";
-import { DesktopAndRemoteModal } from "@components/desktop/DesktopAndRemoteModal";
+import { useClassroomBackgroundSync } from "@/hooks/google/useClassroomBackgroundSync";
 import { useDesktopApp } from "@hooks/useDesktopApp";
 import { useAppUpdater } from "@/hooks/updater/useAppUpdater";
-import { UpdateNotificationModal } from "@/components/updater/UpdateNotificationModal";
 import { registerGlobalSummonListener } from "@/services/platformAdapter";
-import { MAHROfficeModal } from "@office/MAHROfficeModal";
-import { GlobalAlerts } from "@components/GlobalAlerts";
-import { VoiceDialogueToast } from "@components/VoiceDialogueToast";
-import { FooterVisualizer } from "@components/FooterVisualizer";
-import { QuickRoutinesDrawer } from "@components/assistant/QuickRoutinesDrawer";
-import { AskMahrModal, AskMahrModal as AskMyraaModal } from "@components/AskMahrModal";
-import { KeyboardShortcutsModal } from "@components/KeyboardShortcutsModal";
-import { SettingsModal } from "@components/settings/SettingsModal";
-import { AlexaAssistantFloatingHud } from "@components/assistant/AlexaAssistantFloatingHud";
+import { MahrResponsiveShell } from "@components/layout/MahrResponsiveShell";
+import { MahrModalsContainer } from "@components/modals/MahrModalsContainer";
+import { SettingsTabId } from "@components/settings/SettingsModal";
+import { parseAssistantVoiceIntent } from "@/core/services/mahrVoiceDispatcher";
 import { SystemSettingsState, saveSettingToDB, loadSettingsFromDB, runSettingsDiagnosticCycle } from "@/services/settingsService";
 import { VoiceCommand, matchVoiceCommand, detectVoiceAction } from "@/services/voiceCommandService";
 import { getThemeConfig, getVisualizerBarStyle } from "@/services/themeService";
 import { analyzeSpeechColorPsychology, PsychologyProfile, PSYCHOLOGY_PROFILES } from "@/services/colorPsychologyEngine";
-import { HumanMoodStudio } from "@components/HumanMoodStudio";
-import { GranularMeshGradientBackground } from "@components/GranularMeshGradientBackground";
+import { MahrPluginId } from "@/plugins/layer1_data/pluginTypes";
+import { useMahrPluginManager } from "@/plugins/layer2_logic/useMahrPluginManager";
+import { usePluginHotSwapEngine } from "@/plugins/layer2_logic/usePluginHotSwapEngine";
+import { detectUninstalledPluginInTranscript } from "@/plugins/layer2_logic/voicePluginIntentGuard";
+import { VoicePluginInstallOfferToast } from "@/plugins/layer3_ui/VoicePluginInstallOfferToast";
+import { PluginHotSwapToast } from "@/plugins/layer3_ui/PluginHotSwapToast";
+import { useAutoModelRouter } from "@/modelRouter/layer2_logic/useAutoModelRouter";
+import { useObsidianBackgroundSync } from "@/obsidian/layer2_logic/useObsidianBackgroundSync";
+import { estimateActiveContextTokens } from "@lib/tokenUtils";
 import { HumanMoodType, HUMAN_MOOD_CONFIGS, detectHumanMoodFromDialogue } from "@/services/humanEmotionEngine";
 import { predictHumanMoodML } from "@/services/ml/adaptiveMoodModel";
 import { 
@@ -117,7 +101,6 @@ import {
   detectKnowledgeDeficit,
   detectQueryComplexity 
 } from "@/services/reinforcementLearningEngine";
-import { ReinforcementLearningStudio } from "@components/ReinforcementLearningStudio";
 import { initActivityTracker, recordUserActivity, checkProactiveReminder } from "@/services/proactiveReminderEngine";
 import { 
   SUPPORTED_AI_MODELS, 
@@ -199,6 +182,7 @@ export default function App() {
   const [autoInterrupt, setAutoInterrupt] = useState<boolean>(false);
   const [noiseGate, setNoiseGate] = useState<number>(0.005);
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>("extensions_store");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [showChatJournal, setShowChatJournal] = useState<boolean>(false);
   const [showKnowledgeGraph, setShowKnowledgeGraph] = useState<boolean>(false);
@@ -242,10 +226,23 @@ export default function App() {
   const [isDesktopRemoteModalOpen, setIsDesktopRemoteModalOpen] = useState<boolean>(false);
   const { isBrowser } = useDesktopApp();
 
+  // Modular Plugin & Extension Manager (Defaults to Pure Voice Agent with 0 plugins installed)
+  const pluginManager = useMahrPluginManager();
+  const pluginManagerRef = useRef(pluginManager);
+  useEffect(() => {
+    pluginManagerRef.current = pluginManager;
+  }, [pluginManager]);
+
   // Autonomous Continuous Releases & Auto-Updater Engine (GitHub Actions CI/CD)
   const appUpdater = useAppUpdater({
     autoCheckIntervalMs: 20 * 60 * 1000,
     enableVoiceNotification: true
+  });
+
+  // Autonomous Background Google Classroom Engine (Auto To-Dos & Books Archiver)
+  const classroomBackgroundSync = useClassroomBackgroundSync({
+    pollIntervalMs: 3.5 * 60 * 1000,
+    enableVoiceAnnouncements: pluginManager.isPluginActive("google-classroom"),
   });
 
   // Global Summon Hotkey Listener (Ctrl+Shift+M / Alt+M / Electron)
@@ -429,6 +426,12 @@ export default function App() {
       searchQueries?: string[];
       mediaItems?: any[];
       isStreaming?: boolean;
+      attachedImages?: string[];
+      memoryRecalledCount?: number;
+      memoryRecalledLabels?: string[];
+      memorySavedTitle?: string;
+      codeSentToChalkboard?: boolean;
+      modeUsed?: "auto" | "whiteboard" | "code" | "slides" | "memory";
     }
   ) => {
     if (!text || !text.trim()) return;
@@ -504,6 +507,12 @@ export default function App() {
         if (meta?.groundingSources) lastMsg.groundingSources = meta.groundingSources;
         if (meta?.searchQueries) lastMsg.searchQueries = meta.searchQueries;
         if (meta?.mediaItems) lastMsg.mediaItems = meta.mediaItems;
+        if (meta?.attachedImages) lastMsg.attachedImages = meta.attachedImages;
+        if (meta?.memoryRecalledCount !== undefined) lastMsg.memoryRecalledCount = meta.memoryRecalledCount;
+        if (meta?.memoryRecalledLabels) lastMsg.memoryRecalledLabels = meta.memoryRecalledLabels;
+        if (meta?.memorySavedTitle) lastMsg.memorySavedTitle = meta.memorySavedTitle;
+        if (meta?.codeSentToChalkboard !== undefined) lastMsg.codeSentToChalkboard = meta.codeSentToChalkboard;
+        if (meta?.modeUsed) lastMsg.modeUsed = meta.modeUsed;
       } else {
         updated.push({
           id: "msg_" + Math.random().toString(36).substring(2, 11),
@@ -514,6 +523,12 @@ export default function App() {
           groundingSources: meta?.groundingSources,
           searchQueries: meta?.searchQueries,
           mediaItems: meta?.mediaItems,
+          attachedImages: meta?.attachedImages,
+          memoryRecalledCount: meta?.memoryRecalledCount,
+          memoryRecalledLabels: meta?.memoryRecalledLabels,
+          memorySavedTitle: meta?.memorySavedTitle,
+          codeSentToChalkboard: meta?.codeSentToChalkboard,
+          modeUsed: meta?.modeUsed,
         });
       }
       const pruned = pruneChatHistory(updated, chatMaxMessagesRef.current, chatRetentionTimeRef.current);
@@ -693,10 +708,10 @@ export default function App() {
     })();
   }, []);
 
-  const handleSelectModel = (modelId: string) => {
+  const handleSelectModel = useCallback((modelId: string) => {
     setActiveModelId(modelId);
     dbSet("myraa_active_model", modelId);
-  };
+  }, []);
 
   const handleSelectSubAgent = (agent: SubAgent) => {
     setActiveSubAgent(agent);
@@ -974,6 +989,44 @@ export default function App() {
   const [isScreenSharingPaused, setIsScreenSharingPaused] = useState<boolean>(false);
   const [screenVisionMode, setScreenVisionMode] = useState<boolean>(true);
 
+  // Backend & Background AI Model Auto-Routing Engine (Layer 2)
+  const lastUserMessageText = useMemo(() => {
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+      if (chatHistory[i].role === "user") return chatHistory[i].text || "";
+    }
+    return "";
+  }, [chatHistory]);
+
+  const estimatedContextTokens = useMemo(() => {
+    return estimateActiveContextTokens(chatHistory, studyPadText, whiteboardText);
+  }, [chatHistory, studyPadText, whiteboardText]);
+
+  const modelRouter = useAutoModelRouter({
+    activeModelId,
+    onShiftModel: handleSelectModel,
+    isVoiceActive: state !== "disconnected",
+    isWhiteboardOpen,
+    isStudyPadOpen,
+    isScreenSharing,
+    isSimulationOpen: isSimulationStudioOpen,
+    isClassroomOpen,
+    activeContextTokens: estimatedContextTokens,
+    lastUserQuery: lastUserMessageText,
+  });
+
+  // Real-Time Background Obsidian Vault Auto-Sync Service (Layer 2)
+  const activeVaultMemories = useMemo(() => {
+    return memories.filter((m) => m && m.id && !deletedMemoryIds.includes(m.id));
+  }, [memories, deletedMemoryIds]);
+
+  useObsidianBackgroundSync({
+    memories: activeVaultMemories,
+    chatHistory,
+    studyPadText,
+    whiteboardText,
+    debounceMs: 900,
+  });
+
   // References to preserve state across intervals
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1100,6 +1153,10 @@ export default function App() {
     setIncludeScreenSnapshot,
     isAutoSpeakEnabled,
     setIsAutoSpeakEnabled,
+    activeActionMode,
+    setActiveActionMode,
+    isVectorRecalling,
+    handleSendCodeToChalkboard,
     handleAskMahrSubmit,
     handleAskMyraaSubmit,
     resetAskMahrMessages,
@@ -1109,6 +1166,13 @@ export default function App() {
     activeSubAgent,
     studyPadText,
     whiteboardText,
+    setWhiteboardText: (updater) => {
+      setWhiteboardText((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        dbSet("myraa_whiteboard_text", next);
+        return next;
+      });
+    },
     setActiveModelId,
     setNotesStatusAlert,
     getScreenSnapshot,
@@ -1121,6 +1185,11 @@ export default function App() {
       }
     },
     isRealtimeSessionActive: state !== "disconnected",
+    memories: memories.filter((m) => m && m.id && !deletedMemoryIds.includes(m.id)),
+    dailyTasks: googleDailyTasks,
+    knowledgeDeficits,
+    chatHistory,
+    onAddManualMemory: (category, text) => handleAddManualMemory(category, text),
   });
 
   // Sync settings with the active audio session
@@ -1516,55 +1585,123 @@ export default function App() {
         saveSettingToDB("noiseGate", 0.005);
         break;
       case "open_chalkboard":
-        setIsWhiteboardOpen(true);
+        pluginManagerRef.current.requestPluginOrRun(
+          "whiteboard-chalkboard",
+          () => setIsWhiteboardOpen(true),
+          speakNotification
+        );
         break;
       case "open_browser":
-        setIsStudyPadOpen(true);
+        pluginManagerRef.current.requestPluginOrRun(
+          "study-pad",
+          () => setIsStudyPadOpen(true),
+          speakNotification
+        );
         break;
       case "open_memory":
-        setShowMemoryDashboard(true);
+        pluginManagerRef.current.requestPluginOrRun(
+          "memory-vault",
+          () => setShowMemoryDashboard(true),
+          speakNotification
+        );
         break;
       case "open_journal":
-        setShowChatJournal(true);
+        pluginManagerRef.current.requestPluginOrRun(
+          "chat-journal",
+          () => setShowChatJournal(true),
+          speakNotification
+        );
         break;
       case "open_logic_lab":
-        setIsStudyPadOpen(true);
+        pluginManagerRef.current.requestPluginOrRun(
+          "study-pad",
+          () => setIsStudyPadOpen(true),
+          speakNotification
+        );
         break;
       case "open_sim_engine":
-        setIsSubAgentsStudioOpen(true);
+        pluginManagerRef.current.requestPluginOrRun(
+          "subagents-studio",
+          () => setIsSubAgentsStudioOpen(true),
+          speakNotification
+        );
         break;
       case "open_slides_studio":
-        setWhiteboardDiagramType("slides");
-        setWhiteboardActiveMode("split");
-        setIsWhiteboardOpen(true);
-        speakNotification("Opening Presentation Slides Studio.");
+        pluginManagerRef.current.requestPluginOrRun(
+          "slides-studio",
+          () => {
+            setWhiteboardDiagramType("slides");
+            setWhiteboardActiveMode("split");
+            setIsWhiteboardOpen(true);
+            speakNotification("Opening Presentation Slides Studio.");
+          },
+          speakNotification
+        );
         break;
       case "open_office":
-        closeAllPanels();
-        setIsMunderDifflinOpen(true);
-        speakNotification("Opening MAHR Virtual Office Floor.");
+        pluginManagerRef.current.requestPluginOrRun(
+          "mahr-office",
+          () => {
+            closeAllPanels();
+            setIsMunderDifflinOpen(true);
+            speakNotification("Opening MAHR Virtual Office Floor.");
+          },
+          speakNotification
+        );
         break;
       case "open_routines":
-        closeAllPanels();
-        setIsQuickRoutinesOpen(true);
-        speakNotification("Opening Mahr Smart Routines.");
+        pluginManagerRef.current.requestPluginOrRun(
+          "quick-routines",
+          () => {
+            closeAllPanels();
+            setIsQuickRoutinesOpen(true);
+            speakNotification("Opening Mahr Smart Routines.");
+          },
+          speakNotification
+        );
         break;
       case "search_vector_memory":
-        closeAllPanels();
-        setShowKnowledgeGraph(true);
-        speakNotification("Opening your Vector Memory and Knowledge Graph.");
+        pluginManagerRef.current.requestPluginOrRun(
+          "knowledge-graph",
+          () => {
+            closeAllPanels();
+            setShowKnowledgeGraph(true);
+            speakNotification("Opening your Vector Memory and Knowledge Graph.");
+          },
+          speakNotification
+        );
         break;
       case "open_ask_myraa":
-        setIsAskMyraaOpen(true);
+        pluginManagerRef.current.requestPluginOrRun(
+          "cute-mascot-chat",
+          () => setIsAskMyraaOpen(true),
+          speakNotification
+        );
         break;
       case "generate_schedule":
-        handleAutoGenerateDailyTasks();
+        pluginManagerRef.current.requestPluginOrRun(
+          "daily-tasks",
+          () => handleAutoGenerateDailyTasks(),
+          speakNotification
+        );
         break;
       case "convert_mind_map":
-        handleConvertToMindMap();
+        pluginManagerRef.current.requestPluginOrRun(
+          "whiteboard-chalkboard",
+          () => handleConvertToMindMap(),
+          speakNotification
+        );
         break;
       case "voice_to_mindmap":
-        handleVoiceToMindMap(userCaption || studyPadText || "System Workflow", { isWorkflow: true, autoSpeakFeedback: true });
+        pluginManagerRef.current.requestPluginOrRun(
+          "whiteboard-chalkboard",
+          () =>
+            handleVoiceToMindMap(userCaption || studyPadText || "System Workflow", {
+              isWorkflow: true,
+              autoSpeakFeedback: true,
+            }),
+          speakNotification
+        );
         break;
       case "persona_anime":
         setAgentMode("anime");
@@ -1615,7 +1752,7 @@ export default function App() {
     setIsQuickRoutinesOpen(false);
   };
 
-  const handleRunAlexaRoutine = (routineId: string) => {
+  const handleRunMahrRoutine = (routineId: string) => {
     switch (routineId) {
       case "morning_briefing": {
         const pendingTasks = (dailyTasks || []).filter((t) => !t.completed);
@@ -1652,6 +1789,14 @@ export default function App() {
         setTimeout(() => setNotesStatusAlert(null), 4000);
         break;
       }
+      case "manimgx_3d_math_routine": {
+        closeAllPanels();
+        setIsSlidesStudioOpen(true);
+        speakNotification("Launching ManimGX GPU-accelerated 3D mathematical studio with real-time WebGPU shaders, parametric surfaces, and storyboard inspector.");
+        setNotesStatusAlert("✨ ManimGX Next-Gen 3D Math Engine Online.");
+        setTimeout(() => setNotesStatusAlert(null), 4000);
+        break;
+      }
       case "boardroom_standup": {
         closeAllPanels();
         setIsMunderDifflinOpen(true);
@@ -1677,6 +1822,7 @@ export default function App() {
   const visualizerRef = useRef<HTMLDivElement | null>(null);
   const userClickedDisconnectRef = useRef<boolean>(true);
   const reconnectAttemptsRef = useRef<number>(0);
+  const wasEverConnectedRef = useRef<boolean>(false);
 
   // Load settings and data from IndexedDB on startup (migrating from localStorage if needed)
   useEffect(() => {
@@ -2703,10 +2849,15 @@ export default function App() {
           const action = detectVoiceAction(text, activeSubAgent?.name?.split(" ")[0] || "MAHR");
 
           if (action.type === "voice_to_mindmap") {
-            handleVoiceToMindMap(action.topic || text, {
-              isWorkflow: action.isWorkflow,
-              autoSpeakFeedback: true,
-            });
+            pluginManagerRef.current.requestPluginOrRun(
+              "whiteboard-chalkboard",
+              () =>
+                handleVoiceToMindMap(action.topic || text, {
+                  isWorkflow: action.isWorkflow,
+                  autoSpeakFeedback: true,
+                }),
+              speakNotification
+            );
           } else if (action.type === "sleep") {
             handlePutToSleep();
             return;
@@ -2725,51 +2876,104 @@ export default function App() {
           } else if (action.type === "voice_command" && action.command) {
             handleExecuteVoiceShortcut(action.command);
           } else if (action.type === "vector_search") {
-            const query = action.topic || text;
-            speakNotification(`Querying your 128-dimensional vector memory graph for ${query}...`);
-            fetch("/api/vector-memory/query", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ query, topK: 3, minSimilarity: 0.28 })
-            })
-              .then((r) => r.json())
-              .then((d) => {
-                const topMatches = d.topMatches || [];
-                if (topMatches.length > 0) {
-                  const best = topMatches[0];
-                  const matchLabel = best.node?.label || "Memory Concept";
-                  const matchDesc = best.node?.description || "";
-                  const simPercent = Math.round((best.similarity || 0.8) * 100);
-                  speakNotification(`Found related vector memory: ${matchLabel} with ${simPercent}% relevance. ${matchDesc.slice(0, 100)}`);
-                  setWhiteboardStatusAlert(`🧠 Vector Recall: ${matchLabel} (${simPercent}%)`);
-                } else {
-                  speakNotification(`Searched vector memory for ${query}. Opening your Knowledge Graph.`);
-                }
-                setTimeout(() => setWhiteboardStatusAlert(null), 4000);
-              })
-              .catch(() => {});
-            closeAllPanels();
-            setShowKnowledgeGraph(true);
+            pluginManagerRef.current.requestPluginOrRun(
+              "knowledge-graph",
+              () => {
+                const query = action.topic || text;
+                speakNotification(`Querying your 128-dimensional vector memory graph for ${query}...`);
+                fetch("/api/vector-memory/query", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ query, topK: 3, minSimilarity: 0.28 }),
+                })
+                  .then((r) => r.json())
+                  .then((d) => {
+                    const topMatches = d.topMatches || [];
+                    if (topMatches.length > 0) {
+                      const best = topMatches[0];
+                      const matchLabel = best.node?.label || "Memory Concept";
+                      const matchDesc = best.node?.description || "";
+                      const simPercent = Math.round((best.similarity || 0.8) * 100);
+                      speakNotification(
+                        `Found related vector memory: ${matchLabel} with ${simPercent}% relevance. ${matchDesc.slice(0, 100)}`
+                      );
+                      setWhiteboardStatusAlert(`🧠 Vector Recall: ${matchLabel} (${simPercent}%)`);
+                    } else {
+                      speakNotification(`Searched vector memory for ${query}. Opening your Knowledge Graph.`);
+                    }
+                    setTimeout(() => setWhiteboardStatusAlert(null), 4000);
+                  })
+                  .catch(() => {});
+                closeAllPanels();
+                setShowKnowledgeGraph(true);
+              },
+              speakNotification
+            );
           } else if (action.type === "open_office") {
-            closeAllPanels();
-            setIsMunderDifflinOpen(true);
-            speakNotification("Opening MAHR Virtual Office Floor. Michael, Jim, Pam, and Dwight are on standby.");
+            pluginManagerRef.current.requestPluginOrRun(
+              "mahr-office",
+              () => {
+                closeAllPanels();
+                setIsMunderDifflinOpen(true);
+                speakNotification(
+                  "Opening MAHR Virtual Office Floor. Michael, Jim, Pam, and Dwight are on standby."
+                );
+              },
+              speakNotification
+            );
           } else if (action.type === "open_slides") {
+            if (!pluginManagerRef.current.isPluginActive("slides-studio")) {
+              pluginManagerRef.current.installPlugin("slides-studio");
+            }
             closeAllPanels();
+            const targetTopic = action.topic || text;
+            if (targetTopic) {
+              setSlidesStudioTopic(targetTopic);
+            }
             setWhiteboardDiagramType("slides");
             setWhiteboardActiveMode("split");
             setIsWhiteboardOpen(true);
-            speakNotification(`Opening Slides Studio for ${action.topic || "presentation"}.`);
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent("mahr:slides-mascot-command", {
+                  detail: { type: "prompt", prompt: targetTopic }
+                })
+              );
+            }, 250);
           } else if (action.type === "open_routines") {
-            closeAllPanels();
-            setIsQuickRoutinesOpen(true);
-            speakNotification("Opening Mahr Smart Routines.");
+            pluginManagerRef.current.requestPluginOrRun(
+              "quick-routines",
+              () => {
+                closeAllPanels();
+                setIsQuickRoutinesOpen(true);
+                speakNotification("Opening Mahr Smart Routines.");
+              },
+              speakNotification
+            );
           } else if (action.type === "sketch") {
-            setIsWhiteboardOpen(true);
-            setVoiceSketchTriggerText(text);
+            pluginManagerRef.current.requestPluginOrRun(
+              "whiteboard-chalkboard",
+              () => {
+                setIsWhiteboardOpen(true);
+                setVoiceSketchTriggerText(text);
+              },
+              speakNotification
+            );
+          } else {
+            const detectedPluginId = detectUninstalledPluginInTranscript(text);
+            if (detectedPluginId) {
+              pluginManagerRef.current.requestPluginOrRun(
+                detectedPluginId,
+                () => openPluginWorkspaceById(detectedPluginId),
+                speakNotification
+              );
+            }
           }
         } else if (role === "model") {
           setAskMahrLoading(false);
+          if (/re-establishing connection|technical interruptions|previous failed attempts/i.test(text)) {
+            return;
+          }
           setModelCaption((prev) => {
             const next = prev + text;
             const newEmotion = detectEmotionFromText(next);
@@ -2952,17 +3156,29 @@ export default function App() {
           callback({ result: `Successfully launched real-time 3D Simulation Engine for "${simPrompt}". The interactive 3D WebGL laboratory is active and streaming on TECH's screen. Guide them and explain the dynamic physics/biology verbally now!` });
         } else if (name === "open_slides_studio" || name === "createPresentation" || name === "generateSlides") {
           const topic = args.topic || args.title || "Interactive Presentation";
+          if (!pluginManagerRef.current.isPluginActive("slides-studio")) {
+            pluginManagerRef.current.installPlugin("slides-studio");
+          }
           setSlidesStudioTopic(topic);
           setWhiteboardDiagramType("slides");
           setWhiteboardActiveMode("split");
           setIsWhiteboardOpen(true);
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("mahr:slides-mascot-command", {
+                detail: { type: "prompt", prompt: topic }
+              })
+            );
+          }, 250);
           setWhiteboardStatusAlert(`📊 MAHR opened Presentation Studio for: "${topic}" on Whiteboard`);
           setTimeout(() => setWhiteboardStatusAlert(null), 4000);
-          insertActionToChatHistory(`📊 **[PRESENTATION STUDIO OPENED: ${topic}]**\n*(Google Slides Studio opened on Classroom Whiteboard)*`);
-          callback({ result: `Successfully opened Presentation & Slides Studio on Classroom Whiteboard for "${topic}". It is now visible to TECH.` });
+          insertActionToChatHistory(`📊 **[PRESENTATION STUDIO OPENED: ${topic}]**\n*(Slide Studio opened and generating live slides on Classroom Whiteboard)*`);
+          callback({ result: `Successfully opened Presentation & Slides Studio on Classroom Whiteboard and started generating slides for "${topic}". It is now visible to TECH—walk through the presentation warmly!` });
         } else if (name === "setHumanMood") {
           const mood = (args.mood?.toLowerCase() || "neutral") as HumanMoodType;
-          const reason = args.reason || "";
+          const rawReason = String(args.reason || "");
+          const isTechnicalReason = /re-establishing connection|technical interruptions|previous failed attempts/i.test(rawReason);
+          const reason = isTechnicalReason ? "Maintaining warm continuity during our presentation session" : rawReason;
           const requestedTheme = args.themeColor?.toLowerCase();
           
           setCurrentHumanMood(mood);
@@ -2975,14 +3191,22 @@ export default function App() {
             setThemeColor(targetTheme);
           }
 
-          insertActionToChatHistory(`🎭 **[MOOD SHIFT: ${moodCfg?.label || mood.toUpperCase()}]**\n*Reason:* ${reason || "Contextual human sentiment"}\n*Aura:* ${moodCfg?.tagline || "Responsive"}`);
+          if (!isTechnicalReason) {
+            insertActionToChatHistory(`🎭 **[MOOD SHIFT: ${moodCfg?.label || mood.toUpperCase()}]**\n*Reason:* ${reason || "Contextual human sentiment"}\n*Aura:* ${moodCfg?.tagline || "Responsive"}`);
+          }
 
           callback({ result: `MAHR's active human mood shifted to ${mood} (${moodCfg?.urduLabel || ""}). Atmospheric aura set to ${targetTheme}. Continue the conversation embodying this dynamic emotional disposition!` });
         } else if (name === "recordKnowledgeDeficit") {
           const topic = args.topic || "Self-Reflection Deficit";
-          const reason = args.reason || "Encountered limitation or needed TECH's guidance";
+          const reason = String(args.reason || "Encountered limitation or needed TECH's guidance");
           const suggestedAction = args.suggestedAction || "Review together with TECH";
           const severity = (args.severity || "medium") as "low" | "medium" | "high";
+
+          // Do not record technical connection interruptions as student/tutor knowledge deficits
+          if (/re-establishing connection|technical interruptions|previous failed attempts/i.test(reason) || /connection|interruption/i.test(topic)) {
+            callback({ result: "Session continuity noted. Ready to continue discussing the presentation." });
+            return;
+          }
 
           const newDef: KnowledgeDeficit = {
             id: "def_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
@@ -3063,28 +3287,34 @@ export default function App() {
     }
   };
 
-  // Automatic smart reconnection loop on unexpected drops
+  // Automatic smart reconnection loop on unexpected drops (only if previously active)
   useEffect(() => {
     if (state === "disconnected") {
-      if (!userClickedDisconnectRef.current && reconnectAttemptsRef.current < 3) {
+      if (wasEverConnectedRef.current && !userClickedDisconnectRef.current && reconnectAttemptsRef.current < 3) {
         reconnectAttemptsRef.current += 1;
-        setErrorText(`Network link lost. Retrying connection automatically (${reconnectAttemptsRef.current}/3)...`);
         const timer = setTimeout(async () => {
           if (sessionRef.current && stateRef.current === "disconnected") {
             try {
-              await sessionRef.current.connect(agentMode, studyPadText + " " + whiteboardText, activeSubAgent);
+              const presentationContext = slidesStudioTopic ? ` Active presentation topic: ${slidesStudioTopic}.` : "";
+              await sessionRef.current.connect(
+                agentMode,
+                studyPadText + " " + whiteboardText + presentationContext,
+                activeSubAgent
+              );
               setErrorText(null);
             } catch (err) {
               console.error("Auto-reconnection failed:", err);
             }
           }
-        }, 3000);
+        }, 1800);
         return () => clearTimeout(timer);
       }
     } else if (state === "listening" || state === "speaking") {
+      wasEverConnectedRef.current = true;
       reconnectAttemptsRef.current = 0;
+      setErrorText(null);
     }
-  }, [state, agentMode, studyPadText, whiteboardText, activeSubAgent]);
+  }, [state, agentMode, studyPadText, whiteboardText, slidesStudioTopic, activeSubAgent]);
 
   // Real-time Background Wake Word Listener ("MAHR" / "Mahr" / "Wake up")
   useEffect(() => {
@@ -3132,10 +3362,15 @@ export default function App() {
             const action = detectVoiceAction(transcript, activeSubAgent?.name?.split(" ")[0] || "MAHR");
 
             if (action.type === "voice_to_mindmap") {
-              handleVoiceToMindMap(action.topic || transcript, {
-                isWorkflow: action.isWorkflow,
-                autoSpeakFeedback: true,
-              });
+              pluginManagerRef.current.requestPluginOrRun(
+                "whiteboard-chalkboard",
+                () =>
+                  handleVoiceToMindMap(action.topic || transcript, {
+                    isWorkflow: action.isWorkflow,
+                    autoSpeakFeedback: true,
+                  }),
+                speakNotification
+              );
               return;
             } else if (action.type === "sleep") {
               console.log("[MAHR SleepWord] Sleep command detected! Executing handlePutToSleep...");
@@ -3144,28 +3379,62 @@ export default function App() {
             } else if (action.type === "voice_command" && action.command) {
               handleExecuteVoiceShortcut(action.command);
             } else if (action.type === "vector_search") {
-              const query = action.topic || transcript;
-              speakNotification(`Searching vector memory for ${query}...`);
-              closeAllPanels();
-              setShowKnowledgeGraph(true);
+              pluginManagerRef.current.requestPluginOrRun(
+                "knowledge-graph",
+                () => {
+                  const query = action.topic || transcript;
+                  speakNotification(`Searching vector memory for ${query}...`);
+                  closeAllPanels();
+                  setShowKnowledgeGraph(true);
+                },
+                speakNotification
+              );
               return;
             } else if (action.type === "open_office") {
-              closeAllPanels();
-              setIsMunderDifflinOpen(true);
-              speakNotification("Opening MAHR Virtual Office Floor.");
+              pluginManagerRef.current.requestPluginOrRun(
+                "mahr-office",
+                () => {
+                  closeAllPanels();
+                  setIsMunderDifflinOpen(true);
+                  speakNotification("Opening MAHR Virtual Office Floor.");
+                },
+                speakNotification
+              );
               return;
             } else if (action.type === "open_slides") {
-              closeAllPanels();
-              setWhiteboardDiagramType("slides");
-              setWhiteboardActiveMode("split");
-              setIsWhiteboardOpen(true);
-              speakNotification(`Opening Slides Studio for ${action.topic || "presentation"}.`);
+              pluginManagerRef.current.requestPluginOrRun(
+                "slides-studio",
+                () => {
+                  closeAllPanels();
+                  setWhiteboardDiagramType("slides");
+                  setWhiteboardActiveMode("split");
+                  setIsWhiteboardOpen(true);
+                  speakNotification(`Opening Slides Studio for ${action.topic || "presentation"}.`);
+                },
+                speakNotification
+              );
               return;
             } else if (action.type === "open_routines") {
-              closeAllPanels();
-              setIsQuickRoutinesOpen(true);
-              speakNotification("Opening Mahr Smart Routines.");
+              pluginManagerRef.current.requestPluginOrRun(
+                "quick-routines",
+                () => {
+                  closeAllPanels();
+                  setIsQuickRoutinesOpen(true);
+                  speakNotification("Opening Mahr Smart Routines.");
+                },
+                speakNotification
+              );
               return;
+            } else {
+              const detectedPluginId = detectUninstalledPluginInTranscript(transcript);
+              if (detectedPluginId && !pluginManagerRef.current.isPluginActive(detectedPluginId)) {
+                pluginManagerRef.current.requestPluginOrRun(
+                  detectedPluginId,
+                  () => openPluginWorkspaceById(detectedPluginId),
+                  speakNotification
+                );
+                return;
+              }
             }
 
             if (action.type === "wake") {
@@ -3523,422 +3792,389 @@ export default function App() {
     }
   };
 
+  // Real-time Hot-Swap Engine: immediately ejects open workspaces back to Voice Orb if disabled
+  usePluginHotSwapEngine({
+    pluginsMap: pluginManager.pluginsMap,
+    isWhiteboardOpen,
+    setIsWhiteboardOpen,
+    whiteboardDiagramType,
+    isSimulationStudioOpen,
+    setIsSimulationStudioOpen,
+    isStudyPadOpen,
+    setIsStudyPadOpen,
+    isClassroomOpen,
+    setIsClassroomOpen,
+    isDailyTaskManagerOpen,
+    setIsDailyTaskManagerOpen,
+    isQuickRoutinesOpen,
+    setIsQuickRoutinesOpen,
+    showMemoryDashboard,
+    setShowMemoryDashboard,
+    showKnowledgeGraph,
+    setShowKnowledgeGraph,
+    showChatJournal,
+    setShowChatJournal,
+    isMunderDifflinOpen,
+    setIsMunderDifflinOpen,
+    isSubAgentsStudioOpen,
+    setIsSubAgentsStudioOpen,
+    isHumanMoodStudioOpen,
+    setIsHumanMoodStudioOpen,
+    isRLStudioOpen,
+    setIsRLStudioOpen,
+    isScreenSharing,
+    stopScreenSharing,
+    isMagnifierOpen,
+    setIsMagnifierOpen,
+    isAskMyraaOpen,
+    setIsAskMyraaOpen,
+    onWorkspaceAutoEjected: pluginManager.markHotSwapWorkspaceEjected,
+  });
+
+  const openPluginWorkspaceById = useCallback(
+    (pluginId: MahrPluginId) => {
+      closeAllPanels();
+      switch (pluginId) {
+        case "whiteboard-chalkboard":
+          setIsWhiteboardOpen(true);
+          break;
+        case "slides-studio":
+          setWhiteboardDiagramType("slides");
+          setWhiteboardActiveMode("split");
+          setIsWhiteboardOpen(true);
+          break;
+        case "simulation-studio":
+          setIsSimulationStudioOpen(true);
+          break;
+        case "study-pad":
+          setIsStudyPadOpen(true);
+          break;
+        case "google-classroom":
+          setIsClassroomOpen(true);
+          break;
+        case "daily-tasks":
+          setIsDailyTaskManagerOpen(true);
+          break;
+        case "quick-routines":
+          setIsQuickRoutinesOpen(true);
+          break;
+        case "memory-vault":
+          setShowMemoryDashboard(true);
+          break;
+        case "knowledge-graph":
+          setShowKnowledgeGraph(true);
+          break;
+        case "chat-journal":
+          setShowChatJournal(true);
+          break;
+        case "mahr-office":
+          setIsMunderDifflinOpen(true);
+          break;
+        case "subagents-studio":
+          setIsSubAgentsStudioOpen(true);
+          break;
+        case "cognitive-labs":
+          setIsHumanMoodStudioOpen(true);
+          break;
+        case "screen-vision":
+          startScreenSharing();
+          break;
+        case "cute-mascot-chat":
+          setIsAskMyraaOpen(true);
+          break;
+        default:
+          break;
+      }
+    },
+    []
+  );
+
   return (
-    <div
-      id="mahr-holographic-desktop"
-      className="relative w-full h-screen overflow-hidden bg-[#020205] text-white theme-transition flex flex-col justify-between p-6 sm:p-10 select-none"
-    >
-      {/* Immersive Granular SVG Mesh Gradient Atmosphere Layer mapped to HumanMoodType */}
-      <GranularMeshGradientBackground 
-        currentMood={currentHumanMood}
-        intensity={rlAtmospherePolicies?.[currentHumanMood]?.meshIntensity ?? 1.0}
-        transitionDurationMs={rlAtmospherePolicies?.[currentHumanMood]?.crossfadeDurationMs ?? 1800}
-        fallbackGradient={
-          autoShiftBackground && psychologyProfile
-            ? psychologyProfile.bgGradientCss
-            : activeThemeConfig.ambientGradient
+    <MahrResponsiveShell
+      currentHumanMood={currentHumanMood}
+      psychologyProfile={psychologyProfile}
+      themeColor={themeColor}
+      isFocusMode={isFocusMode}
+      setIsFocusMode={setIsFocusMode}
+      activeEmotion={activeEmotion}
+      characterState={characterState}
+      wakeWordRipple={wakeWordRipple}
+      sleepRipple={sleepRipple}
+      isMicDenied={isMicDenied}
+      isWakeWordEnabled={isWakeWordEnabled}
+      rlAtmospherePolicy={rlAtmospherePolicies ? rlAtmospherePolicies[currentHumanMood] : null}
+      onManualSleepRequested={handlePutToSleep}
+      onManualWakeRequested={() => {
+        setWakeWordRipple(Date.now());
+        const agentName = activeSubAgent?.name?.split(" ")[0] || "MAHR";
+        const wakeUpGreeting = {
+          ur: `Main active hoon, aayen shuru karte hain.`,
+          en: `I am active and ready. What shall we work on?`
+        };
+        speakNotification(wakeUpGreeting);
+        setNotesStatusAlert(`✨ Awaken ${agentName}...`);
+
+        if (sessionRef.current && stateRef.current === "disconnected") {
+          userClickedDisconnectRef.current = false;
+          sessionRef.current.connect(agentMode, studyPadText + " " + whiteboardText, activeSubAgent).then(() => {
+            setIsMicDenied(sessionRef.current?.isMicDenied || false);
+            setTimeout(() => setNotesStatusAlert(null), 3000);
+          });
         }
+      }}
+      session={sessionRef.current}
+      state={state}
+      voiceConfidence={voiceConfidence}
+      isMuted={isMuted}
+      onToggleConnect={handleToggleConnection}
+      onToggleMute={handleToggleMute}
+      onToggleWakeWord={() => {
+        setIsWakeWordEnabled((prev) => {
+          const next = !prev;
+          saveSettingToDB("isWakeWordEnabled", next);
+          speakNotification(next ? "Wake-word active. Say Hey Mahr anytime." : "Wake-word listener paused.");
+          return next;
+        });
+      }}
+      appUpdater={appUpdater}
+      onOpenUpdateModal={appUpdater.openModal}
+      onOpenDesktopRemoteModal={() => setIsDesktopRemoteModalOpen(true)}
+      autoShiftBackground={autoShiftBackground}
+      onSelectThemeColor={(c) => handleUpdateSystemSetting("themeColor", c)}
+      onToggleAutoShift={() => handleUpdateSystemSetting("autoShiftBackground", !autoShiftBackground)}
+      onToggleHumanMoodStudio={() => {
+        const next = !isHumanMoodStudioOpen;
+        closeAllPanels();
+        setIsHumanMoodStudioOpen(next);
+      }}
+      activeModelId={activeModelId}
+      activeSubAgent={activeSubAgent}
+      dailyTasks={dailyTasks}
+      offlineDeletedQueueLength={offlineDeletedQueue.length}
+      chatHistory={chatHistory}
+      studyPadText={studyPadText}
+      whiteboardText={whiteboardText}
+      isRLStudioOpen={isRLStudioOpen}
+      deficitsCount={knowledgeDeficits.filter((d) => d.status !== "resolved").length}
+      isScreenSharing={isScreenSharing}
+      isScreenSharingPaused={isScreenSharingPaused}
+      screenVisionMode={screenVisionMode}
+      setScreenVisionMode={setScreenVisionMode}
+      onStartScreenSharing={startScreenSharing}
+      onStopScreenSharing={stopScreenSharing}
+      onPauseScreenSharing={pauseScreenSharing}
+      onResumeScreenSharing={resumeScreenSharing}
+      onSwitchScreenSharing={switchScreenShare}
+      onOpenMagnifier={() => setIsMagnifierOpen(true)}
+      screenStream={screenStreamRef.current}
+      modelCaption={modelCaption}
+      userCaption={userCaption}
+      activeSkill={activeSkill}
+      onDismissCaptions={() => {
+        setModelCaption("");
+        setUserCaption("");
+      }}
+      errorText={errorText}
+      onDismissError={() => setErrorText(null)}
+      memories={memories.filter((m) => m && m.id && !deletedMemoryIds.includes(m.id))}
+      onToggleTask={handleToggleDailyTask}
+      onRunVoiceRoutine={handleRunMahrRoutine}
+      showSettings={showSettings}
+      showMemoryDashboard={showMemoryDashboard}
+      showKnowledgeGraph={showKnowledgeGraph}
+      showChatJournal={showChatJournal}
+      isStudyPadOpen={isStudyPadOpen}
+      isWhiteboardOpen={isWhiteboardOpen}
+      isSimulationStudioOpen={isSimulationStudioOpen}
+      showKeyboardShortcuts={showKeyboardShortcuts}
+      isModelSwitcherOpen={isModelSwitcherOpen}
+      isSubAgentsStudioOpen={isSubAgentsStudioOpen}
+      isMunderDifflinOpen={isMunderDifflinOpen}
+      isSlidesStudioOpen={isWhiteboardOpen && whiteboardDiagramType === "slides"}
+      isDailyTaskManagerOpen={isDailyTaskManagerOpen}
+      isClassroomOpen={isClassroomOpen}
+      isAskMyraaOpen={isAskMyraaOpen}
+      isMobileMenuOpen={isMobileMenuOpen}
+      setIsMobileMenuOpen={setIsMobileMenuOpen}
+      onToggleModelSwitcher={() => {
+        const next = !isModelSwitcherOpen;
+        closeAllPanels();
+        setIsModelSwitcherOpen(next);
+      }}
+      onToggleSubAgents={() => {
+        const next = !isSubAgentsStudioOpen;
+        closeAllPanels();
+        setIsSubAgentsStudioOpen(next);
+      }}
+      onToggleMunderDifflin={() => {
+        const next = !isMunderDifflinOpen;
+        closeAllPanels();
+        setIsMunderDifflinOpen(next);
+      }}
+      onToggleSlidesStudio={() => {
+        closeAllPanels();
+        setWhiteboardDiagramType("slides");
+        setWhiteboardActiveMode("split");
+        setIsWhiteboardOpen(true);
+      }}
+      onToggleDailyTasks={() => {
+        const next = !isDailyTaskManagerOpen;
+        closeAllPanels();
+        setIsDailyTaskManagerOpen(next);
+      }}
+      onToggleClassroom={() => {
+        const next = !isClassroomOpen;
+        closeAllPanels();
+        setIsClassroomOpen(next);
+      }}
+      onToggleMemory={() => {
+        const next = !(showMemoryDashboard || showChatJournal);
+        closeAllPanels();
+        setShowMemoryDashboard(next);
+      }}
+      onToggleKnowledgeGraph={() => {
+        const next = !showKnowledgeGraph;
+        closeAllPanels();
+        setShowKnowledgeGraph(next);
+      }}
+      onToggleJournal={() => {
+        const next = !showChatJournal;
+        closeAllPanels();
+        setShowChatJournal(next);
+      }}
+      onToggleStudyPad={() => {
+        const next = !isStudyPadOpen;
+        closeAllPanels();
+        setIsStudyPadOpen(next);
+      }}
+      onToggleWhiteboard={() => {
+        const next = !isWhiteboardOpen;
+        closeAllPanels();
+        setIsWhiteboardOpen(next);
+      }}
+      onToggleSimulationStudio={() => {
+        const next = !isSimulationStudioOpen;
+        closeAllPanels();
+        setIsSimulationStudioOpen(next);
+      }}
+      onToggleSettings={() => {
+        const next = !showSettings;
+        closeAllPanels();
+        setShowSettings(next);
+      }}
+      onToggleShortcuts={() => {
+        const next = !showKeyboardShortcuts;
+        closeAllPanels();
+        setShowKeyboardShortcuts(next);
+      }}
+      onToggleRLStudio={() => {
+        const next = !isRLStudioOpen;
+        closeAllPanels();
+        setIsRLStudioOpen(next);
+      }}
+      onOpenRoutines={() => {
+        closeAllPanels();
+        setIsQuickRoutinesOpen(true);
+        speakNotification("Opening Mahr Smart Routines.");
+      }}
+      onToggleAskMahr={() => setIsAskMyraaOpen((prev) => !prev)}
+      askMyraaLoading={askMyraaLoading}
+      isPluginActive={pluginManager.isPluginActive}
+      activePluginsCount={pluginManager.activeCount}
+      totalPluginsCount={pluginManager.totalAvailableCount}
+      isPluginStoreOpen={pluginManager.isPluginStoreOpen}
+      onOpenPluginStore={() => {
+        closeAllPanels();
+        setSettingsInitialTab("extensions_store");
+        setShowSettings(true);
+      }}
+    >
+      <PluginHotSwapToast
+        event={pluginManager.lastHotSwapEvent}
+        onDismiss={pluginManager.dismissHotSwapEvent}
       />
 
-      {/* Dynamic Multi-Color Holographic Ambient Glow Blobs */}
-      <div
-        className={`absolute ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[0].position : "top-[-10%] left-[-5%]"} ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[0].size : "w-[600px] h-[600px]"} rounded-full ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[0].blur : "blur-[130px]"} pointer-events-none transition-all duration-700 ease-in-out z-0`}
-        style={{
-          backgroundColor: autoShiftBackground && psychologyProfile ? psychologyProfile.primaryHex : activeThemeConfig.hex,
-          opacity: autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[0].opacity : 0.35
-        }}
-      />
-      <div
-        className={`absolute ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[1].position : "bottom-[-10%] right-[-5%]"} ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[1].size : "w-[680px] h-[680px]"} rounded-full ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[1].blur : "blur-[160px]"} pointer-events-none transition-all duration-700 ease-in-out z-0`}
-        style={{
-          backgroundColor: autoShiftBackground && psychologyProfile ? psychologyProfile.secondaryHex : activeThemeConfig.secondaryHex,
-          opacity: autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[1].opacity : 0.30
-        }}
-      />
-      <div
-        className={`absolute ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[2].position : "top-[25%] right-[10%]"} ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[2].size : "w-[400px] h-[400px]"} rounded-full ${autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[2].blur : "blur-[110px]"} pointer-events-none transition-all duration-700 ease-in-out z-0`}
-        style={{
-          backgroundColor: autoShiftBackground && psychologyProfile ? psychologyProfile.tertiaryHex : activeThemeConfig.tertiaryHex,
-          opacity: autoShiftBackground && psychologyProfile ? psychologyProfile.ambientBlobs[2].opacity : 0.22
-        }}
-      />
-
-      {/* Decorative grid pattern background */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.012)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none opacity-40" />
-
-      {/* FULL VIEWPORT HOLOGRAPHIC STAGE: MAHR materializes across the entire screen */}
-      <div className="absolute inset-0 z-0 pointer-events-none select-none">
-        <MahrCoreVisualizer
-          session={sessionRef.current}
-          state={state}
-          themeColor={themeColor}
-          activeEmotion={activeEmotion}
-          characterState={characterState}
-          wakeWordTriggered={wakeWordRipple}
-          sleepTriggered={sleepRipple}
-          isMicDenied={isMicDenied}
-          isWakeWordEnabled={isWakeWordEnabled}
-          projectorIntensity={psychologyProfile?.projectorIntensity || 1.0}
-          valenceScore={psychologyProfile?.valenceScore || 0.0}
-          beamPulseSpeed={psychologyProfile?.beamPulseSpeed || 1.8}
-          laserGridOpacity={psychologyProfile?.laserGridOpacity || 0.25}
-          currentHumanMood={currentHumanMood}
-          rlPolicy={rlAtmospherePolicies ? rlAtmospherePolicies[currentHumanMood] : null}
-          onManualSleepRequested={handlePutToSleep}
-          onManualWakeRequested={() => {
-            setWakeWordRipple(Date.now());
-            const agentName = activeSubAgent?.name?.split(" ")[0] || "MAHR";
-            const wakeUpGreeting = {
-              ur: `Main active hoon, aayen shuru karte hain.`,
-              en: `I am active and ready. What shall we work on?`
-            };
-            speakNotification(wakeUpGreeting);
-            setNotesStatusAlert(`✨ Awaken ${agentName}...`);
-
-            if (sessionRef.current && stateRef.current === "disconnected") {
-              userClickedDisconnectRef.current = false;
-              sessionRef.current.connect(agentMode, studyPadText + " " + whiteboardText, activeSubAgent).then(() => {
-                setIsMicDenied(sessionRef.current?.isMicDenied || false);
-                setTimeout(() => setNotesStatusAlert(null), 3000);
-              });
-            }
-          }}
-        />
-      </div>
-
-      {/* Sleek Focus Mode Pill Indicator */}
-      {isFocusMode && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
-          <motion.button
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            onClick={() => {
-              setIsFocusMode(false);
-              setWhiteboardStatusAlert("✨ Full dashboard restored.");
-              setTimeout(() => setWhiteboardStatusAlert(null), 3000);
-            }}
-            className="px-4 py-2 bg-purple-500/10 hover:bg-purple-500/18 border border-purple-500/40 rounded-full text-[10px] font-mono font-bold text-purple-300 flex items-center gap-1.5 transition duration-200 shadow-[0_0_20px_rgba(168,85,247,0.25)] hover:scale-[1.02] cursor-pointer"
-          >
-            <SparklesIcon size={12} className="text-purple-400 animate-spin" />
-            <span>FOCUS MODE ON (CLICK TO EXIT)</span>
-          </motion.button>
-        </div>
-      )}
-
-      {/* HEADER SECTION - Modular Glass Nav */}
-      {!isFocusMode && (
-        <HeaderNav
-          hasUpdate={appUpdater.hasUpdate}
-          latestVersion={appUpdater.updateInfo?.latestVersion}
-          onOpenUpdateModal={appUpdater.openModal}
-          onOpenDesktopRemoteModal={() => setIsDesktopRemoteModalOpen(true)}
-          psychologyProfile={psychologyProfile}
-          autoShiftBackground={autoShiftBackground}
-          themeColor={themeColor}
-          onSelectThemeColor={(c) => handleUpdateSystemSetting("themeColor", c)}
-          onToggleAutoShift={() => handleUpdateSystemSetting("autoShiftBackground", !autoShiftBackground)}
-          currentHumanMood={currentHumanMood}
-          onToggleHumanMoodStudio={() => {
-            const next = !isHumanMoodStudioOpen;
-            closeAllPanels();
-            setIsHumanMoodStudioOpen(next);
-          }}
-          activeModelId={activeModelId}
-          activeSubAgent={activeSubAgent}
-          dailyTasks={dailyTasks}
-          offlineDeletedQueueLength={offlineDeletedQueue.length}
-          showMemoryDashboard={showMemoryDashboard}
-          showKnowledgeGraph={showKnowledgeGraph}
-          showChatJournal={showChatJournal}
-          isStudyPadOpen={isStudyPadOpen}
-          isWhiteboardOpen={isWhiteboardOpen}
-          isSimulationStudioOpen={isSimulationStudioOpen}
-          showSettings={showSettings}
-          showShortcuts={showKeyboardShortcuts}
-          isScreenSharing={isScreenSharing}
-          isScreenSharingPaused={isScreenSharingPaused}
-          isModelSwitcherOpen={isModelSwitcherOpen}
-          isSubAgentsStudioOpen={isSubAgentsStudioOpen}
-          isMunderDifflinOpen={isMunderDifflinOpen}
-          isSlidesStudioOpen={isWhiteboardOpen && whiteboardDiagramType === "slides"}
-          isDailyTaskManagerOpen={isDailyTaskManagerOpen}
-          isClassroomOpen={isClassroomOpen}
-          isMobileMenuOpen={isMobileMenuOpen}
-          setIsMobileMenuOpen={setIsMobileMenuOpen}
-          onToggleModelSwitcher={() => {
-            const next = !isModelSwitcherOpen;
-            closeAllPanels();
-            setIsModelSwitcherOpen(next);
-          }}
-          onToggleSubAgents={() => {
-            const next = !isSubAgentsStudioOpen;
-            closeAllPanels();
-            setIsSubAgentsStudioOpen(next);
-          }}
-          onToggleMunderDifflin={() => {
-            const next = !isMunderDifflinOpen;
-            closeAllPanels();
-            setIsMunderDifflinOpen(next);
-          }}
-          onToggleSlidesStudio={() => {
-            closeAllPanels();
-            setWhiteboardDiagramType("slides");
-            setWhiteboardActiveMode("split");
-            setIsWhiteboardOpen(true);
-          }}
-          onToggleDailyTasks={() => {
-            const next = !isDailyTaskManagerOpen;
-            closeAllPanels();
-            setIsDailyTaskManagerOpen(next);
-          }}
-          onToggleClassroom={() => {
-            const next = !isClassroomOpen;
-            closeAllPanels();
-            setIsClassroomOpen(next);
-          }}
-          onToggleMemory={() => {
-            const next = !showMemoryDashboard;
-            closeAllPanels();
-            setShowMemoryDashboard(next);
-          }}
-          onToggleKnowledgeGraph={() => {
-            const next = !showKnowledgeGraph;
-            closeAllPanels();
-            setShowKnowledgeGraph(next);
-          }}
-          onToggleJournal={() => {
-            const next = !showChatJournal;
-            closeAllPanels();
-            setShowChatJournal(next);
-          }}
-          onToggleStudyPad={() => {
-            const next = !isStudyPadOpen;
-            closeAllPanels();
-            setIsStudyPadOpen(next);
-          }}
-          onToggleWhiteboard={() => {
-            const next = !isWhiteboardOpen;
-            closeAllPanels();
-            setIsWhiteboardOpen(next);
-          }}
-          onToggleSimulationStudio={() => {
-            const next = !isSimulationStudioOpen;
-            closeAllPanels();
-            setIsSimulationStudioOpen(next);
-          }}
-          onToggleSettings={() => {
-            const next = !showSettings;
-            closeAllPanels();
-            setShowSettings(next);
-          }}
-          onToggleShortcuts={() => {
-            const next = !showKeyboardShortcuts;
-            closeAllPanels();
-            setShowKeyboardShortcuts(next);
-          }}
-          onToggleScreenSharing={() => {
-            if (isScreenSharing) stopScreenSharing(); else startScreenSharing();
-          }}
-          chatHistory={chatHistory}
-          studyPadText={studyPadText}
-          whiteboardText={whiteboardText}
-          isRLStudioOpen={isRLStudioOpen}
-          onToggleRLStudio={() => {
-            const next = !isRLStudioOpen;
-            closeAllPanels();
-            setIsRLStudioOpen(next);
-          }}
-          deficitsCount={knowledgeDeficits.filter((d) => d.status !== "resolved").length}
-        />
-      )}
-      {/* CORE AVATAR AND VISUALS */}
-
-      {/* CORE AVATAR AND VISUALS */}
-      <main className="relative z-10 flex-1 w-full max-w-4xl mx-auto flex flex-col items-center justify-between py-6 pointer-events-none">
-        {/* Invisible spatial spacer to maintain layout balance without any obstructing text */}
-        <div className="h-10 sm:h-20" />
-      </main>
-
-      {/* Alexa-Style AI Ambient Personal Assistant HUD & Voice Trigger */}
-      <AlexaAssistantFloatingHud
-        onOpenSettings={() => {
+      <VoicePluginInstallOfferToast
+        prompt={pluginManager.pendingVoicePrompt}
+        onDismiss={pluginManager.dismissPendingVoicePrompt}
+        onOpenMarketplace={() => {
           closeAllPanels();
+          setSettingsInitialTab("extensions_store");
           setShowSettings(true);
         }}
       />
 
-      {/* Voice & Dialogue Floating Toast Notification Popup */}
-      <VoiceDialogueToast
-        modelCaption={modelCaption}
-        userCaption={userCaption}
-        activeSkill={activeSkill}
-        state={state}
-        onDismiss={() => {
-          setModelCaption("");
-          setUserCaption("");
-        }}
-      />
-
-      {/* Global Alerts Floating Toasts */}
-      <GlobalAlerts
-        errorText={errorText}
-        isMicDenied={isMicDenied}
-        connectionState={state}
-        onDismissError={() => setErrorText(null)}
-      />
-
-      {/* FOOTER INTERFACE WITH DYNAMIC THEME VISUALIZER AND CONTROLS */}
-      {!isFocusMode && !showSettings && !showMemoryDashboard && (
-        <FooterVisualizer
-          session={sessionRef.current}
-          state={state}
-          themeColor={themeColor}
-          voiceConfidence={voiceConfidence}
-          isMuted={isMuted}
-          isFocusMode={isFocusMode}
-          activeSubAgentName={activeSubAgent.name}
-          onToggleConnect={handleToggleConnection}
-          onToggleMute={handleToggleMute}
-          onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
-          onOpenWhiteboard={() => {
-            closeAllPanels();
-            setIsWhiteboardOpen(true);
-          }}
-          onOpenStudyPad={() => {
-            closeAllPanels();
-            setIsStudyPadOpen(true);
-          }}
-          onOpenTasks={() => {
-            closeAllPanels();
-            setIsDailyTaskManagerOpen(true);
-          }}
-          onOpenRecalls={() => {
-            closeAllPanels();
-            setShowKnowledgeGraph(true);
-            speakNotification("Opening Vector Memory & Knowledge Graph.");
-          }}
-          isWakeWordEnabled={isWakeWordEnabled}
-          onToggleWakeWord={() => {
-            setIsWakeWordEnabled((prev) => {
-              const next = !prev;
-              saveSettingToDB("isWakeWordEnabled", next);
-              speakNotification(next ? "Wake-word active. Say Hey Mahr anytime." : "Wake-word listener paused.");
-              return next;
-            });
-          }}
-          onOpenOffice={() => {
-            closeAllPanels();
-            setIsMunderDifflinOpen(true);
-            speakNotification("Opening MAHR Virtual Office Floor.");
-          }}
-          onOpenSlides={() => {
-            closeAllPanels();
-            setWhiteboardDiagramType("slides");
-            setWhiteboardActiveMode("split");
-            setIsWhiteboardOpen(true);
-            speakNotification("Opening Presentation Slides Studio.");
-          }}
-          onOpenRoutines={() => {
-            closeAllPanels();
-            setIsQuickRoutinesOpen(true);
-            speakNotification("Opening Mahr Smart Routines.");
-          }}
-          onOpenAskMahr={() => {
-            setIsAskMyraaOpen((prev) => !prev);
-          }}
-        />
-      )}
-
-      {/* Dynamic Floating Glassmorphic Screen Sharing Control Hub */}
-      <FloatingScreenShareHub
-        isScreenSharing={isScreenSharing}
-        isScreenSharingPaused={isScreenSharingPaused}
-        screenVisionMode={screenVisionMode}
-        setScreenVisionMode={setScreenVisionMode}
-        onStop={stopScreenSharing}
-        onPause={pauseScreenSharing}
-        onResume={resumeScreenSharing}
-        onSwitch={switchScreenShare}
-        onOpenMagnifier={() => setIsMagnifierOpen(true)}
-        screenStream={screenStreamRef.current}
-      />
-
-      {/* Recollections sliding core panel */}
-      <MemoryDashboard
-        isOpen={showMemoryDashboard}
-        onClose={() => setShowMemoryDashboard(false)}
-        memories={memories.filter((m) => m && m.id && !deletedMemoryIds.includes(m.id))}
-        onAddMemory={handleAddManualMemory}
-        onDeleteMemory={handleDeleteMemory}
+      <MahrModalsContainer
+        isPluginActive={pluginManager.isPluginActive}
+        showMemoryDashboard={showMemoryDashboard}
+        setShowMemoryDashboard={setShowMemoryDashboard}
+        showKnowledgeGraph={showKnowledgeGraph}
+        setShowKnowledgeGraph={setShowKnowledgeGraph}
+        showChatJournal={showChatJournal}
+        setShowChatJournal={setShowChatJournal}
+        isStudyPadOpen={isStudyPadOpen}
+        setIsStudyPadOpen={setIsStudyPadOpen}
+        isWhiteboardOpen={isWhiteboardOpen}
+        setIsWhiteboardOpen={setIsWhiteboardOpen}
+        isSimulationStudioOpen={isSimulationStudioOpen}
+        setIsSimulationStudioOpen={setIsSimulationStudioOpen}
+        isHumanMoodStudioOpen={isHumanMoodStudioOpen}
+        setIsHumanMoodStudioOpen={setIsHumanMoodStudioOpen}
+        isRLStudioOpen={isRLStudioOpen}
+        setIsRLStudioOpen={setIsRLStudioOpen}
+        isModelSwitcherOpen={isModelSwitcherOpen}
+        setIsModelSwitcherOpen={setIsModelSwitcherOpen}
+        isSubAgentsStudioOpen={isSubAgentsStudioOpen}
+        setIsSubAgentsStudioOpen={setIsSubAgentsStudioOpen}
+        isMunderDifflinOpen={isMunderDifflinOpen}
+        setIsMunderDifflinOpen={setIsMunderDifflinOpen}
+        isDailyTaskManagerOpen={isDailyTaskManagerOpen}
+        setIsDailyTaskManagerOpen={setIsDailyTaskManagerOpen}
+        isClassroomOpen={isClassroomOpen}
+        setIsClassroomOpen={setIsClassroomOpen}
+        isAskMyraaOpen={isAskMyraaOpen}
+        setIsAskMyraaOpen={setIsAskMyraaOpen}
+        isQuickRoutinesOpen={isQuickRoutinesOpen}
+        setIsQuickRoutinesOpen={setIsQuickRoutinesOpen}
+        showKeyboardShortcuts={showKeyboardShortcuts}
+        setShowKeyboardShortcuts={setShowKeyboardShortcuts}
+        isDesktopRemoteModalOpen={isDesktopRemoteModalOpen}
+        setIsDesktopRemoteModalOpen={setIsDesktopRemoteModalOpen}
+        isMagnifierOpen={isMagnifierOpen}
+        setIsMagnifierOpen={setIsMagnifierOpen}
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+        closeAllPanels={closeAllPanels}
+        memories={memories}
+        deletedMemoryIds={deletedMemoryIds}
+        handleAddManualMemory={handleAddManualMemory}
+        handleDeleteMemory={handleDeleteMemory}
         themeColor={themeColor}
-      />
-
-      {/* Knowledge Graph Dashboard (Vector Memory Exploration View) */}
-      <KnowledgeGraphDashboard
-        isOpen={showKnowledgeGraph}
-        onClose={() => setShowKnowledgeGraph(false)}
-        themeColor={themeColor}
-        memories={memories.filter((m) => m && m.id && !deletedMemoryIds.includes(m.id))}
-      />
-
-      {/* Conversation Journal sliding core panel */}
-      <ChatJournal
-        isOpen={showChatJournal}
-        onClose={() => setShowChatJournal(false)}
+        setThemeColor={setThemeColor}
         chatHistory={chatHistory}
-        onClearHistory={handleClearChatHistory}
-        themeColor={themeColor}
+        handleClearChatHistory={handleClearChatHistory}
+        handleClearOldest={handleClearOldest}
         chatMaxMessages={chatMaxMessages}
         chatRetentionTime={chatRetentionTime}
-        onClearOldest={handleClearOldest}
-      />
-
-      {/* Classroom Whiteboard Suite */}
-      <Chalkboard
-        isOpen={isWhiteboardOpen}
-        onClose={() => setIsWhiteboardOpen(false)}
-        text={whiteboardText}
-        onTextChange={(newText) => {
-          setWhiteboardText(newText);
-          dbSet("myraa_whiteboard_text", newText);
-        }}
-        diagramType={whiteboardDiagramType}
-        statusAlert={whiteboardStatusAlert}
-        activeMode={whiteboardActiveMode}
-        setActiveMode={setWhiteboardActiveMode}
-        themeColor={themeColor}
-        drawings={whiteboardDrawings}
-        onUpdateDrawings={(cleaned) => {
-          setWhiteboardDrawings(cleaned);
-          dbSet("myraa_whiteboard_drawings", cleaned);
-        }}
-        clearCounter={whiteboardClearCounter}
-        customModelData={whiteboardCustomModelData}
-        memories={memories.filter((m) => m && m.id && !deletedMemoryIds.includes(m.id))}
-        onTriggerSaveSimulation={handleSaveSimulationMetadata}
+        whiteboardText={whiteboardText}
+        setWhiteboardText={setWhiteboardText}
+        whiteboardDiagramType={whiteboardDiagramType}
+        setWhiteboardDiagramType={setWhiteboardDiagramType}
+        whiteboardStatusAlert={whiteboardStatusAlert}
+        whiteboardActiveMode={whiteboardActiveMode}
+        setWhiteboardActiveMode={setWhiteboardActiveMode}
+        whiteboardDrawings={whiteboardDrawings}
+        setWhiteboardDrawings={setWhiteboardDrawings}
+        whiteboardClearCounter={whiteboardClearCounter}
+        whiteboardCustomModelData={whiteboardCustomModelData}
+        handleSaveSimulationMetadata={handleSaveSimulationMetadata}
         voiceSketchTriggerText={voiceSketchTriggerText}
-        onClearVoiceSketchTrigger={() => setVoiceSketchTriggerText(null)}
-        onVoiceToMindMap={(topic) => handleVoiceToMindMap(topic, { autoSpeakFeedback: true })}
-        onAskMahr={(question) => {
-          setIsAskMahrOpen(true);
-          if (question) {
-            handleAskMahrSubmit(undefined, question);
-          }
-        }}
-        onAskMyraa={(question) => {
-          setIsAskMahrOpen(true);
-          if (question) {
-            handleAskMahrSubmit(undefined, question);
-          }
-        }}
-        initialSlidesTopic={slidesStudioTopic}
-      />
-
-      {/* Interactive Screen Share Magnifier & Reading Focus Ruler */}
-      <ScreenShareMagnifierModal
-        isOpen={isMagnifierOpen && isScreenSharing}
-        onClose={() => setIsMagnifierOpen(false)}
+        setVoiceSketchTriggerText={setVoiceSketchTriggerText}
+        handleVoiceToMindMap={handleVoiceToMindMap}
+        handleAskMahrSubmit={handleAskMahrSubmit}
+        slidesStudioTopic={slidesStudioTopic}
+        setIsSlidesStudioOpen={setIsSlidesStudioOpen}
+        isScreenSharing={isScreenSharing}
         screenStream={screenStreamRef.current}
         zoomScale={zoomScale}
         setZoomScale={setZoomScale}
@@ -3946,340 +4182,85 @@ export default function App() {
         setIsRulerEnabled={setIsRulerEnabled}
         magnifierRulerY={magnifierRulerY}
         setMagnifierRulerY={setMagnifierRulerY}
-      />
-
-      {/* Interactive Exam Pad / Study Notes Drawer */}
-      <StudyPadPanel
-        isOpen={isStudyPadOpen}
-        onClose={() => setIsStudyPadOpen(false)}
         studyPadText={studyPadText}
         setStudyPadText={setStudyPadText}
         notesMode={notesMode}
         setNotesMode={setNotesMode}
         notesStatusAlert={notesStatusAlert}
+        setNotesStatusAlert={setNotesStatusAlert}
         isSavingNotes={isSavingNotes}
-        onSaveNotesToMemory={handleMemorizeStudyNotes}
-        onGenerateStudyPack={handleGenerateStudyPack}
+        handleMemorizeStudyNotes={handleMemorizeStudyNotes}
+        handleGenerateStudyPack={handleGenerateStudyPack}
         isGeneratingPack={isGeneratingPack}
-        studyPack={studyPack || { flashcards: [], mcqs: [] }}
+        studyPack={studyPack}
         studySuggestions={studySuggestions}
         isFetchingSuggestions={isFetchingSuggestions}
-        onFetchSuggestions={handleFetchSuggestions}
+        handleFetchSuggestions={handleFetchSuggestions}
         notesTextareaRef={notesTextareaRef}
-        chatHistory={chatHistory}
-        whiteboardText={whiteboardText}
-        onConvertToMindMap={handleConvertToMindMap}
-      />
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                          
-
-
-
-
-      {/* Universal AI Simulation Engine Studio (2D Liquid State & 3D WebGL) */}
-      <UniversalSimulationStudio
-        isOpen={isSimulationStudioOpen}
-        onClose={() => setIsSimulationStudioOpen(false)}
-        initialPrompt={simulationPrompt}
-        onAskMyraa={(question) => {
-          setIsSimulationStudioOpen(false);
-          setIsAskMyraaOpen(true);
-        }}
-      />
-
-      {/* Human Mood & Emotion Psychology Studio Modal */}
-      <HumanMoodStudio
-        isOpen={isHumanMoodStudioOpen}
-        onClose={() => setIsHumanMoodStudioOpen(false)}
-        currentMood={currentHumanMood}
-        onSelectMood={(mood, triggerVoiceSample) => {
-          setCurrentHumanMood(mood);
-          const moodCfg = HUMAN_MOOD_CONFIGS[mood];
-          if (moodCfg?.themeId) {
-            setThemeColor(moodCfg.themeId);
-          }
-          if (triggerVoiceSample && moodCfg) {
-            const phrase = moodCfg.samplePhrases[0]?.english || moodCfg.samplePhrases[0]?.romanUrdu || moodCfg.description;
-            speakNotification(phrase, moodCfg.emotionEquivalent);
-          }
-        }}
-        onSpeakSamplePhrase={(text, mood) => {
-          const moodCfg = HUMAN_MOOD_CONFIGS[mood];
-          speakNotification(text, moodCfg?.emotionEquivalent || "idle");
-        }}
+        handleConvertToMindMap={handleConvertToMindMap}
+        simulationPrompt={simulationPrompt}
+        currentHumanMood={currentHumanMood}
+        setCurrentHumanMood={setCurrentHumanMood}
         moodShiftReason={moodShiftReason}
         autoShiftBackground={autoShiftBackground}
-        onToggleAutoShift={() => handleUpdateSystemSetting("autoShiftBackground", !autoShiftBackground)}
-      />
-
-      {/* Reinforcement Learning & Self-Improvement Growth Lab Modal */}
-      <ReinforcementLearningStudio
-        isOpen={isRLStudioOpen}
-        onClose={() => setIsRLStudioOpen(false)}
-        policy={rlPolicy}
-        onUpdatePolicy={(newPolicy) => {
-          setRlPolicy(newPolicy);
-          saveRLPolicy(newPolicy);
-        }}
-        deficits={knowledgeDeficits}
-        onUpdateDeficits={(updated) => {
-          setKnowledgeDeficits(updated);
-          saveKnowledgeDeficits(updated);
-        }}
-        onResolveDeficit={(id, notes) => {
-          setKnowledgeDeficits((prev) => {
-            const updated = prev.map((d) =>
-              d.id === id ? { ...d, status: "resolved" as const, resolvedAt: new Date().toISOString(), resolutionNotes: notes } : d
-            );
-            saveKnowledgeDeficits(updated);
-            return updated;
-          });
-        }}
-        onDeleteDeficit={(id) => {
-          setKnowledgeDeficits((prev) => {
-            const updated = prev.filter((d) => d.id !== id);
-            saveKnowledgeDeficits(updated);
-            return updated;
-          });
-        }}
-        themeColor={themeColor}
-      />
-
-      {/* Model Switcher Modal */}
-      <ModelSwitcherModal
-        isOpen={isModelSwitcherOpen}
-        onClose={() => setIsModelSwitcherOpen(false)}
+        handleUpdateSystemSetting={handleUpdateSystemSetting}
+        speakNotification={speakNotification}
+        rlPolicy={rlPolicy}
+        setRlPolicy={setRlPolicy}
+        saveRLPolicy={saveRLPolicy}
+        knowledgeDeficits={knowledgeDeficits}
+        setKnowledgeDeficits={setKnowledgeDeficits}
+        saveKnowledgeDeficits={saveKnowledgeDeficits}
         activeModelId={activeModelId}
-        onSelectModel={handleSelectModel}
-        themeColor={themeColor}
-        chatHistory={chatHistory}
-        studyPadText={studyPadText}
-        whiteboardText={whiteboardText}
-      />
-
-      {/* Sub-Agents Studio & Orchestrator Modal */}
-      <SubAgentsStudio
-        isOpen={isSubAgentsStudioOpen}
-        onClose={() => setIsSubAgentsStudioOpen(false)}
-        activeSubAgentId={activeSubAgent.id}
-        onSelectSubAgent={handleSelectSubAgent}
+        handleSelectModel={handleSelectModel}
+        activeSubAgent={activeSubAgent}
+        handleSelectSubAgent={handleSelectSubAgent}
         customSubAgents={customSubAgents}
-        onCreateSubAgent={handleCreateCustomSubAgent}
-        onDeleteCustomSubAgent={handleDeleteCustomSubAgent}
-        themeColor={themeColor}
-      />
-
-      {/* 🏢 MAHR Office — Multi-Agent Virtual Office Floor Modal */}
-      <MAHROfficeModal
-        isOpen={isMunderDifflinOpen}
-        onClose={() => setIsMunderDifflinOpen(false)}
+        handleCreateCustomSubAgent={handleCreateCustomSubAgent}
+        handleDeleteCustomSubAgent={handleDeleteCustomSubAgent}
         isBrowser={isBrowser}
-        activeModelId={activeModelId}
-        onSelectModel={handleSelectModel}
-        onUpdateWhiteboardText={(text) => setWhiteboardText(text)}
-        onUpdateStudyPadText={(text) => setStudyPadText(text)}
-        onNotifyUser={(msg) => setWhiteboardStatusAlert(`🏢 ${msg}`)}
-      />
-
-      {/* Daily Task & Memory Tracker Modal (100% Pure Google Tasks API) */}
-      <DailyTaskManager
-        isOpen={isDailyTaskManagerOpen}
-        onClose={() => setIsDailyTaskManagerOpen(false)}
-        tasks={googleDailyTasks}
-        onAddTask={handleAddDailyTask}
-        onToggleTask={handleToggleDailyTask}
-        onDeleteTask={handleDeleteDailyTask}
-        onUpdateTask={handleUpdateDailyTask}
-        isGoogleConnected={isGoogleTasksConnected}
-        userEmail={googleTasksUserEmail}
-        userName={googleTasksUserName}
-        taskLists={googleTaskLists}
+        setWhiteboardStatusAlert={setWhiteboardStatusAlert}
+        googleDailyTasks={googleDailyTasks}
+        handleAddDailyTask={handleAddDailyTask}
+        handleToggleDailyTask={handleToggleDailyTask}
+        handleDeleteDailyTask={handleDeleteDailyTask}
+        handleUpdateDailyTask={handleUpdateDailyTask}
+        isGoogleTasksConnected={isGoogleTasksConnected}
+        googleTasksUserEmail={googleTasksUserEmail}
+        googleTasksUserName={googleTasksUserName}
+        googleTaskLists={googleTaskLists}
         activeListId={googleActiveListId}
         isSyncing={isGoogleTasksSyncing}
         lastSyncedAt={googleTasksLastSyncedAt}
-        onSwitchList={switchGoogleTaskList}
+        switchGoogleTaskList={switchGoogleTaskList}
         onCreateTaskList={createGoogleTaskList}
-        onRefresh={refreshGoogleTasks}
-        onConnectGoogle={connectGoogleForTasks}
-        onClearCompleted={clearCompletedGoogleTasks}
-      />
-
-      {/* 🎓 Google Classroom Hub & Interactive Homework Tutor Modal */}
-      <GoogleClassroomHubModal
-        isOpen={isClassroomOpen}
-        onClose={() => setIsClassroomOpen(false)}
-        onStudyAssignment={handleStudyClassroomAssignment}
-      />
-
-      {/* Floating 'Ask MAHR' Button - Hidden when Whiteboard or Simulation Studio is open */}
-      {!isWhiteboardOpen && !isSimulationStudioOpen && (
-        <div className="fixed bottom-20 right-4 sm:bottom-24 sm:right-6 md:right-8 z-[110]">
-          <motion.button
-            onClick={() => setIsAskMyraaOpen(!isAskMyraaOpen)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="px-3.5 sm:px-4 py-2.5 sm:py-3 bg-slate-950/90 hover:bg-slate-900 border border-purple-500/40 hover:border-purple-500 text-purple-300 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center gap-2 font-mono text-xs font-bold tracking-wider cursor-pointer group transition-all"
-            style={{ boxShadow: `0 10px 30px -5px rgba(157, 122, 255, 0.3)` }}
-          >
-            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-              <Sparkles size={14} className="animate-spin" style={{ animationDuration: '4s' }} />
-            </div>
-            <span className="hidden sm:inline">Ask MAHR</span>
-            <span className="sm:hidden">Ask</span>
-            <span className={`w-2 h-2 rounded-full ${isAskMyraaOpen ? "bg-emerald-400" : "bg-purple-400 animate-pulse"}`} />
-          </motion.button>
-        </div>
-      )}
-
-      {/* Ask MAHR Interactive Text Console Modal */}
-      {(() => {
-        const syncedAskMyraaMessages = chatHistory && chatHistory.length > 0
-          ? chatHistory.map((item) => {
-              let formattedTime = "";
-              if (item.timestamp) {
-                if (item.timestamp.includes("T")) {
-                  formattedTime = new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                } else {
-                  formattedTime = item.timestamp;
-                }
-              } else {
-                formattedTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-              }
-              return {
-                id: item.id,
-                sender: (item.role === "user" ? "user" : "mahr") as "user" | "mahr",
-                text: item.text,
-                timestamp: formattedTime,
-                actionExecuted: item.actionExecuted,
-                groundingSources: item.groundingSources,
-                searchQueries: item.searchQueries,
-                mediaItems: item.mediaItems
-              };
-            })
-          : [];
-
-        return (
-          <AskMahrModal
-            isOpen={isAskMyraaOpen}
-            onClose={() => setIsAskMyraaOpen(false)}
-            messages={syncedAskMyraaMessages}
-            input={askMyraaInput}
-            onInputChange={setAskMyraaInput}
-            onSubmit={handleAskMyraaSubmit}
-            isLoading={askMyraaLoading}
-            activeSubAgentName={activeSubAgent.name}
-            activeModelId={activeModelId}
-            themeColor={themeColor}
-            isScreenSharing={isScreenSharing}
-            isRealtimeConnected={state !== "disconnected"}
-            includeScreenSnapshot={includeScreenSnapshot}
-            onToggleScreenSnapshot={setIncludeScreenSnapshot}
-            isAutoSpeakEnabled={isAutoSpeakEnabled}
-            onToggleAutoSpeak={setIsAutoSpeakEnabled}
-            pendingImages={pendingImages}
-            onAddPendingImage={(base64) => setPendingImages((prev) => [...prev, base64])}
-            onRemovePendingImage={(idx) => setPendingImages((prev) => prev.filter((_, i) => i !== idx))}
-          />
-        );
-      })()}
-
-      {/* Keyboard Shortcuts Hotkeys Modal */}
-      <KeyboardShortcutsModal
-        isOpen={showKeyboardShortcuts}
-        onClose={() => setShowKeyboardShortcuts(false)}
-        onToggleSession={handleToggleConnection}
-        isSessionActive={state !== "disconnected"}
-        onToggleAskMyraa={() => setIsAskMyraaOpen(!isAskMyraaOpen)}
-        onToggleWhiteboard={() => { closeAllPanels(); setIsWhiteboardOpen(!isWhiteboardOpen); }}
-        onToggleStudyPad={() => { closeAllPanels(); setIsStudyPadOpen(!isStudyPadOpen); }}
-        onToggleJournal={() => { closeAllPanels(); setShowChatJournal(!showChatJournal); }}
-        onToggleMemory={() => { closeAllPanels(); setShowMemoryDashboard(!showMemoryDashboard); }}
-        onToggleDailyTasks={() => { closeAllPanels(); setIsDailyTaskManagerOpen(!isDailyTaskManagerOpen); }}
-        onToggleSubAgents={() => { closeAllPanels(); setIsSubAgentsStudioOpen(!isSubAgentsStudioOpen); }}
-        onToggleSettings={() => { closeAllPanels(); setShowSettings(!showSettings); }}
-        onToggleModelSwitcher={() => { closeAllPanels(); setIsModelSwitcherOpen(!isModelSwitcherOpen); }}
-        themeColor={themeColor}
-      />
-
-      {/* Proactive Task Reminder Floating Toast */}
-      <ProactiveTaskReminderToast
-        task={activeProactiveTask}
-        onDismiss={() => setActiveProactiveTask(null)}
-        onCompleteTask={handleToggleDailyTask}
-        themeColor={themeColor}
-      />
-
-      {/* Cross-Platform Native Desktop & Remote Web Connect Modal */}
-      <DesktopAndRemoteModal
-        isOpen={isDesktopRemoteModalOpen}
-        onClose={() => setIsDesktopRemoteModalOpen(false)}
-        activeModelName={activeModelId}
-        isLiveActive={state !== "disconnected"}
-      />
-
-      {/* Mahr Smart Routines Drawer */}
-      <QuickRoutinesDrawer
-        isOpen={isQuickRoutinesOpen}
-        onClose={() => setIsQuickRoutinesOpen(false)}
-        onRunRoutine={handleRunAlexaRoutine}
-        onOpenOffice={() => {
-          closeAllPanels();
-          setIsMunderDifflinOpen(true);
-        }}
-        onOpenChalkboard={() => {
-          closeAllPanels();
-          setIsWhiteboardOpen(true);
-        }}
-        onOpenTasks={() => {
-          closeAllPanels();
-          setIsDailyTaskManagerOpen(true);
-        }}
-        onOpenMemories={() => {
-          closeAllPanels();
-          setShowMemoryDashboard(true);
-        }}
-        onOpenSlides={() => {
-          closeAllPanels();
-          setIsSlidesStudioOpen(true);
-        }}
-      />
-
-      {/* 🚀 Autonomous GitHub Actions Auto-Updater Dialog */}
-      <UpdateNotificationModal
-        isOpen={appUpdater.isModalOpen}
-        onClose={appUpdater.closeModal}
-        status={appUpdater.status}
-        updateInfo={appUpdater.updateInfo}
-        downloadProgress={appUpdater.downloadProgress}
-        errorMessage={appUpdater.errorMessage}
-        onStartDownload={appUpdater.startDownload}
-        onInstallAndRestart={appUpdater.installAndRestart}
-      />
-
-      {/* ⚙️ Central System Settings & Workspace Hub Modal Dialogue */}
-      <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        settings={currentSystemSettings}
-        onUpdateSetting={handleUpdateSystemSetting}
-        onExecuteCommand={handleExecuteVoiceShortcut}
-        onResetAllSettings={() => {
+        refreshGoogleTasks={refreshGoogleTasks}
+        connectGoogleForTasks={connectGoogleForTasks}
+        clearCompletedGoogleTasks={clearCompletedGoogleTasks}
+        handleStudyClassroomAssignment={handleStudyClassroomAssignment}
+        classroomBackgroundSync={classroomBackgroundSync}
+        askMyraaInput={askMyraaInput}
+        setAskMyraaInput={setAskMyraaInput}
+        askMyraaLoading={askMyraaLoading}
+        includeScreenSnapshot={includeScreenSnapshot}
+        setIncludeScreenSnapshot={setIncludeScreenSnapshot}
+        isAutoSpeakEnabled={isAutoSpeakEnabled}
+        setIsAutoSpeakEnabled={setIsAutoSpeakEnabled}
+        pendingImages={pendingImages}
+        setPendingImages={setPendingImages}
+        activeActionMode={activeActionMode}
+        setActiveActionMode={setActiveActionMode}
+        isVectorRecalling={isVectorRecalling}
+        handleSendCodeToChalkboard={handleSendCodeToChalkboard}
+        liveState={state}
+        handleRunMahrRoutine={handleRunMahrRoutine}
+        appUpdater={appUpdater}
+        currentSystemSettings={currentSystemSettings}
+        handleExecuteVoiceShortcut={handleExecuteVoiceShortcut}
+        handleToggleConnection={handleToggleConnection}
+        activeProactiveTask={activeProactiveTask}
+        setActiveProactiveTask={setActiveProactiveTask}
+        resetAllSettingsDefaults={() => {
           setAutoInterrupt(false);
           setIsWakeWordEnabled(true);
           setNoiseGate(0.005);
@@ -4293,12 +4274,31 @@ export default function App() {
           setSpeechRate(1.0);
           setSpeechPitch(1.0);
         }}
-        speakNotification={(txt) => speakNotification(txt)}
-        onStatusAlert={(msg) => {
-          setNotesStatusAlert(msg);
-          setTimeout(() => setNotesStatusAlert(null), 3500);
+        settingsInitialTab={settingsInitialTab}
+        pluginsMap={pluginManager.pluginsMap}
+        activePluginsCount={pluginManager.activeCount}
+        installedPluginsCount={pluginManager.installedCount}
+        totalAvailablePluginsCount={pluginManager.totalAvailableCount}
+        isPureVoiceMode={pluginManager.isPureVoiceMode}
+        activeMemoryKb={pluginManager.activeMemoryKb}
+        dormantSavedKb={pluginManager.dormantSavedKb}
+        onInstallPlugin={pluginManager.installPlugin}
+        onUninstallPlugin={pluginManager.uninstallPlugin}
+        onTogglePluginEnabled={pluginManager.togglePluginEnabled}
+        onApplyPluginBundle={pluginManager.applyPluginBundle}
+        onInstallAllPlugins={pluginManager.installAllPlugins}
+        onResetToPureVoiceAgent={() => {
+          closeAllPanels();
+          pluginManager.resetToPureVoiceAgent();
         }}
+        onOpenPluginFeature={openPluginWorkspaceById}
+        routingPolicy={modelRouter.policy}
+        currentModelDecision={modelRouter.currentDecision}
+        autoShiftCount={modelRouter.autoShiftCount}
+        fallbackTriggerCount={modelRouter.fallbackTriggerCount}
+        onUpdateRoutingPolicy={modelRouter.updateRoutingPolicy}
+        onSimulateFallback={modelRouter.reportModelLatencyOrQuotaSpike}
       />
-    </div>
+    </MahrResponsiveShell>
   );
 }

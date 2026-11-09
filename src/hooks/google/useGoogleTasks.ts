@@ -124,6 +124,17 @@ export function useGoogleTasks(): GoogleTasksState {
     }
   }, [user, token, activeListId, loadTasks]);
 
+  // Listen for background events (e.g. Google Classroom autonomous to-do sync)
+  useEffect(() => {
+    const handleExternalRefresh = () => {
+      if (token) {
+        loadTasks(token, activeListId);
+      }
+    };
+    window.addEventListener("refresh-google-tasks", handleExternalRefresh);
+    return () => window.removeEventListener("refresh-google-tasks", handleExternalRefresh);
+  }, [token, activeListId, loadTasks]);
+
   /**
    * Create a new task directly on Google Tasks API (POST)
    */

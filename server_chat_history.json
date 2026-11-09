@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "id": "usr-1793195186904-zqq6",
+    "role": "user",
+    "sender": "user",
+    "text": "Say hello and explain recursion in 2 short sentences.",
+    "timestamp": "01:46 PM"
+  },
+  {
+    "id": "mahr-1793195186904-w97r",
+    "role": "model",
+    "sender": "mahr",
+    "text": "Hello! I'm MAHR, your Primary Companion & Mentor.\n\nRecursion is a programming technique where a function calls itself to solve smaller instances of the same problem. This continues until a base case is reached, which provides a direct solution without further calls.",
+    "timestamp": "01:46 PM"
+  },
+  {
+    "id": "usr-1793195188868-gujx",
+    "role": "user",
+    "sender": "user",
+    "text": "Make a presentation on Quantum Computing",
+    "timestamp": "01:46 PM"
+  },
+  {
+    "id": "mahr-1793195188868-m6fi",
+    "role": "model",
+    "sender": "mahr",
+    "text": "Hello again! I'm MAHR, your Primary Companion & Mentor.\n\nThat's an excellent topic! Quantum Computing is a fascinating and rapidly evolving field.",
+    "timestamp": "01:46 PM"
+  }
+]

@@ -1,10 +1,11 @@
 import React from "react";
-import { MahrAssistantDock, MahrAssistantDockProps } from "./assistant/dock/MahrAssistantDock";
+import { MahrMinimalFloatingMic, MahrMinimalFloatingMicProps } from "./assistant/dock/MahrMinimalFloatingMic";
 
-export interface FooterVisualizerProps extends MahrAssistantDockProps {}
+export interface FooterVisualizerProps extends MahrMinimalFloatingMicProps {}
 
 export const FooterVisualizer: React.FC<FooterVisualizerProps> = (props) => {
-  return <MahrAssistantDock {...props} />;
+  return <MahrMinimalFloatingMic {...props} />;
 };
 
 export default FooterVisualizer;
+

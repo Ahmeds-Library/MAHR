@@ -1,4 +1,68 @@
 {
-  "nodes": [],
-  "edges": []
+  "nodes": [
+    {
+      "id": "myraa",
+      "name": "Myraa",
+      "type": "person",
+      "description": "User's Primary Companion & Mentor, also known as MAHR.",
+      "sentiment": "neutral",
+      "importance": 5,
+      "mentionCount": 1,
+      "lastMentioned": "2026-10-28T13:46:33.461Z"
+    },
+    {
+      "id": "recursion",
+      "name": "Recursion",
+      "type": "concept",
+      "description": "A programming technique where a function calls itself to solve smaller instances of the same problem until a base case is reached.",
+      "sentiment": "neutral",
+      "importance": 4,
+      "mentionCount": 1,
+      "lastMentioned": "2026-10-28T13:46:33.461Z"
+    },
+    {
+      "id": "programming",
+      "name": "Programming",
+      "type": "concept",
+      "description": "The general field and practice of designing and building computer programs.",
+      "sentiment": "neutral",
+      "importance": 3,
+      "mentionCount": 1,
+      "lastMentioned": "2026-10-28T13:46:33.461Z"
+    },
+    {
+      "id": "user",
+      "name": "User",
+      "type": "person",
+      "description": "The individual interacting with Myraa.",
+      "sentiment": "neutral",
+      "importance": 5,
+      "mentionCount": 1,
+      "lastMentioned": "2026-10-28T13:46:33.461Z"
+    }
+  ],
+  "edges": [
+    {
+      "id": "rel-ggk7ajf",
+      "sourceId": "myraa",
+      "targetId": "recursion",
+      "relation": "explains",
+      "description": "Myraa provided an explanation of recursion."
+    },
+    {
+      "id": "rel-rof0rwi",
+      "sourceId": "recursion",
+      "targetId": "programming",
+      "relation": "is_a_technique_in",
+      "description": "Recursion is a technique used within the field of programming."
+    },
+    {
+      "id": "rel-j9agg3c",
+      "sourceId": "user",
+      "targetId": "recursion",
+      "relation": "asks_about",
+      "description": "The user requested an explanation of recursion."
+    }
+  ],
+  "lastUpdated": "2026-10-28T13:46:33.461Z"
 }

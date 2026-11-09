@@ -15,7 +15,7 @@ export interface AssistantActivityLog {
   timestamp: string;
 }
 
-export function useAlexaAssistantVoice() {
+export function useMahrAssistantVoice() {
   const { isAuthenticated, getToken, user } = useGoogleWorkspace();
   const [voiceState, setVoiceState] = useState<AssistantVoiceState>("idle");
   const [spokenResponse, setSpokenResponse] = useState<string>("");
@@ -144,6 +144,45 @@ export function useAlexaAssistantVoice() {
         isCompleteTaskIntent ||
         isTaskQueryIntent ||
         isClassroomIntent;
+
+      // Handle App Update Voice Command
+      const isUpdateIntent =
+        normalized.includes("check for update") ||
+        normalized.includes("check update") ||
+        normalized.includes("app update") ||
+        normalized.includes("update check karo") ||
+        normalized.includes("version check");
+
+      if (isUpdateIntent) {
+        try {
+          const { checkForAppUpdates, CURRENT_APP_VERSION } = await import(
+            "../../services/updater/githubReleaseService"
+          );
+          const result = await checkForAppUpdates(CURRENT_APP_VERSION);
+          if (result.hasUpdate) {
+            speak(
+              `Aap ke liye MAHR ka naya version ${result.latestVersion} release ho chuka hai! Aap header mein Update button daba kar download kar saktay hain.`
+            );
+          } else {
+            speak(
+              `Aap ka MAHR system pehle se hi latest version ${CURRENT_APP_VERSION} par update hai, aur auto-sync engine active hai.`
+            );
+          }
+          setActivityLogs((prev) => [
+            {
+              id: Date.now().toString(),
+              type: "general",
+              title: "System Update Check",
+              detail: result.hasUpdate ? `Update v${result.latestVersion} available` : `Up to date (v${CURRENT_APP_VERSION})`,
+              timestamp: "Just now",
+            },
+            ...prev.slice(0, 5),
+          ]);
+        } catch {
+          speak("Update check karte waqt masla aya, lekin auto-sync background mein chal raha hai.");
+        }
+        return;
+      }
 
       // Handle Workspace specific commands
       if (isWorkspaceIntent) {
@@ -382,7 +421,7 @@ export function useAlexaAssistantVoice() {
           }
         }
       } catch (aiErr) {
-        console.warn("[AlexaVoice] Real-time conversational AI voice error:", aiErr);
+        console.warn("[MahrVoice] Real-time conversational AI voice error:", aiErr);
       }
 
       // Natural Human Fallback

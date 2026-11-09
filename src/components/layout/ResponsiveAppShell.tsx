@@ -116,11 +116,11 @@ export const ResponsiveAppShell: React.FC<ResponsiveAppShellProps> = ({
 
         {/* Quick Utility Actions */}
         <div className="flex items-center gap-2">
-          {/* Alexa Routines Quick Action */}
+          {/* MAHR Routines Quick Action */}
           <button
             onClick={onOpenRoutines}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-800/40 text-cyan-300 text-xs font-medium transition-all"
-            title="Alexa-style Routines"
+            title="MAHR Smart Routines"
           >
             <Zap className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Routines</span>

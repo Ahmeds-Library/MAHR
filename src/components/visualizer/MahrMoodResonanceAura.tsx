@@ -27,11 +27,11 @@ export const MahrMoodResonanceAura: React.FC<MahrMoodResonanceAuraProps> = ({
           opacity: auraOpacity,
         }}
         transition={{ duration: 0.15, ease: "linear" }}
-        className="absolute rounded-[3rem] blur-[60px] pointer-events-none transition-all duration-300"
+        className="absolute rounded-full blur-[60px] pointer-events-none transition-all duration-300"
         style={{
           width: "90%",
           height: "90%",
-          background: `radial-gradient(ellipse at center, ${profile.primaryHex}44 0%, ${profile.secondaryHex}22 55%, transparent 75%)`,
+          background: `radial-gradient(circle at center, ${profile.primaryHex}44 0%, ${profile.secondaryHex}22 55%, transparent 75%)`,
         }}
       />
 
@@ -53,7 +53,7 @@ export const MahrMoodResonanceAura: React.FC<MahrMoodResonanceAuraProps> = ({
                   ease: [0.16, 1, 0.3, 1],
                   delay: idx * 0.35,
                 }}
-                className="absolute rounded-[3rem] border pointer-events-none"
+                className="absolute rounded-full border pointer-events-none"
                 style={{
                   width: "88%",
                   height: "88%",

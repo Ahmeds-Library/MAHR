@@ -1,17 +1,17 @@
 {
-  "sessionTokens": 204181,
-  "promptTokens": 115314,
-  "candidateTokens": 74610,
-  "requestsCount": 39,
-  "activeContextTokens": 1322,
-  "lastUpdated": "2026-09-23T11:35:58.858Z",
+  "sessionTokens": 206660,
+  "promptTokens": 117597,
+  "candidateTokens": 74715,
+  "requestsCount": 41,
+  "activeContextTokens": 1172,
+  "lastUpdated": "2026-10-28T13:46:28.164Z",
   "modelStats": {
     "gemini-2.5-flash": {
-      "promptTokens": 2782,
-      "candidateTokens": 3914,
-      "totalTokens": 18183,
-      "requestsCount": 5,
-      "lastUsed": "2026-09-14T06:45:29.736Z"
+      "promptTokens": 5065,
+      "candidateTokens": 4019,
+      "totalTokens": 20662,
+      "requestsCount": 7,
+      "lastUsed": "2026-10-28T13:46:28.164Z"
     },
     "gemini-3.1-flash-lite": {
       "promptTokens": 21035,

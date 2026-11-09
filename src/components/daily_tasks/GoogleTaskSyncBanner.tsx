@@ -104,7 +104,7 @@ export const GoogleTaskSyncBanner: React.FC<GoogleTaskSyncBannerProps> = ({
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Local Cache</span>
           </div>
           <p className="text-[10px] text-slate-400">
-            Sign in with Google to sync your tasks with Google Tasks, Google Calendar & Alexa voice.
+            Sign in with Google to sync your tasks with Google Tasks, Google Calendar & MAHR voice.
           </p>
         </div>
       </div>

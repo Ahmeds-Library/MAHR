@@ -1,7 +1,7 @@
 {
   "name": "mahr-ai",
   "private": true,
-  "version": "2.4.1",
+  "version": "2.4.2",
   "type": "module",
   "scripts": {
     "dev": "NODE_OPTIONS=\"--max-old-space-size=4096\" tsx server.ts",
@@ -62,6 +62,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "vite-plugin-node-polyfills": "^0.28.0"
   }
 }

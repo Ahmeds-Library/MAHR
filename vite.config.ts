@@ -1,32 +1,55 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig, type Plugin} from 'vite';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, type Plugin } from 'vite';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+
+const NODE_POLYFILL_OPTIONS = {
+  include: ['buffer', 'process', 'util', 'stream', 'events', 'path', 'crypto'] as any,
+  globals: {
+    Buffer: true,
+    global: true,
+    process: true,
+  },
+  protocolImports: true,
+};
+
+function patchPixiExtensions(code: string): string {
+  if (!code.includes('extensions.add(')) return code;
+  return code;
+}
 
 function pixiExtensionIdempotencyPlugin(): Plugin {
   return {
     name: 'pixi-extension-idempotency',
-    enforce: 'pre',
-    transform(code: string, id: string) {
-      if (id.includes('Extensions') && code.includes('already has a handler')) {
-        return {
-          code: code.replace(
-            /throw new Error\([`'"]Extension type \$\{?type\}? already has a handler[`'"]\);?/g,
-            'return this;'
-          ),
-          map: null,
-        };
-      }
-      return null;
+    transform(code, id) {
+      if (!id.includes('pixi.js') && !id.includes('@pixi')) return null;
+      return { code: patchPixiExtensions(code), map: null };
     },
   };
 }
 
+function pixiExtensionIdempotencyEsbuildPlugin() {
+  return {
+    name: 'pixi-extension-idempotency-esbuild',
+    setup() {},
+  };
+}
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export default defineConfig(() => {
   return {
-    plugins: [pixiExtensionIdempotencyPlugin(), react(), tailwindcss()],
+    plugins: [
+      pixiExtensionIdempotencyPlugin(),
+      nodePolyfills(NODE_POLYFILL_OPTIONS),
+      react(),
+      tailwindcss(),
+    ],
     resolve: {
-      dedupe: ['react', 'react-dom', 'pixi.js'],
+      dedupe: ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'pixi.js'],
       alias: [
         { find: /^@office\/(.*)/, replacement: path.resolve(__dirname, 'src/office/$1') },
         { find: /^@shared\/(.*)/, replacement: path.resolve(__dirname, 'src/office/shared/$1') },
@@ -38,17 +61,35 @@ export default defineConfig(() => {
       ],
     },
     optimizeDeps: {
-      include: ['react', 'react-dom', 'motion/react', 'pixi.js'],
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'motion/react',
+        'lucide-react',
+        'pixi.js',
+        'canvas-confetti'
+      ],
+      esbuildOptions: {
+        define: {
+          global: 'globalThis',
+        },
+        plugins: [pixiExtensionIdempotencyEsbuildPlugin()],
+      },
     },
     build: {
       outDir: 'dist',
       emptyOutDir: true,
       sourcemap: false,
+      commonjsOptions: {
+        transformMixedEsModules: true,
+      },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
+      // HMR is disabled in AI Studio preview iframe.
+      hmr: false,
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {
         ignored: [

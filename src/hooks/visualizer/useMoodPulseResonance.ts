@@ -57,9 +57,8 @@ export function useMoodPulseResonance({
         setPulseScale(Number(currentScale.toFixed(4)));
         setAuraOpacity(Number(currentAura.toFixed(3)));
       } else {
-        // Gentle resting breathing rhythm
-        const breath = Math.sin(elapsedSeconds * Math.PI * 0.8);
-        setPulseScale(Number((1.0 + breath * 0.008).toFixed(4)));
+        // Idle state: perfectly grounded and steady, no breathing scale oscillation
+        setPulseScale(1.0);
         setAuraOpacity(0.15);
       }
 

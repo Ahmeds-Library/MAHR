@@ -14,8 +14,10 @@ import {
   APP_VERSION,
   DEB_FILENAME,
   EXE_FILENAME,
+  EXE_PORTABLE_FILENAME,
   LINUX_DPKG_CMD,
 } from "../config/appVersion";
+import { triggerNativeDownload } from "../services/installerService";
 
 export interface DesktopOptimizations {
   enableHardwareAcceleration: boolean;
@@ -32,6 +34,7 @@ export interface MahrDesktopAppInfo {
   version: string;
   author: string;
   windowsExePath: string;
+  windowsPortablePath: string;
   linuxDebPath: string;
   windowsLauncherPath: string;
   linuxLauncherPath: string;
@@ -50,16 +53,19 @@ export interface UseDesktopAppReturn {
   canInstallDesktop: boolean;
   installDesktopApp: () => Promise<boolean>;
   downloadWindowsExe: () => Promise<void>;
+  downloadWindowsPortableExe: () => Promise<void>;
   downloadLinuxDeb: () => Promise<void>;
   downloadWindowsLauncher: () => Promise<void>;
   downloadLinuxLauncher: () => Promise<void>;
   optimizations: DesktopOptimizations;
   mahrDesktopInfo: MahrDesktopAppInfo;
+  downloadError: string | null;
 }
 
 export function useDesktopApp(): UseDesktopAppReturn {
   const [platformInfo, setPlatformInfo] = useState<PlatformInfo>(() => detectPlatform());
   const [canInstall, setCanInstall] = useState<boolean>(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     setPlatformInfo(detectPlatform());
@@ -89,52 +95,30 @@ export function useDesktopApp(): UseDesktopAppReturn {
   }, []);
 
   // Secure Binary Fetch & Download Helper
-  // Fetches real binary buffer via JSON payload / Blob to guarantee it is NEVER intercepted by HTML/SPA cookie gate
+  // Prefers native anchor trigger to let browser handle streaming & resume without eating JS memory
   const downloadBinary = async (endpoint: string, filename: string) => {
-    // 1. Try secure JSON payload endpoint first (immune to browser cookie drops / iframe sandbox download intercepts)
-    try {
-      const payloadEndpoint = `${endpoint}-payload`;
-      const res = await fetch(payloadEndpoint, {
-        method: "GET",
-        headers: { "Accept": "application/json" },
-        cache: "no-store"
-      });
+    setDownloadError(null);
 
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.base64 && json.size > 100000) {
-          const binaryString = atob(json.base64);
-          const len = binaryString.length;
-          const bytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const blob = new Blob([bytes], { type: json.mimeType || "application/octet-stream" });
-          const blobUrl = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = blobUrl;
-          a.download = json.filename || filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => window.URL.revokeObjectURL(blobUrl), 30000);
-          return;
-        }
-      }
+    // 1. Native anchor trigger directly to streaming server endpoint
+    try {
+      triggerNativeDownload(endpoint, filename);
+      return;
     } catch (e) {
-      console.warn("Payload download fallback to direct stream:", e);
+      console.warn("[useDesktopApp] Native trigger failed, falling back to stream fetch:", e);
     }
 
     // 2. Direct binary fetch stream fallback
     try {
       const response = await fetch(endpoint, {
         method: "GET",
-        headers: { "Accept": "application/octet-stream, application/vnd.debian.binary-package, application/vnd.microsoft.portable-executable" },
+        headers: { 
+          "Accept": "application/octet-stream, application/vnd.debian.binary-package, application/vnd.microsoft.portable-executable" 
+        },
         cache: "no-store"
       });
 
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+        throw new Error(`Server returned HTTP ${response.status}`);
       }
 
       const contentType = response.headers.get("content-type") || "";
@@ -156,13 +140,17 @@ export function useDesktopApp(): UseDesktopAppReturn {
       document.body.removeChild(a);
       setTimeout(() => window.URL.revokeObjectURL(blobUrl), 30000);
     } catch (err: any) {
-      console.error("Binary download failed:", err);
-      alert(`Download could not complete: ${err?.message || "Please check network connection"}`);
+      console.error("[useDesktopApp] Binary download failed:", err);
+      setDownloadError(err?.message || "Please check network connection");
     }
   };
 
   const downloadWindowsExe = useCallback(async () => {
     await downloadBinary("/api/download/windows-exe", EXE_FILENAME);
+  }, []);
+
+  const downloadWindowsPortableExe = useCallback(async () => {
+    await downloadBinary("/api/download/windows-exe-portable", EXE_PORTABLE_FILENAME);
   }, []);
 
   const downloadLinuxDeb = useCallback(async () => {
@@ -182,6 +170,7 @@ export function useDesktopApp(): UseDesktopAppReturn {
     version: APP_VERSION,
     author: "MAHR Cognitive Systems",
     windowsExePath: "/api/download/windows-exe",
+    windowsPortablePath: "/api/download/windows-exe-portable",
     linuxDebPath: "/api/download/linux-deb",
     windowsLauncherPath: "/api/download/windows-exe",
     linuxLauncherPath: "/api/download/linux-deb",
@@ -213,10 +202,12 @@ export function useDesktopApp(): UseDesktopAppReturn {
     canInstallDesktop: canInstall && isBrowser,
     installDesktopApp,
     downloadWindowsExe,
+    downloadWindowsPortableExe,
     downloadLinuxDeb,
     downloadWindowsLauncher,
     downloadLinuxLauncher,
     optimizations,
-    mahrDesktopInfo
+    mahrDesktopInfo,
+    downloadError
   };
 }

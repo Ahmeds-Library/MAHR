@@ -73,7 +73,10 @@ export async function downloadAppUpdate({
 
     const response = await fetch(downloadUrl, {
       method: "GET",
-      cache: "no-store"
+      cache: "no-store",
+      headers: {
+        "Accept": "application/octet-stream, application/vnd.microsoft.portable-executable, application/vnd.debian.binary-package"
+      }
     });
 
     if (progressTimer) clearInterval(progressTimer);
@@ -82,8 +85,41 @@ export async function downloadAppUpdate({
       throw new Error(`Server returned HTTP ${response.status}`);
     }
 
-    const blob = await response.blob();
-    const finalSize = blob.size || estimatedTotal;
+    const contentLengthHeader = response.headers.get("content-length");
+    const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : estimatedTotal;
+
+    // Use ReadableStream reader for live accurate streaming progress
+    let receivedBytes = 0;
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          receivedBytes += value.length;
+          const pct = Math.min(99, Math.round((receivedBytes / totalBytes) * 100));
+          const elapsedSec = (Date.now() - startTime) / 1000;
+          const speed = elapsedSec > 0 ? receivedBytes / elapsedSec : 1024 * 1024;
+          const remaining = Math.max(0, totalBytes - receivedBytes);
+
+          onProgress?.({
+            percent: isNaN(pct) ? 50 : pct,
+            transferredBytes: receivedBytes,
+            totalBytes,
+            speedBytesPerSec: Math.round(speed),
+            etaSeconds: Math.max(1, Math.round(remaining / (speed || 1)))
+          });
+        }
+      }
+    }
+
+    const blob = chunks.length > 0 
+      ? new Blob(chunks as any) 
+      : await response.blob();
+    const finalSize = blob.size || receivedBytes || totalBytes;
 
     onProgress?.({
       percent: 100,
@@ -105,7 +141,22 @@ export async function downloadAppUpdate({
 
     onComplete?.();
   } catch (err: any) {
-    console.error("[autoUpdateManager] Download error:", err);
+    console.warn("[autoUpdateManager] In-memory stream download failed, attempting native browser anchor fallback:", err);
+    try {
+      // Direct browser download trigger fallback (bypasses memory and CORS limits)
+      const directLink = document.createElement("a");
+      directLink.href = downloadUrl;
+      directLink.download = filename;
+      directLink.target = "_blank";
+      directLink.rel = "noopener noreferrer";
+      document.body.appendChild(directLink);
+      directLink.click();
+      document.body.removeChild(directLink);
+      onComplete?.();
+      return;
+    } catch (fallbackErr) {
+      console.error("[autoUpdateManager] Direct fallback failed:", fallbackErr);
+    }
     onError?.(err instanceof Error ? err : new Error(String(err)));
   }
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Cpu, Bot, Calendar, Brain, MessageSquare, BookOpen, PenTool, Compass, Settings, Monitor, Menu, X, Sparkles, Keyboard, Palette, Network, Orbit, Check, BrainCircuit, Building2, Globe, Download, Presentation, GraduationCap } from "lucide-react";
+import { Cpu, Bot, Calendar, Brain, MessageSquare, BookOpen, PenTool, Compass, Settings, Monitor, Menu, X, Sparkles, Keyboard, Palette, Network, Orbit, Check, BrainCircuit, Building2, Globe, Download, Presentation, GraduationCap, Puzzle } from "lucide-react";
 import { SUPPORTED_AI_MODELS, AIModelConfig, SubAgent, DailyTask } from "../lib/subagentTypes";
 import { ChatMessage } from "../lib/memoryTypes";
 import { PsychologyProfile } from "../services/colorPsychologyEngine";
@@ -8,7 +8,8 @@ import { THEME_COLOR_CONFIGS, getThemeConfig } from "../services/themeService";
 import { HumanMoodType, HUMAN_MOOD_CONFIGS } from "../services/humanEmotionEngine";
 import { MahrEmblemLogo } from "./brand/MahrEmblemLogo";
 import { UpdateStatusBadge } from "./updater/UpdateStatusBadge";
-import { DEB_FILENAME, EXE_FILENAME } from "../config/appVersion";
+import { DEB_FILENAME, EXE_FILENAME, APP_VERSION } from "../config/appVersion";
+import { MahrPluginId } from "../plugins/layer1_data/pluginTypes";
 
 interface HeaderNavProps {
   activeModelId: string;
@@ -64,7 +65,17 @@ interface HeaderNavProps {
   deficitsCount?: number;
   hasUpdate?: boolean;
   latestVersion?: string;
+  updaterStatus?: any;
+  lastCheckedAt?: string | null;
   onOpenUpdateModal?: () => void;
+  isPluginActive?: (id: MahrPluginId) => boolean;
+  activePluginsCount?: number;
+  totalPluginsCount?: number;
+  isPluginStoreOpen?: boolean;
+  onOpenPluginStore?: () => void;
+  onOpenRoutines?: () => void;
+  onToggleAskMahr?: () => void;
+  isAskMyraaOpen?: boolean;
 }
 
 export const HeaderNav = ({
@@ -92,6 +103,8 @@ export const HeaderNav = ({
   setIsMobileMenuOpen,
   hasUpdate = false,
   latestVersion,
+  updaterStatus,
+  lastCheckedAt,
   onOpenUpdateModal,
   onToggleModelSwitcher,
   onToggleSubAgents,
@@ -121,8 +134,17 @@ export const HeaderNav = ({
   onToggleHumanMoodStudio,
   isRLStudioOpen = false,
   onToggleRLStudio,
-  deficitsCount = 0
+  deficitsCount = 0,
+  isPluginActive,
+  activePluginsCount = 0,
+  totalPluginsCount = 15,
+  isPluginStoreOpen = false,
+  onOpenPluginStore,
+  onOpenRoutines,
+  onToggleAskMahr,
+  isAskMyraaOpen = false,
 }) => {
+  const checkPlugin = (id: MahrPluginId) => (isPluginActive ? isPluginActive(id) : true);
   const [isAtmosphereMenuOpen, setIsAtmosphereMenuOpen] = useState(false);
   const atmosphereMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -336,8 +358,8 @@ export const HeaderNav = ({
     : "100.0";
 
   return (
-    <header className="relative z-30 w-full max-w-7xl mx-auto pt-2">
-      <div className="relative p-2.5 sm:p-3.5 rounded-2xl md:rounded-3xl bg-slate-950/70 border border-white/10 backdrop-blur-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)]">
+    <header className="relative z-30 w-full px-2 sm:px-4 pt-2 flex justify-center">
+      <div className="relative w-full md:w-fit max-w-full px-3 py-2 sm:px-4 sm:py-2.5 rounded-2xl md:rounded-full bg-slate-950/80 border border-white/12 backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.65)] transition-all duration-200">
         
         {/* Mobile Navbar Header */}
         <div className="flex md:hidden items-center justify-between w-full">
@@ -353,7 +375,21 @@ export const HeaderNav = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {onOpenDesktopRemoteModal && (
+              <button
+                id="mobile-header-get-app-btn"
+                data-testid="mobile-header-get-app-btn"
+                onClick={onOpenDesktopRemoteModal}
+                className="h-8 px-2.5 rounded-xl bg-gradient-to-r from-blue-600/30 to-purple-600/30 border border-blue-400/40 text-blue-200 text-xs font-mono font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+                title="MAHR Desktop App & Updates"
+              >
+                <Download size={13} className="text-blue-400" />
+                <span>App</span>
+                <span className="text-[9px] px-1 bg-blue-500/30 rounded text-blue-300 font-bold">v2.4.1</span>
+              </button>
+            )}
+
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-2 rounded-xl bg-white/5 border border-white/10 text-slate-200 hover:bg-white/10 transition-colors cursor-pointer"
@@ -367,119 +403,54 @@ export const HeaderNav = ({
         {/* Mobile Slide-down Menu Drawer */}
         {isMobileMenuOpen && (
           <div className="flex md:hidden flex-col gap-2 mt-3 pt-3 border-t border-white/10 animate-fade-in">
+            {/* Mobile MAHR Desktop App & Continuous Auto-Updater Hub */}
+            {onOpenDesktopRemoteModal && (
+              <button
+                id="mobile-drawer-get-app-btn"
+                onClick={() => {
+                  onOpenDesktopRemoteModal();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="p-3 rounded-2xl bg-gradient-to-r from-blue-950/70 via-indigo-950/60 to-purple-950/70 border border-blue-400/40 text-blue-200 text-xs font-mono flex items-center justify-between shadow-lg shadow-blue-950/30"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-400/30 shrink-0">
+                    <Download size={16} className="text-blue-300 animate-pulse" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="font-bold text-white text-xs">MAHR Desktop App & Auto-Updater</span>
+                    <span className="text-[10px] text-blue-300/80">Windows (.exe) • Linux (.deb) • Continuous Sync</span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 font-bold border border-blue-400/30">
+                    v2.4.1
+                  </span>
+                  <span className="text-[9px] text-emerald-400 font-sans flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    Auto-Sync
+                  </span>
+                </div>
+              </button>
+            )}
+            {/* Mobile Model Switcher (Moved to Backend Auto-Router & Settings Tab; hidden from header UI) */}
             <button
               id="mobile-model-token-meter-btn"
               onClick={() => { onToggleModelSwitcher(); setIsMobileMenuOpen(false); }}
-              className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-200 text-xs font-mono flex flex-col gap-1.5"
+              className="hidden"
+              style={{ display: "none" }}
+              aria-hidden="true"
+              tabIndex={-1}
             >
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  <Cpu size={14} className="text-purple-400" />
-                  <span className="font-bold">{activeModel.name}</span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/30 font-bold border border-purple-400/30 text-purple-200 flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${Number(remainingPercent) > 25 ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
-                  {usedStr} Used • {remainingStr} Rem
-                </span>
-              </div>
-              <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-purple-500/20">
-                <div
-                  className="bg-gradient-to-r from-purple-500 via-indigo-400 to-cyan-400 h-full rounded-full transition-all duration-300"
-                  style={{ width: `${remainingPercent}%` }}
-                />
-              </div>
+              <span>{activeModel.name}</span>
             </button>
-
-            <button
-              onClick={() => { onToggleSubAgents(); setIsMobileMenuOpen(false); }}
-              className="p-2.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 text-indigo-200 text-xs font-mono flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <Bot size={14} className="text-indigo-400" />
-                <span>Sub-Agent: {activeSubAgent.name.split(" ")[0]}</span>
-              </div>
-            </button>
-
-            {onToggleMunderDifflin && (
-              <button
-                id="mobile-mahr-office-btn"
-                onClick={() => { onToggleMunderDifflin(); setIsMobileMenuOpen(false); }}
-                className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
-                  isMunderDifflinOpen
-                    ? "bg-purple-600/30 border-purple-400 text-purple-100 shadow-[0_0_12px_rgba(168,85,247,0.3)]"
-                    : "bg-purple-950/40 border-purple-500/30 text-purple-200 hover:bg-purple-900/50"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Building2 size={14} className={isMunderDifflinOpen ? "text-white animate-pulse" : "text-purple-400"} />
-                  <span className="font-semibold">MAHR Office (Virtual Floor)</span>
-                </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/30 font-bold border border-purple-400/30 text-purple-200">
-                  6 Agents
-                </span>
-              </button>
-            )}
-
-            {onToggleSlidesStudio && (
-              <button
-                id="mobile-slides-studio-btn"
-                onClick={() => { onToggleSlidesStudio(); setIsMobileMenuOpen(false); }}
-                className={`p-2.5 rounded-xl border text-xs font-mono flex items-center justify-between transition-colors ${
-                  isSlidesStudioOpen
-                    ? "bg-amber-500/30 border-amber-400 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
-                    : "bg-amber-950/40 border-amber-500/30 text-amber-200 hover:bg-amber-900/50"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Presentation size={14} className="text-amber-400" />
-                  <span className="font-semibold">Google Slides Studio</span>
-                </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 font-bold border border-amber-400/30 text-amber-200">
-                  AI Keynote
-                </span>
-              </button>
-            )}
-
-            <button
-              onClick={() => { onToggleDailyTasks(); setIsMobileMenuOpen(false); }}
-              className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs font-mono flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <Calendar size={14} className="text-amber-400" />
-                <span>Daily Schedule</span>
-              </div>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 font-bold">
-                {todayTasks.length > 0 ? `${completedTodayTasksCount}/${todayTasks.length}` : `${completedTasksCount}/${dailyTasks.length}`}
-              </span>
-            </button>
-
-            {onToggleClassroom && (
-              <button
-                onClick={() => { onToggleClassroom(); setIsMobileMenuOpen(false); }}
-                className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs font-mono flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2">
-                  <GraduationCap size={14} className="text-emerald-400" />
-                  <span>Google Classroom</span>
-                </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/30 font-bold border border-emerald-400/30 text-emerald-200">
-                  Tutor
-                </span>
-              </button>
-            )}
 
             <div className="grid grid-cols-2 gap-2 pt-1">
               <button
-                onClick={() => { onToggleMemory(); setIsMobileMenuOpen(false); }}
-                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${showMemoryDashboard ? "bg-purple-500/20 border-purple-400 text-purple-200" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
+                onClick={() => { onToggleWhiteboard(); setIsMobileMenuOpen(false); }}
+                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${isWhiteboardOpen ? "bg-cyan-500/20 border-cyan-400 text-cyan-200" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
               >
-                <Brain size={14} /> Recalls
-              </button>
-              <button
-                onClick={() => { onToggleJournal(); setIsMobileMenuOpen(false); }}
-                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${showChatJournal ? "bg-purple-500/20 border-purple-400 text-purple-200" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
-              >
-                <MessageSquare size={14} /> Journal
+                <PenTool size={14} /> Whiteboard
               </button>
               <button
                 onClick={() => { onToggleStudyPad(); setIsMobileMenuOpen(false); }}
@@ -488,28 +459,22 @@ export const HeaderNav = ({
                 <BookOpen size={14} /> Study Pad
               </button>
               <button
-                onClick={() => { onToggleWhiteboard(); setIsMobileMenuOpen(false); }}
-                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${isWhiteboardOpen ? "bg-cyan-500/20 border-cyan-400 text-cyan-200" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
+                id="mobile-header-recall-btn"
+                onClick={() => { onToggleMemory(); setIsMobileMenuOpen(false); }}
+                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${
+                  showMemoryDashboard || showChatJournal
+                    ? "bg-purple-500/25 border-purple-400 text-purple-100 font-semibold"
+                    : "bg-slate-900/60 border-slate-700/60 text-slate-300"
+                }`}
               >
-                <PenTool size={14} /> Whiteboard
+                <Brain size={14} className="text-purple-400" /> Recall
               </button>
-              {onToggleHumanMoodStudio && (
-                <button
-                  id="mobile-human-mood-btn"
-                  onClick={() => { onToggleHumanMoodStudio(); setIsMobileMenuOpen(false); }}
-                  className="p-2 rounded-xl text-xs flex items-center gap-2 border bg-white/[0.04] text-white border-white/20"
-                  style={{
-                    borderColor: `${moodConfig.glowColor}60`,
-                    boxShadow: `0 0 10px ${moodConfig.glowColor}25`
-                  }}
-                >
-                  <span className="text-sm">{moodConfig.emoji}</span>
-                  <span className="font-semibold">{moodConfig.label}</span>
-                  <span className="text-[10px] ml-auto px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: `${moodConfig.glowColor}25`, color: moodConfig.glowColor }}>
-                    Mood
-                  </span>
-                </button>
-              )}
+              <button
+                onClick={() => { onToggleScreenSharing(); setIsMobileMenuOpen(false); }}
+                className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${isScreenSharing ? "bg-emerald-500/20 border-emerald-400 text-emerald-200" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
+              >
+                <Monitor size={14} /> Screen Vision
+              </button>
               <button
                 onClick={() => { onToggleSettings(); setIsMobileMenuOpen(false); }}
                 className={`p-2 rounded-xl text-xs flex items-center gap-2 border ${showSettings ? "bg-purple-600/30 border-purple-400 text-purple-200" : "bg-slate-900/60 border-slate-700/60 text-slate-300"}`}
@@ -556,188 +521,93 @@ export const HeaderNav = ({
           </div>
         )}
 
-        {/* Desktop Horizontal Navbar */}
-        <div className="hidden md:flex items-center justify-between gap-2 lg:gap-3 w-full overflow-x-auto scrollbar-none py-0.5">
+        {/* Desktop Compact Centered Horizontal Navbar (Zero Extra Gap) */}
+        <div className="hidden md:flex items-center justify-center gap-2 lg:gap-2.5 w-fit max-w-full overflow-x-auto scrollbar-none py-0.5">
           {/* Brand Logo */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <MahrEmblemLogo size={36} showText={true} showStatusIndicator={true} />
+          <div className="flex items-center gap-2 shrink-0 pr-2 border-r border-slate-800/90">
+            <MahrEmblemLogo size={32} showText={true} showStatusIndicator={true} />
           </div>
 
-          {/* Core AI Engines Group */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* 🏢 MAHR Office Button */}
+          {/* Core Workspace Buttons */}
+          <div className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto scrollbar-none">
+            {/* Model Switcher (Moved to Backend Auto-Router & Settings Tab; hidden from header UI) */}
             <button
-              id="header-mahr-office-btn"
-              data-testid="header-mahr-office-btn"
-              onClick={onToggleMunderDifflin || onToggleSubAgents}
-              className={`h-9 px-2.5 sm:px-3 rounded-xl border text-xs font-mono font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                isMunderDifflinOpen
-                  ? "bg-purple-600/30 text-purple-200 border-purple-400 shadow-lg shadow-purple-950/40 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-purple-500/40"
-              }`}
-              title="MAHR Office // Multi-Agent Virtual Floor"
+              id="header-model-switcher-btn"
+              onClick={onToggleModelSwitcher}
+              className="hidden"
+              style={{ display: "none" }}
+              aria-hidden="true"
+              tabIndex={-1}
+              title={`Active Model: ${activeModel.name} (${usedStr} used / ${maxStr} max)`}
             >
-              <Building2 size={14} className={isMunderDifflinOpen ? "text-purple-300 animate-pulse shrink-0" : "text-purple-400 shrink-0"} />
-              <span className="hidden sm:inline">MAHR Office</span>
-              <span className="sm:hidden">Office</span>
-            </button>
-
-            {/* 📊 Google Slides Studio Button */}
-            {onToggleSlidesStudio && (
-              <button
-                id="header-slides-studio-btn"
-                data-testid="header-slides-studio-btn"
-                onClick={onToggleSlidesStudio}
-                className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                  isSlidesStudioOpen
-                    ? "bg-amber-500/30 text-amber-200 border-amber-400 shadow-lg shadow-amber-950/40 font-bold"
-                    : "bg-slate-900/60 hover:bg-slate-800/80 text-amber-300 border-white/10 hover:border-amber-400/50"
-                }`}
-                title="Google Slides Studio // AI Presentation Architect"
-              >
-                <Presentation size={15} className={isSlidesStudioOpen ? "text-amber-200 animate-pulse shrink-0" : "text-amber-400 shrink-0"} />
-                <span className="hidden sm:inline">Slides</span>
-              </button>
-            )}
-
-            <button
-              id="header-today-tasks-btn"
-              data-testid="header-today-tasks-btn"
-              onClick={onToggleDailyTasks}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                isDailyTaskManagerOpen
-                  ? "bg-amber-500/30 text-amber-200 border-amber-400 shadow-lg shadow-amber-950/40 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-amber-400/40"
-              }`}
-              title="Daily Task & Schedule Tracker (Today's Progress)"
-            >
-              <Calendar size={15} className="text-amber-400 shrink-0" />
-              <span className="hidden lg:inline">Today</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/25 text-amber-200 font-bold border border-amber-400/30 font-mono">
-                {todayTasks.length > 0 ? `${completedTodayTasksCount}/${todayTasks.length}` : `${completedTasksCount}/${dailyTasks.length}`}
+              <Cpu size={14} className="text-purple-400 shrink-0" />
+              <span className="font-semibold truncate max-w-[115px] lg:max-w-[140px]">
+                {activeModel.name}
               </span>
             </button>
 
-            {onToggleClassroom && (
-              <button
-                id="header-classroom-btn"
-                data-testid="header-classroom-btn"
-                onClick={onToggleClassroom}
-                className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                  isClassroomOpen
-                    ? "bg-emerald-500/30 text-emerald-200 border-emerald-400 shadow-lg shadow-emerald-950/40 font-bold"
-                    : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-emerald-400/40"
-                }`}
-                title="Google Classroom Hub & MAHR Homework Tutor"
-              >
-                <GraduationCap size={15} className="text-emerald-400 shrink-0" />
-                <span className="hidden lg:inline">Classroom</span>
-              </button>
-            )}
-          </div>
-
-          {/* Secondary Workspaces & Utilities Group */}
-          <div className="flex items-center gap-1.5 shrink-0 border-l border-slate-800/80 pl-2 lg:pl-3">
             <button
-              id="header-memory-btn"
-              data-testid="header-memory-btn"
-              onClick={onToggleMemory}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                showMemoryDashboard
-                  ? "bg-purple-500/30 text-purple-200 border-purple-400 shadow-lg shadow-purple-950/40 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-purple-400/40"
-              }`}
-              title="Recollections Memory Database"
-            >
-              <Brain size={15} className={showMemoryDashboard ? "animate-pulse text-purple-300 shrink-0" : "text-purple-400 shrink-0"} />
-              <span className="hidden lg:inline">Recalls</span>
-              {offlineDeletedQueueLength > 0 && (
-                <span className="text-[9px] px-1 bg-amber-500/30 text-amber-300 rounded font-mono font-bold">
-                  {offlineDeletedQueueLength}
-                </span>
-              )}
-            </button>
-
-            {/* Knowledge Graph Explorer (Internal to MAHR; hidden from main user UI) */}
-            {onToggleKnowledgeGraph && (
-              <button
-                id="header-knowledge-graph-btn"
-                onClick={onToggleKnowledgeGraph}
-                className="hidden"
-                style={{ display: "none" }}
-                aria-hidden="true"
-                tabIndex={-1}
-                title="Proactive User Entity Knowledge Graph"
-              >
-                <Network size={14} />
-              </button>
-            )}
-
-            <button
-              id="header-journal-btn"
-              data-testid="header-journal-btn"
-              onClick={onToggleJournal}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                showChatJournal
-                  ? "bg-indigo-500/30 text-indigo-200 border-indigo-400 shadow-lg shadow-indigo-950/40 font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-indigo-400/40"
-              }`}
-              title="Conversation Journal & Logs"
-            >
-              <MessageSquare size={15} className={showChatJournal ? "animate-pulse text-indigo-300 shrink-0" : "text-indigo-400 shrink-0"} />
-              <span className="hidden lg:inline">Journal</span>
-            </button>
-
-            <button
-              id="header-studypad-btn"
-              data-testid="header-studypad-btn"
-              onClick={onToggleStudyPad}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                isStudyPadOpen
-                  ? "bg-emerald-500/30 text-emerald-200 border-emerald-400 shadow-lg shadow-emerald-950/40 font-bold"
+              id="header-screen-share-btn"
+              onClick={onToggleScreenSharing}
+              className={`h-9 px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 ${
+                isScreenSharing
+                  ? isScreenSharingPaused
+                    ? "bg-amber-500/20 text-amber-200 border-amber-400/60"
+                    : "bg-emerald-500/20 text-emerald-200 border-emerald-400/60 shadow-sm"
                   : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-emerald-400/40"
               }`}
-              title="Interactive Exam Study Notepad"
+              title="Live Multimodal Screen Vision"
             >
-              <BookOpen size={15} className={isStudyPadOpen ? "animate-pulse text-emerald-300 shrink-0" : "text-emerald-400 shrink-0"} />
-              <span className="hidden lg:inline">Study Pad</span>
+              <Monitor size={14} className={isScreenSharing ? "text-emerald-400 animate-pulse" : "text-slate-400"} />
+              <span>{isScreenSharing ? (isScreenSharingPaused ? "Paused" : "Sharing") : "Screen"}</span>
             </button>
 
             <button
               id="header-whiteboard-btn"
-              data-testid="header-whiteboard-btn"
               onClick={onToggleWhiteboard}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
+              className={`h-9 px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 ${
                 isWhiteboardOpen
-                  ? "bg-cyan-500/30 text-cyan-200 border-cyan-400 shadow-lg shadow-cyan-950/40 font-bold"
+                  ? "bg-cyan-500/25 text-cyan-100 border-cyan-400/60 shadow-sm"
                   : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-cyan-400/40"
               }`}
-              title="Classroom Interactive Blackboard Whiteboard"
+              title="Interactive Digital Chalkboard & Code Lab"
             >
-              <PenTool size={15} className={isWhiteboardOpen ? "animate-pulse text-cyan-300 shrink-0" : "text-cyan-400 shrink-0"} />
-              <span className="hidden lg:inline">Whiteboard</span>
+              <PenTool size={14} className="text-cyan-400 shrink-0" />
+              <span>Whiteboard</span>
             </button>
 
-            {onToggleSimulationStudio && (
-              <button
-                id="header-sim-engine-btn"
-                data-testid="header-sim-engine-btn"
-                onClick={onToggleSimulationStudio}
-                className={`h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
-                  isSimulationStudioOpen
-                    ? "bg-cyan-500/30 text-cyan-200 border-cyan-400 shadow-lg shadow-cyan-950/40 font-bold"
-                    : "bg-slate-900/60 hover:bg-slate-800/80 text-cyan-300 border-white/10 hover:border-cyan-500/50"
-                }`}
-                title="Universal AI Simulation Engine (2D Liquid State & 3D WebGL Physics)"
-              >
-                <Orbit size={15} className={isSimulationStudioOpen ? "animate-spin text-cyan-300 shrink-0" : "text-cyan-400 shrink-0"} />
-                <span className="hidden lg:inline">Sim Engine</span>
-                <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60 font-mono">
-                  2D/3D
-                </span>
-              </button>
-            )}
+            <button
+              id="header-study-pad-btn"
+              onClick={onToggleStudyPad}
+              className={`h-9 px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 ${
+                isStudyPadOpen
+                  ? "bg-emerald-500/25 text-emerald-100 border-emerald-400/60 shadow-sm"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-emerald-400/40"
+              }`}
+              title="Interactive Exam Study Pad & Flashcards"
+            >
+              <BookOpen size={14} className="text-emerald-400 shrink-0" />
+              <span>Study Pad</span>
+            </button>
 
+            <button
+              id="header-recall-btn"
+              data-testid="header-recall-btn"
+              onClick={onToggleMemory}
+              className={`h-9 px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 ${
+                showMemoryDashboard || showChatJournal
+                  ? "bg-purple-500/25 text-purple-100 border-purple-400/60 shadow-sm"
+                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-white/10 hover:border-purple-400/40"
+              }`}
+              title="Recall Vector Memory & Conversation Journal Hub"
+            >
+              <Brain size={14} className="text-purple-400 shrink-0" />
+              <span>Recall</span>
+            </button>
+          </div>
+
+          {/* System & Desktop Controls Group */}
+          <div className="flex items-center gap-1.5 shrink-0 border-l border-slate-800/90 pl-2">
             <button
               id="header-settings-btn"
               data-testid="header-settings-btn"
@@ -877,24 +747,29 @@ export const HeaderNav = ({
               </button>
             )}
 
-            <button
-              onClick={onToggleScreenSharing}
-              className={`h-9 px-2.5 lg:px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer border shrink-0 ${
-                isScreenSharing
-                  ? "bg-cyan-500/25 text-cyan-200 border-cyan-500/60 shadow-md font-bold"
-                  : "bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 border-slate-700/60 hover:border-slate-500"
-              }`}
-              title="Share Screen with MAHR"
-            >
-              <Monitor size={14} className={isScreenSharing && !isScreenSharingPaused ? "animate-pulse text-cyan-400 shrink-0" : "text-slate-400 shrink-0"} />
-              <span className="hidden lg:inline">{isScreenSharing ? "Sharing" : "Screen"}</span>
-            </button>
+            {onOpenDesktopRemoteModal && (
+              <button
+                id="header-get-app-btn"
+                data-testid="header-get-app-btn"
+                onClick={onOpenDesktopRemoteModal}
+                className="h-9 px-2.5 lg:px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 shadow-sm bg-gradient-to-r from-blue-600/30 via-indigo-600/30 to-purple-600/30 hover:from-blue-600/50 hover:to-purple-600/50 text-blue-200 hover:text-white border-blue-400/40 hover:border-blue-400 shadow-blue-950/40 hover:scale-[1.02] active:scale-[0.98]"
+                title="Download MAHR Desktop App (Windows .exe / Linux .deb) & View Continuous Auto-Updater"
+              >
+                <Download size={14} className="text-blue-400 shrink-0" />
+                <span className="hidden sm:inline">Get App</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-300 font-mono font-bold border border-blue-400/30">
+                  v{APP_VERSION}
+                </span>
+              </button>
+            )}
 
-            {hasUpdate && onOpenUpdateModal && (
+            {onOpenUpdateModal && (
               <UpdateStatusBadge
-                status="available"
+                status={updaterStatus || (hasUpdate ? "available" : "up-to-date")}
                 latestVersion={latestVersion}
                 hasUpdate={hasUpdate}
+                lastCheckedAt={lastCheckedAt}
+                alwaysVisible={true}
                 onClick={onOpenUpdateModal}
               />
             )}

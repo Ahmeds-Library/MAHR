@@ -7,11 +7,17 @@ import {
   Loader2,
   Presentation,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  FileDown,
+  FileText
 } from "lucide-react";
 import { SlideDeck } from "../../services/slides/slideTypes";
 import { GooglePresentationResult } from "../../services/slides/googleSlidesApi";
 import { useGoogleSlidesAuth } from "../../hooks/slides/useGoogleSlidesAuth";
+import {
+  exportDeckToHighResPdfBundle,
+  exportDeckToNativePptx
+} from "../../slidesStudio/layer2_logic/pptxExportEngine";
 
 interface GoogleSlidesExportDialogProps {
   deck: SlideDeck;
@@ -37,7 +43,7 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
   exportError
 }) => {
   const { user, token, isAuthenticated, isLoggingIn, signIn } = useGoogleSlidesAuth();
-  const [hasConfirmed, setHasConfirmed] = useState(false);
+  const [localExportNotice, setLocalExportNotice] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -47,8 +53,17 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
       currentToken = await signIn();
       if (!currentToken) return;
     }
-    setHasConfirmed(true);
     await onExport(currentToken);
+  };
+
+  const handleDownloadPptx = () => {
+    const res = exportDeckToNativePptx(deck);
+    setLocalExportNotice(`Downloaded PowerPoint (${res.filename}) with ${res.slidesExported} slides.`);
+  };
+
+  const handleDownloadPdf = () => {
+    const res = exportDeckToHighResPdfBundle(deck);
+    setLocalExportNotice(`Exported High-Res PDF/Print Deck (${res.filename}).`);
   };
 
   return (
@@ -61,15 +76,19 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
               <Presentation size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">Export to Google Slides</h3>
-              <p className="text-[11px] text-zinc-400">Official Google Workspace integration</p>
+              <h3 className="text-sm font-semibold text-white">
+                Presenton Multi-Format Export Hub
+              </h3>
+              <p className="text-[11px] text-zinc-400">
+                Google Slides Cloud Sync • Native PowerPoint (.PPTX) • High-Res PDF
+              </p>
             </div>
           </div>
 
           {!isExporting && (
             <button
               onClick={onClose}
-              className="p-1.5 text-zinc-400 hover:text-white rounded-lg transition-colors"
+              className="p-1.5 text-zinc-400 hover:text-white rounded-lg transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -78,6 +97,34 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
 
         {/* Content Body */}
         <div className="p-6 space-y-5">
+          {localExportNotice && (
+            <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+              <span>{localExportNotice}</span>
+            </div>
+          )}
+
+          {/* Instant Local Download Formats (.PPTX & High-Res PDF) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={handleDownloadPptx}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold transition-all cursor-pointer"
+            >
+              <FileDown size={15} />
+              <span>Download Native .PPTX</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-xs font-semibold transition-all cursor-pointer"
+            >
+              <FileText size={15} />
+              <span>Export High-Res PDF Deck</span>
+            </button>
+          </div>
+
           {/* Success State */}
           {exportResult ? (
             <div className="text-center space-y-4 py-2">
@@ -147,7 +194,7 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
                   <span className="font-mono text-purple-300 font-semibold">{deck.slides.length} Slides</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-400">Destination</span>
+                  <span className="text-zinc-400">Cloud Sync Destination</span>
                   <span className="text-zinc-300">Google Drive & Google Slides</span>
                 </div>
               </div>
@@ -175,7 +222,7 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
                   <button
                     onClick={handleStartExport}
                     disabled={isLoggingIn}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-900 font-medium text-xs shadow-lg transition-all"
+                    className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-900 font-medium text-xs shadow-lg transition-all cursor-pointer"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 48 48">
                       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -183,7 +230,7 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
                       <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
                       <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                     </svg>
-                    <span>{isLoggingIn ? "Signing into Google..." : "Sign in with Google & Export"}</span>
+                    <span>{isLoggingIn ? "Signing into Google..." : "Sign in with Google & Sync Slides"}</span>
                   </button>
                 </div>
               )}
@@ -192,16 +239,16 @@ export const GoogleSlidesExportDialog: React.FC<GoogleSlidesExportDialogProps> =
                 <div className="pt-2 flex items-center gap-3">
                   <button
                     onClick={onClose}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-medium border border-white/10 transition-colors"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-medium border border-white/10 transition-colors cursor-pointer"
                   >
-                    Cancel
+                    Close
                   </button>
                   <button
                     onClick={handleStartExport}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-purple-600/30 transition-all"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
                   >
                     <Sparkles size={14} />
-                    <span>Confirm & Create</span>
+                    <span>Sync to Google Slides</span>
                   </button>
                 </div>
               )}

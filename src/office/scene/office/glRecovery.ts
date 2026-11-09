@@ -119,6 +119,9 @@ const CONTEXT_UNAVAILABLE = [
   /web(gl|gpu)\d?\s*(is\s+)?(not\s+(supported|available)|unsupported|unavailable)/i,
   /(unable|failed) to (create|get|obtain)[^.]*context/i,
   /no (webgl|gpu|rendering) context/i,
+  /context may be lost/i,
+  /could not initialize shader/i,
+  /could not retrieve shader source/i,
 ];
 
 /** True when `err` says a rendering context could not be obtained — a busy

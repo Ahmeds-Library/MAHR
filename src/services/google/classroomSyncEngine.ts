@@ -225,3 +225,62 @@ export function extractClassroomResources(
 
   return resources;
 }
+
+export interface ResourceSyncResult {
+  totalResources: number;
+  newResourcesSaved: number;
+  newResourceTitles: string[];
+  resources: ClassroomSavedResource[];
+}
+
+/**
+ * Autonomously categorizes and persists newly discovered books, PDFs, and files
+ * into the user's tenant-isolated MAHR Study Library.
+ */
+export function syncClassroomResourcesToStudyLibrary(
+  uid: string,
+  courses: ClassroomCourse[],
+  courseWorkList: ClassroomCourseWork[],
+  announcements: ClassroomAnnouncement[]
+): ResourceSyncResult {
+  const currentExtracted = extractClassroomResources(courses, courseWorkList, announcements);
+  if (!uid) {
+    return {
+      totalResources: currentExtracted.length,
+      newResourcesSaved: 0,
+      newResourceTitles: [],
+      resources: currentExtracted,
+    };
+  }
+
+  const savedResourceIds: string[] = loadTenantItem<string[]>(uid, "synced_classroom_resource_ids", []);
+  const seenIdSet = new Set<string>(savedResourceIds);
+
+  const newlySavedTitles: string[] = [];
+  currentExtracted.forEach((res) => {
+    if (!seenIdSet.has(res.id)) {
+      seenIdSet.add(res.id);
+      newlySavedTitles.push(res.title);
+    }
+  });
+
+  if (newlySavedTitles.length > 0 || savedResourceIds.length === 0) {
+    saveTenantItem(uid, "synced_classroom_resource_ids", Array.from(seenIdSet));
+    saveTenantItem(uid, "synced_classroom_library_resources", currentExtracted);
+  }
+
+  return {
+    totalResources: currentExtracted.length,
+    newResourcesSaved: newlySavedTitles.length,
+    newResourceTitles: newlySavedTitles,
+    resources: currentExtracted,
+  };
+}
+
+/**
+ * Loads cached classroom library resources for offline or quick display
+ */
+export function getSavedClassroomLibraryResources(uid: string): ClassroomSavedResource[] {
+  if (!uid) return [];
+  return loadTenantItem<ClassroomSavedResource[]>(uid, "synced_classroom_library_resources", []);
+}

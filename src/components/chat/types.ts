@@ -1,5 +1,16 @@
 import React from "react";
 
+export type ChatActionMode = "auto" | "whiteboard" | "code" | "slides" | "memory";
+
+export interface SlashCommandItem {
+  command: string;
+  label: string;
+  description: string;
+  category: "workspace" | "memory" | "diagram" | "system";
+  mode?: ChatActionMode;
+  placeholder?: string;
+}
+
 export interface ChatWebCitation {
   title: string;
   url: string;
@@ -25,6 +36,11 @@ export interface ChatMessageItemData {
   groundingSources?: ChatWebCitation[];
   searchQueries?: string[];
   mediaItems?: ChatMediaItem[];
+  memoryRecalledCount?: number;
+  memoryRecalledLabels?: string[];
+  memorySavedTitle?: string;
+  codeSentToChalkboard?: boolean;
+  modeUsed?: string;
 }
 
 export interface ChatHeaderProps {
@@ -35,6 +51,9 @@ export interface ChatHeaderProps {
   isRealtimeConnected: boolean;
   isAutoSpeakEnabled: boolean;
   onToggleAutoSpeak?: (val: boolean) => void;
+  onClearChat?: () => void;
+  vectorMemoryCount?: number;
+  isVectorRecalling?: boolean;
   onClose: () => void;
 }
 
@@ -44,6 +63,8 @@ export interface ChatMessageListProps {
   activeSubAgentName: string;
   themeColor: string;
   onReplayAudio: (text: string) => void;
+  onSendCodeToChalkboard?: (code: string, language?: string) => void;
+  onSelectStarterCommand?: (promptText: string, mode?: ChatActionMode) => void;
 }
 
 export interface ChatInputBarProps {
@@ -51,6 +72,8 @@ export interface ChatInputBarProps {
   onInputChange: (val: string) => void;
   onSubmit: (e?: React.FormEvent, customText?: string) => void;
   isLoading: boolean;
+  activeMode?: ChatActionMode;
+  onKeyDownOverride?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
   isScreenSharing?: boolean;
   includeScreenSnapshot?: boolean;
   onToggleScreenSnapshot?: (val: boolean) => void;

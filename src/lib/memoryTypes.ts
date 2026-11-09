@@ -1,9 +1,25 @@
+export type MemoryTier = "episodic" | "semantic" | "procedural";
+
 export interface Memory {
   id: string;
-  category: "identity" | "preference" | "goal" | "project" | "relationship" | "emotional" | "behavior" | "simulation";
+  category:
+    | "identity"
+    | "preference"
+    | "goal"
+    | "project"
+    | "relationship"
+    | "emotional"
+    | "behavior"
+    | "simulation";
   text: string;
   createdAt: string;
   updatedAt: string;
+  tier?: MemoryTier;
+  importance?: number; // 0.0 - 1.0 or 0 - 100
+  pinned?: boolean;
+  accessCount?: number;
+  lastAccessedAt?: string;
+  linkedNoteIds?: string[];
   projectId?: string;
   dueDate?: string;
   tags?: string[];
@@ -31,9 +47,14 @@ export interface ChatMessage {
   role: "user" | "model";
   text: string;
   timestamp: string;
+  attachedImages?: string[];
   actionExecuted?: string;
   groundingSources?: any[];
   searchQueries?: string[];
   mediaItems?: any[];
+  memoryRecalledCount?: number;
+  memoryRecalledLabels?: string[];
+  memorySavedTitle?: string;
+  codeSentToChalkboard?: boolean;
+  modeUsed?: string;
 }
-

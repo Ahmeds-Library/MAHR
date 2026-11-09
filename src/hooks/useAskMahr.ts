@@ -1,7 +1,18 @@
 import { useState, useCallback } from "react";
 import { recordUserActivity } from "../services/proactiveReminderEngine";
-import { SubAgent } from "../lib/subagentTypes";
+import { SubAgent, DailyTask } from "../lib/subagentTypes";
+import { Memory, ChatMessage } from "../lib/memoryTypes";
+import { KnowledgeDeficit } from "../services/reinforcementLearningEngine";
 import { speakUtterance } from "../services/speechSynthesisService";
+import { ChatActionMode } from "../components/chat/types";
+import {
+  recallChatVectorContext,
+  autoIndexChatTurnToVectorMemory,
+} from "../components/chat/services/chatVectorMemoryBridge";
+import {
+  parseTypedInstruction,
+  formatReplyForChalkboard,
+} from "../components/chat/services/chatInstructionDispatcher";
 
 export interface AskMahrMessage {
   id?: string;
@@ -10,6 +21,14 @@ export interface AskMahrMessage {
   timestamp: string;
   attachedImages?: string[];
   actionExecuted?: string;
+  groundingSources?: any[];
+  searchQueries?: string[];
+  mediaItems?: any[];
+  memoryRecalledCount?: number;
+  memoryRecalledLabels?: string[];
+  memorySavedTitle?: string;
+  codeSentToChalkboard?: boolean;
+  modeUsed?: string;
 }
 
 export type AskMyraaMessage = AskMahrMessage;
@@ -19,6 +38,12 @@ interface UseAskMahrOptions {
   activeSubAgent: SubAgent;
   studyPadText: string;
   whiteboardText?: string;
+  setWhiteboardText?: (txt: string) => void;
+  memories?: Memory[];
+  dailyTasks?: DailyTask[];
+  knowledgeDeficits?: KnowledgeDeficit[];
+  chatHistory?: ChatMessage[];
+  onAddManualMemory?: (category: Memory["category"], text: string) => Promise<any>;
   setActiveModelId: (modelId: string) => void;
   setNotesStatusAlert: (alert: string | null) => void;
   getScreenSnapshot?: () => string | null;
@@ -28,11 +53,17 @@ interface UseAskMahrOptions {
     role: "user" | "model",
     text: string,
     meta?: {
+      attachedImages?: string[];
       actionExecuted?: string;
       groundingSources?: any[];
       searchQueries?: string[];
       mediaItems?: any[];
       isStreaming?: boolean;
+      memoryRecalledCount?: number;
+      memoryRecalledLabels?: string[];
+      memorySavedTitle?: string;
+      codeSentToChalkboard?: boolean;
+      modeUsed?: string;
     }
   ) => void;
   onSendToRealtimeSession?: (text: string) => void;
@@ -46,6 +77,12 @@ export function useAskMahr({
   activeSubAgent,
   studyPadText,
   whiteboardText = "",
+  setWhiteboardText,
+  memories = [],
+  dailyTasks = [],
+  knowledgeDeficits = [],
+  chatHistory = [],
+  onAddManualMemory,
   setActiveModelId,
   setNotesStatusAlert,
   getScreenSnapshot,
@@ -61,21 +98,47 @@ export function useAskMahr({
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [includeScreenSnapshot, setIncludeScreenSnapshot] = useState<boolean>(true);
   const [isAutoSpeakEnabled, setIsAutoSpeakEnabled] = useState<boolean>(true);
+  const [activeActionMode, setActiveActionMode] = useState<ChatActionMode>("auto");
+  const [isVectorRecalling, setIsVectorRecalling] = useState<boolean>(false);
 
-  // We maintain a local messages list as fallback, but primary transcript is synchronized with chatHistory
+  // Local messages list as fallback; primary transcript is synchronized with chatHistory
   const [askMahrMessages, setAskMahrMessages] = useState<AskMahrMessage[]>([]);
 
+  const handleSendCodeToChalkboard = useCallback(
+    (codeContent: string, language?: string) => {
+      if (!codeContent || !codeContent.trim()) return;
+      const formatted = `# 💻 MAHR Live Code Slate (${language || "Code"})\n\n\`\`\`${
+        language || ""
+      }\n${codeContent.trim()}\n\`\`\`\n`;
+      if (setWhiteboardText) {
+        setWhiteboardText(formatted);
+      }
+      if (onExecuteAction) {
+        onExecuteAction("open_chalkboard", { mode: "split" });
+      }
+      setNotesStatusAlert("✨ Sent code block to Classroom Chalkboard!");
+      setTimeout(() => setNotesStatusAlert(null), 3000);
+    },
+    [setWhiteboardText, onExecuteAction, setNotesStatusAlert]
+  );
+
   const handleAskMahrSubmit = useCallback(
-    async (e?: any, customText?: string, overrideImages?: string[]) => {
-      if (e) e.preventDefault();
+    async (e?: any, customText?: string, overrideImages?: string[], overrideMode?: ChatActionMode) => {
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
       recordUserActivity();
-      const query = customText || askMahrInput;
+      const query = customText !== undefined ? customText : askMahrInput;
       const imagesToSend = overrideImages || [...pendingImages];
+      const modeToUse = overrideMode || activeActionMode;
 
       if ((!query || !query.trim()) && imagesToSend.length === 0 && !isScreenSharing) return;
 
-      const userMsg = query ? query.trim() : (imagesToSend.length > 0 ? "Please analyze this image." : "Please analyze my active screen.");
-      if (!customText) setAskMahrInput("");
+      const rawUserMsg = query
+        ? query.trim()
+        : imagesToSend.length > 0
+        ? "Please analyze this image."
+        : "Please analyze my active screen.";
+
+      if (customText === undefined) setAskMahrInput("");
       setPendingImages([]);
 
       // Capture screen snapshot if screen sharing is active and snapshot enabled
@@ -84,52 +147,80 @@ export function useAskMahr({
         screenFrame = getScreenSnapshot();
       }
 
+      // 1. Parse typed instructions, /slash commands, and Action Mode pills
+      const parsedInstruction = parseTypedInstruction(rawUserMsg, modeToUse);
+
+      // Reset non-auto mode back to auto after submitting a command if it came from a slash command
+      if (rawUserMsg.startsWith("/") && activeActionMode !== "auto") {
+        setActiveActionMode("auto");
+      }
+
       const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const displayUserText =
+        rawUserMsg + (screenFrame ? " 📷 [Live Screen Snapshot]" : "");
+
       const userMessageObj: AskMahrMessage = {
+        id: `msg_user_${Date.now()}`,
         sender: "user",
-        text: userMsg + (screenFrame ? " 📷 [Live Screen Snapshot Attached]" : ""),
+        text: displayUserText,
         timestamp: now,
-        attachedImages: imagesToSend
+        attachedImages: imagesToSend.length > 0 ? imagesToSend : undefined,
+        modeUsed: parsedInstruction.effectiveMode !== "auto" ? parsedInstruction.effectiveMode : undefined,
       };
 
       setAskMahrMessages((prev) => [...prev, userMessageObj]);
 
       // Sync user message to shared chat journal / unified history
       if (onAppendToChatHistory) {
-        onAppendToChatHistory("user", userMsg);
+        onAppendToChatHistory("user", displayUserText, {
+          attachedImages: imagesToSend.length > 0 ? imagesToSend : undefined,
+          modeUsed: parsedInstruction.effectiveMode !== "auto" ? parsedInstruction.effectiveMode : undefined,
+        });
       }
 
-      // Check for explicit presentation / PPT / slides generation request to redirect with full understanding to Whiteboard Slides
-      const pptPattern = /(?:make|create|generate|prepare|build|banao|bana do|banaye|chahiye)\s+(?:a\s+|an\s+)?(?:presentation|ppt|slides|deck|slide deck|google slides)(?:\s+(?:on|about|pe|par|for)\s+(.*))?/i;
-      const reversePptPattern = /(?:presentation|ppt|slides|slide deck|google slides)\s+(?:banao|bana do|banaye|make|create|generate|chahiye)(?:\s+(?:on|about|pe|par|for)\s+(.*))?/i;
-      const topicPptPattern = /(?:presentation|ppt|slides|google slides)\s+(?:on|about|pe|par|for)\s+(.*)/i;
+      // Also notify live realtime voice session if connected
+      if (isRealtimeSessionActive && onSendToRealtimeSession) {
+        onSendToRealtimeSession(rawUserMsg);
+      }
 
-      const pptMatch = userMsg.match(pptPattern) || userMsg.match(reversePptPattern) || userMsg.match(topicPptPattern);
-      if (pptMatch && onExecuteAction) {
-        let extractedTopic = (pptMatch[1] || "").trim().replace(/[?.!]+$/, "");
-        if (!extractedTopic || extractedTopic.length < 2) {
-          extractedTopic = userMsg
-            .replace(/(?:make|create|generate|prepare|build|banao|bana do|banaye|chahiye|presentation|ppt|slides|slide deck|google slides|a|an|on|about|pe|par|for|please|plz|saath|internet|se|images|le|lo|kuch|khud|bana)/gi, "")
-            .trim()
-            .replace(/[?.!]+$/, "");
+      // 2. Execute any immediate client-side workspace actions parsed from the instruction
+      const executedBadges: string[] = [];
+      if (parsedInstruction.immediateActions.length > 0 && onExecuteAction) {
+        for (const act of parsedInstruction.immediateActions) {
+          onExecuteAction(act.type, act.args);
+          executedBadges.push(act.badgeLabel);
         }
-        if (!extractedTopic) extractedTopic = "Strategic Presentation";
-        console.log("[useAskMahr] Presentation intent detected with deep planning for topic:", extractedTopic);
+      }
 
-        // MAHR thoroughly understands the user's request and plans the execution
+      // 3. Background Auto-Index to 128-D Vector Memory if personal fact or /remember
+      let savedMemoryLabel: string | undefined;
+      try {
+        const memResult = await autoIndexChatTurnToVectorMemory({
+          userText: rawUserMsg,
+          forceRemember: parsedInstruction.isExplicitMemorySave,
+          existingMemories: memories,
+          onAddManualMemory,
+        });
+        if (memResult.saved && memResult.summaryLabel) {
+          savedMemoryLabel = memResult.summaryLabel;
+        }
+      } catch (memErr) {
+        console.warn("[useAskMahr] Auto-index vector memory non-fatal error:", memErr);
+      }
+
+      // 4. Presentation / Slides Studio deep redirect
+      if (parsedInstruction.isPresentationRequest && onExecuteAction) {
+        const extractedTopic = parsedInstruction.presentationTopic || "Strategic Presentation";
         const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        const understandingReply = `🎯 **Request Understood & Accepted!**
+        const understandingReply = `🎯 **Presentation Studio Triggered!**
 
-I have carefully analyzed your instruction:
+I have analyzed your instruction and initialized the **Classroom Slides Studio**:
 • **Subject:** *${extractedTopic}*
-• **Target Platform:** Google Slides & Interactive Classroom Whiteboard
-• **Strategy:** 
-  1. 🔍 **Deep Domain Research:** Synthesizing core technical concepts, problem statements, and measurable metrics.
-  2. 🌐 **Internet Image Sourcing:** Fetching available verified imagery from the web.
-  3. 🎨 **Visual Synthesis:** Autonomously generating custom architectural diagrams for missing concepts.
-  4. 📊 **Keynote Assembly:** Assembling animated slides with speaker notes.
+• **Pipeline:** Deep Domain Research + Verified Web Imagery + AI Diagrams + Keynote Speaker Notes.
 
-Launching your presentation in the Classroom Slides Studio now...`;
+Opening your presentation deck on the Classroom Whiteboard now...`;
+
+        const actionLabel = `✨ Launched Slides Studio: ${extractedTopic.slice(0, 28)}`;
 
         setAskMahrMessages((prev) => [
           ...prev,
@@ -137,23 +228,32 @@ Launching your presentation in the Classroom Slides Studio now...`;
             id: `msg_mahr_${Date.now()}`,
             sender: "mahr",
             text: understandingReply,
-            timestamp: replyTime
-          }
+            timestamp: replyTime,
+            actionExecuted: actionLabel,
+            memorySavedTitle: savedMemoryLabel,
+          },
         ]);
 
-        if (isAutoSpeakEnabled) {
-          speakUtterance({
-            text: `Understood! I am researching ${extractedTopic}, collecting internet images, generating custom visuals, and building your presentation in Google Slides studio now.`,
-            activeEmotion: "happy"
+        if (onAppendToChatHistory) {
+          onAppendToChatHistory("model", understandingReply, {
+            actionExecuted: actionLabel,
+            memorySavedTitle: savedMemoryLabel,
           });
         }
 
-        onExecuteAction("open_slides_studio", { 
-          topic: extractedTopic, 
-          userInstruction: userMsg,
+        if (isAutoSpeakEnabled) {
+          speakUtterance({
+            text: `Understood! I am researching ${extractedTopic} and building your presentation in Slides Studio now.`,
+            activeEmotion: "happy",
+          });
+        }
+
+        onExecuteAction("open_slides_studio", {
+          topic: extractedTopic,
+          userInstruction: rawUserMsg,
           deepResearch: true,
           sourceWebImages: true,
-          generateMissingVisuals: true
+          generateMissingVisuals: true,
         });
 
         setAskMahrLoading(false);
@@ -161,114 +261,161 @@ Launching your presentation in the Classroom Slides Studio now...`;
       }
 
       setAskMahrLoading(true);
+      setIsVectorRecalling(true);
 
-      // Direct query to MAHR subagent brain with complete context & memory
+      // 5. Query 128-D Vector Memory Bridge + Multi-turn Context + Subagent Brain
       try {
-        // Query high-dimensional vector memory knowledge base for semantic grounding
-        let vectorGroundingText = "";
-        try {
-          const vectorRes = await fetch("/api/vector-memory/query", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: userMsg, topK: 3, minSimilarity: 0.28 }),
-          });
-          if (vectorRes.ok) {
-            const vectorData = await vectorRes.json();
-            const topMatches = vectorData.topMatches || [];
-            if (topMatches.length > 0) {
-              vectorGroundingText = `=== RECALLED VECTOR KNOWLEDGE GRAPH CONTEXT ===\n` +
-                topMatches.map((m: any, i: number) => 
-                  `${i + 1}. [${m.node?.clusterName || "Concept"}] ${m.node?.label || ""}: ${m.node?.description || ""} (Relevance: ${Math.round((m.similarity || 0.8) * 100)}%)`
-                ).join("\n") +
-                `\n=================================================`;
-            }
-          }
-        } catch (vecErr) {
-          console.warn("[useAskMahr] Vector grounding lookup bypassed:", vecErr);
-        }
+        const vectorRecall = await recallChatVectorContext({
+          query: rawUserMsg,
+          memories,
+          studyPadText,
+          whiteboardText,
+          knowledgeDeficits,
+          dailyTasks,
+          recentHistory: chatHistory,
+        });
+        setIsVectorRecalling(false);
 
-        const fullContext = [
-          vectorGroundingText,
-          studyPadText ? `[Study Pad Notes]\n${studyPadText}` : "",
-          whiteboardText ? `[Classroom Chalkboard]\n${whiteboardText}` : ""
-        ].filter(Boolean).join("\n\n");
+        const payloadBody = JSON.stringify({
+          message: parsedInstruction.cleanedPrompt,
+          modelId: activeModelId,
+          subAgentName: activeSubAgent.name,
+          subAgentRole: activeSubAgent.role,
+          subAgentSystemPrompt: activeSubAgent.systemPrompt,
+          userContext:
+            vectorRecall.groundingBlock || "No active study notes or chalkboard.",
+          screenImage: screenFrame,
+          attachedImages: imagesToSend,
+        });
 
-        const res = await fetch("/api/chat/subagent", {
+        let res = await fetch("/api/chat/subagent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: userMsg,
-            modelId: activeModelId,
-            subAgentName: activeSubAgent.name,
-            subAgentRole: activeSubAgent.role,
-            subAgentSystemPrompt: activeSubAgent.systemPrompt,
-            userContext: fullContext || "No active study notes or chalkboard.",
-            screenImage: screenFrame,
-            attachedImages: imagesToSend
-          }),
+          body: payloadBody,
         });
 
         if (!res.ok) {
-          throw new Error(`HTTP error ${res.status}`);
+          res = await fetch("/api/subagent/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payloadBody,
+          });
         }
 
-        const data = await res.json();
+        const rawBody = await res.text();
+        let data: any = {};
+        try {
+          data = rawBody ? JSON.parse(rawBody) : {};
+        } catch {
+          data = { text: "I have processed your request in the workspace." };
+        }
+
+        if (!res.ok && !data.text) {
+          throw new Error(data.error || `HTTP error ${res.status}`);
+        }
+
         const replyText = data.text || "I have processed your request.";
         const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-        // Handle model shift notification
-        if (data.modelUsed && data.modelUsed !== "offline-assistant" && data.modelUsed !== activeModelId) {
+        // Handle seamless model fallback notification
+        if (
+          data.modelUsed &&
+          data.modelUsed !== "offline-assistant" &&
+          data.modelUsed !== activeModelId
+        ) {
           setActiveModelId(data.modelUsed);
-          setNotesStatusAlert(`⚡ Shifted model to ${data.modelUsed} seamlessly without memory loss.`);
+          setNotesStatusAlert(
+            `⚡ Shifted model to ${data.modelUsed} seamlessly without memory loss.`
+          );
           setTimeout(() => setNotesStatusAlert(null), 4000);
         }
 
-        // Live Real Token Usage Event Dispatch
+        // Dispatch live token telemetry event
         if (typeof window !== "undefined" && (data.usage || data.sessionTokens)) {
           window.dispatchEvent(
             new CustomEvent("mahr-tokens-updated", {
               detail: {
                 usage: data.usage,
-                sessionTokens: data.sessionTokens
-              }
+                sessionTokens: data.sessionTokens,
+              },
             })
           );
         }
 
-        // Execute returned tool actions
-        let executedActionName = "";
+        // Execute any server-returned tool actions
         if (Array.isArray(data.actions) && data.actions.length > 0) {
           for (const act of data.actions) {
             if (act && act.type && onExecuteAction) {
               onExecuteAction(act.type, act.args);
-              executedActionName = act.type;
+              executedBadges.push(act.type);
             }
           }
         }
 
-        setAskMahrMessages((prev) => [
-          ...prev,
-          {
-            sender: "mahr",
-            text: replyText,
-            timestamp: replyTime,
-            actionExecuted: executedActionName ? `✨ Executed: ${executedActionName}` : undefined,
-            groundingSources: data.groundingSources,
-            searchQueries: data.searchQueries,
-            mediaItems: data.mediaItems
+        // Sync reply to Classroom Chalkboard if requested by mode or natural instruction
+        let codeSentToChalkboard = false;
+        if (parsedInstruction.shouldSyncReplyToChalkboard && setWhiteboardText) {
+          const formattedBoard = formatReplyForChalkboard(rawUserMsg, replyText);
+          if (formattedBoard) {
+            setWhiteboardText(formattedBoard);
+            codeSentToChalkboard = true;
+            if (onExecuteAction && !executedBadges.some((b) => b.toLowerCase().includes("chalkboard"))) {
+              onExecuteAction("open_chalkboard", { mode: "split" });
+              executedBadges.push("Synced to Chalkboard");
+            }
           }
-        ]);
+        }
+
+        const combinedActionBadge =
+          executedBadges.length > 0 ? `✨ ${executedBadges.join(" • ")}` : undefined;
+
+        const modelMessageObj: AskMahrMessage = {
+          id: `msg_mahr_${Date.now()}`,
+          sender: "mahr",
+          text: replyText,
+          timestamp: replyTime,
+          actionExecuted: combinedActionBadge,
+          groundingSources: data.groundingSources,
+          searchQueries: data.searchQueries,
+          mediaItems: data.mediaItems,
+          memoryRecalledCount:
+            vectorRecall.recalledCount > 0 ? vectorRecall.recalledCount : undefined,
+          memoryRecalledLabels:
+            vectorRecall.recalledLabels.length > 0
+              ? vectorRecall.recalledLabels.slice(0, 4)
+              : undefined,
+          memorySavedTitle: savedMemoryLabel,
+          codeSentToChalkboard,
+          modeUsed:
+            parsedInstruction.effectiveMode !== "auto"
+              ? parsedInstruction.effectiveMode
+              : undefined,
+        };
+
+        setAskMahrMessages((prev) => [...prev, modelMessageObj]);
 
         if (onAppendToChatHistory) {
           onAppendToChatHistory("model", replyText, {
-            actionExecuted: executedActionName ? `✨ Executed: ${executedActionName}` : undefined,
+            actionExecuted: combinedActionBadge,
             groundingSources: data.groundingSources,
             searchQueries: data.searchQueries,
-            mediaItems: data.mediaItems
+            mediaItems: data.mediaItems,
+            memoryRecalledCount:
+              vectorRecall.recalledCount > 0 ? vectorRecall.recalledCount : undefined,
+            memoryRecalledLabels:
+              vectorRecall.recalledLabels.length > 0
+                ? vectorRecall.recalledLabels.slice(0, 4)
+                : undefined,
+            memorySavedTitle: savedMemoryLabel,
+            codeSentToChalkboard,
+            modeUsed:
+              parsedInstruction.effectiveMode !== "auto"
+                ? parsedInstruction.effectiveMode
+                : undefined,
           });
         }
 
-        // Speak Mahr's reply aloud using high-speed voice synthesis if enabled
+        // Speak Mahr's reply aloud using voice synthesis if enabled
         if (isAutoSpeakEnabled) {
           speakUtterance({
             text: replyText,
@@ -277,18 +424,25 @@ Launching your presentation in the Classroom Slides Studio now...`;
         }
       } catch (err: any) {
         console.error("Ask Mahr error:", err);
+        setIsVectorRecalling(false);
         const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         setAskMahrMessages((prev) => [
           ...prev,
-          { sender: "mahr", text: `⚠️ Error communicating with Mahr core: ${err.message || err}`, timestamp: replyTime },
+          {
+            sender: "mahr",
+            text: `⚠️ Error communicating with Mahr core: ${err.message || err}`,
+            timestamp: replyTime,
+          },
         ]);
       } finally {
         setAskMahrLoading(false);
+        setIsVectorRecalling(false);
       }
     },
     [
       askMahrInput,
       pendingImages,
+      activeActionMode,
       includeScreenSnapshot,
       isScreenSharing,
       getScreenSnapshot,
@@ -296,13 +450,19 @@ Launching your presentation in the Classroom Slides Studio now...`;
       activeSubAgent,
       studyPadText,
       whiteboardText,
+      setWhiteboardText,
+      memories,
+      dailyTasks,
+      knowledgeDeficits,
+      chatHistory,
+      onAddManualMemory,
       setActiveModelId,
       setNotesStatusAlert,
       onExecuteAction,
       onAppendToChatHistory,
       isAutoSpeakEnabled,
       isRealtimeSessionActive,
-      onSendToRealtimeSession
+      onSendToRealtimeSession,
     ]
   );
 
@@ -332,6 +492,10 @@ Launching your presentation in the Classroom Slides Studio now...`;
     setIncludeScreenSnapshot,
     isAutoSpeakEnabled,
     setIsAutoSpeakEnabled,
+    activeActionMode,
+    setActiveActionMode,
+    isVectorRecalling,
+    handleSendCodeToChalkboard,
     handleAskMahrSubmit,
     handleAskMyraaSubmit: handleAskMahrSubmit,
     resetAskMahrMessages,

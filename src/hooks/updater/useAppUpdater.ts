@@ -1,6 +1,6 @@
 /**
  * Layer 2: useAppUpdater Hook (State & Orchestration)
- * Polls for updates, compares semantic versions, triggers Alexa-like voice announcements,
+ * Polls for updates, compares semantic versions, triggers MAHR voice announcements,
  * and coordinates background download & installation states.
  */
 
@@ -28,6 +28,8 @@ export interface UseAppUpdaterReturn {
   errorMessage: string | null;
   currentVersion: string;
   hasUpdate: boolean;
+  lastCheckedAt: string | null;
+  isAutoCheckActive: boolean;
   checkNow: (isManual?: boolean) => Promise<void>;
   startDownload: () => Promise<void>;
   installAndRestart: () => void;
@@ -49,6 +51,7 @@ export function useAppUpdater(options?: {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
 
   const hasAnnouncedRef = useRef<boolean>(false);
 
@@ -59,12 +62,13 @@ export function useAppUpdater(options?: {
     try {
       const result = await checkForAppUpdates(CURRENT_APP_VERSION);
       setUpdateInfo(result);
+      setLastCheckedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
 
       if (result.hasUpdate) {
         setStatus("available");
         setIsModalOpen(true);
 
-        // Alexa-style friendly voice announcement
+        // MAHR conversational friendly voice announcement
         if (enableVoiceNotification && !hasAnnouncedRef.current) {
           hasAnnouncedRef.current = true;
           const phrase = `Aap ke liye MAHR ka naya version ${result.latestVersion} release ho chuka hai! Kiya main update download kar loon?`;
@@ -80,6 +84,7 @@ export function useAppUpdater(options?: {
       console.warn("[useAppUpdater] Update check failed:", err);
       setStatus("error");
       setErrorMessage(err?.message || "Failed to check for updates");
+      setLastCheckedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     }
   }, [enableVoiceNotification]);
 
@@ -143,6 +148,8 @@ export function useAppUpdater(options?: {
     errorMessage,
     currentVersion: CURRENT_APP_VERSION,
     hasUpdate: status === "available" || status === "downloading" || status === "ready-to-install",
+    lastCheckedAt,
+    isAutoCheckActive: true,
     checkNow: () => performCheck(true),
     startDownload,
     installAndRestart,

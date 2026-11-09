@@ -83,8 +83,8 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
   };
 
   const originUrl = typeof window !== "undefined" ? window.location.origin : "https://mahr.ai";
-  const linuxInstallCmd = `sudo apt install --reinstall -y ./${DEB_FILENAME}`;
-  const linuxCurlInstallCmd = `curl -fSL "${originUrl}/api/download/linux-deb" -o ${DEB_FILENAME} && sudo apt install --reinstall -y ./${DEB_FILENAME}`;
+  const linuxInstallCmd = `cd "$HOME/Downloads" && sudo apt install --reinstall -y "$HOME/Downloads/${DEB_FILENAME}" && mahr`;
+  const linuxCurlInstallCmd = `cd "$HOME/Downloads" && rm -f "$HOME/Downloads/${DEB_FILENAME}.tmp" && curl -fSL "${originUrl}/api/download/linux-deb" -o "$HOME/Downloads/${DEB_FILENAME}" && sudo apt install --reinstall -y "$HOME/Downloads/${DEB_FILENAME}" && mahr`;
 
   const handleCopy = async (text: string, key: string) => {
     try {
@@ -128,7 +128,7 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
           <div className="flex items-center gap-2">
             <h3 className="text-base font-bold text-white">Desktop &amp; Mobile Setup</h3>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30 font-mono font-bold">
-              v2.4.0 Official
+              v{APP_VERSION} Official
             </span>
           </div>
           <p className="text-xs text-slate-300 mt-1">
@@ -165,9 +165,9 @@ export const DesktopAppsTab: React.FC<DesktopAppsTabProps> = ({ onStatusAlert })
             Whenever code is committed to GitHub, the workflow compiles and publishes new binaries. Existing desktop users receive automatic in-app update notifications.
           </p>
           <div className="flex items-center gap-3 pt-1 text-[11px] font-mono text-slate-400">
-            <span>Installed: <strong className="text-white">v2.4.0</strong></span>
+            <span>Installed: <strong className="text-white">v{APP_VERSION}</strong></span>
             <span>•</span>
-            <span>Latest: <strong className="text-purple-300">v{updateInfo?.latestVersion || "2.4.0"}</strong></span>
+            <span>Latest: <strong className="text-purple-300">v{updateInfo?.latestVersion || APP_VERSION}</strong></span>
             {hasUpdate && (
               <span className="text-amber-400 font-bold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />

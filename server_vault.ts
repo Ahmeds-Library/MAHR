@@ -9,12 +9,12 @@
 
 import crypto from "crypto";
 
-const _S: number[] = [178,38,198,12,40,61,100,108,157,35,15,128,221,235,27,49,33,234,53,244,130,53,83,197,189,177,2,253,239,26,250,200];
-const _I: number[] = [60,28,179,40,69,207,88,211,239,144,235,191,130,20,164,255];
-const _T: number[] = [222,9,24,19,113,213,46,90,190,55,31,24,212,210,232,58];
-const _C: number[] = [147,128,70,174,81,248,196,43,61,94,125,9,99,250,128,67,253,112,101,214,21,36,46,88,77,19,220,205,139,12,62,254,254,154,183,197,137,202,205,249,239,243,236,95,163,80,106,146,107,173,249,52,130];
+const _S: number[] = [148,104,206,169,231,83,85,128,184,21,154,187,220,66,18,40,32,64,87,61,174,39,52,229,173,185,124,220,60,22,72,190];
+const _I: number[] = [250,71,203,52,95,31,38,165,44,7,130,8,170,121,77,42];
+const _T: number[] = [158,133,210,47,163,250,33,147,110,194,106,188,145,255,104,230];
+const _C: number[] = [250,178,109,156,52,140,93,132,109,149,53,71,125,224,87,141,81,50,18,132,216,210,53,147,216,228,12,27,194,239,105,146,204,251,68,157,28,18,73,46,58,208,16,24,188,207,12,90,87,166,176,3,20];
 const _M: number = 126;
-const _D: string = "a37c7b975bae56588ceb151a5cef41f9e308c1fa6ae6aa255610802f54831cef";
+const _D: string = "38ec210b36f98efdf7dd2217988cfc08d38e200baf2103f8900cb9b7e4dbc50e";
 
 let _cachedKey: string | null = null;
 let _vaultAttempted = false;
@@ -70,15 +70,27 @@ function _decryptVault(): string | null {
  * 2. If environment variable is absent (e.g. desktop client installation),
  *    decrypts from the encrypted AES-256-GCM vault in-memory.
  */
-export function getSafeGeminiApiKey(): string {
-  const envKey = process.env.GEMINI_API_KEY;
-  if (envKey && envKey.trim().length > 10) {
-    return envKey.trim();
+export function getGeminiApiKeyCandidates(): string[] {
+  const candidates: string[] = [];
+  const envGemini = process.env.GEMINI_API_KEY?.trim();
+  if (envGemini && envGemini.length > 10) {
+    candidates.push(envGemini);
   }
+  const envApi = process.env.API_KEY?.trim();
+  if (envApi && envApi.length > 10 && !candidates.includes(envApi)) {
+    candidates.push(envApi);
+  }
+  const vaultKey = _decryptVault()?.trim();
+  if (vaultKey && vaultKey.length > 10 && !candidates.includes(vaultKey)) {
+    candidates.push(vaultKey);
+  }
+  return candidates;
+}
 
-  const vaultKey = _decryptVault();
-  if (vaultKey && vaultKey.trim().length > 10) {
-    return vaultKey.trim();
+export function getSafeGeminiApiKey(): string {
+  const candidates = getGeminiApiKeyCandidates();
+  if (candidates.length > 0) {
+    return candidates[0];
   }
 
   throw new Error("MAHR Security Vault: API Key could not be resolved from environment or secure vault.");
@@ -100,7 +112,7 @@ export function isVaultKeyAvailable(): boolean {
  * Returns anonymized status of the security vault without exposing the key.
  */
 export function getVaultStatus(): { operational: boolean; source: "env" | "vault" | "none"; maskedId: string } {
-  const envKey = process.env.GEMINI_API_KEY;
+  const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (envKey && envKey.trim().length > 10) {
     const len = envKey.trim().length;
     return {

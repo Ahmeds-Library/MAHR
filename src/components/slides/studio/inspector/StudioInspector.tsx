@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Sliders,
   LayoutTemplate,
@@ -7,15 +7,17 @@ import {
   X,
   Copy,
   Trash2,
-  Sparkles
+  Sparkles,
+  Layers
 } from "lucide-react";
 import { Slide, SlideDeck } from "../../../../services/slides/slideTypes";
 import { TabContent } from "./TabContent";
 import { TabLayout } from "./TabLayout";
 import { TabVisuals } from "./TabVisuals";
 import { TabNotes } from "./TabNotes";
+import { AutonomousAssetPanel } from "../../presenton/AutonomousAssetPanel";
 
-export type StudioInspectorTab = "content" | "layout" | "visuals" | "notes";
+export type StudioInspectorTab = "content" | "layout" | "assets" | "visuals" | "notes";
 
 interface StudioInspectorProps {
   deck: SlideDeck;
@@ -29,6 +31,7 @@ interface StudioInspectorProps {
   onDuplicateSlide: (index: number) => void;
   onRemoveSlide: (index: number) => void;
   onOpenInfographics?: () => void;
+  onOpenQuickPromptOverlay?: () => void;
 }
 
 export const StudioInspector: React.FC<StudioInspectorProps> = ({
@@ -42,7 +45,8 @@ export const StudioInspector: React.FC<StudioInspectorProps> = ({
   onUpdateSlide,
   onDuplicateSlide,
   onRemoveSlide,
-  onOpenInfographics
+  onOpenInfographics,
+  onOpenQuickPromptOverlay
 }) => {
   if (!isOpen || !currentSlide) return null;
 
@@ -70,8 +74,8 @@ export const StudioInspector: React.FC<StudioInspectorProps> = ({
                 <span className="text-xs font-bold text-white tracking-wide">
                   Slide Inspector
                 </span>
-                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  #{currentSlideIndex + 1}/{deck.slides.length}
+                <span className="text-[10px] font-mono tabular-nums text-zinc-400">
+                  · #{currentSlideIndex + 1}/{deck.slides.length}
                 </span>
               </div>
               <p className="text-[10px] text-zinc-400 truncate max-w-[200px]">
@@ -115,8 +119,21 @@ export const StudioInspector: React.FC<StudioInspectorProps> = ({
           </div>
         </div>
 
-        {/* 4 Segmented Tabs */}
-        <div className="grid grid-cols-4 p-1.5 gap-1 border-b border-white/10 bg-zinc-900/30 shrink-0">
+        {/* 5 Segmented Tabs (including Autonomous Assets Library) */}
+        <div className="grid grid-cols-5 p-1.5 gap-1 border-b border-white/10 bg-zinc-900/30 shrink-0">
+          <button
+            type="button"
+            onClick={() => onSelectTab("assets")}
+            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl text-[11px] font-medium transition-all cursor-pointer ${
+              activeTab === "assets"
+                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-white/5 border border-transparent"
+            }`}
+          >
+            <Layers size={14} className="mb-1" />
+            <span className="truncate">Assets</span>
+          </button>
+
           <button
             type="button"
             onClick={() => onSelectTab("content")}
@@ -172,6 +189,17 @@ export const StudioInspector: React.FC<StudioInspectorProps> = ({
 
         {/* Tab Body */}
         <div className="flex-1 p-3.5 overflow-y-auto">
+          {activeTab === "assets" && (
+            <div className="h-full animate-in fade-in duration-150">
+              <AutonomousAssetPanel
+                deck={deck}
+                currentSlide={currentSlide}
+                onUpdateSlide={onUpdateSlide}
+                onOpenQuickPromptOverlay={() => onOpenQuickPromptOverlay?.()}
+              />
+            </div>
+          )}
+
           {activeTab === "content" && (
             <div className="animate-in fade-in duration-150">
               <TabContent slide={currentSlide} onUpdateSlide={onUpdateSlide} />

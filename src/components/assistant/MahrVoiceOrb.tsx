@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { Mic, MicOff, Volume2, Sparkles, Radio } from "lucide-react";
-import { AssistantVoiceState } from "../../hooks/google/useAlexaAssistantVoice";
+import { AssistantVoiceState } from "../../hooks/google/useMahrAssistantVoice";
 
-interface AlexaVoiceOrbProps {
+interface MahrVoiceOrbProps {
   voiceState: AssistantVoiceState;
   transcript?: string;
   spokenResponse?: string;
@@ -11,7 +11,7 @@ interface AlexaVoiceOrbProps {
   className?: string;
 }
 
-export const AlexaVoiceOrb: React.FC<AlexaVoiceOrbProps> = ({
+export const MahrVoiceOrb: React.FC<MahrVoiceOrbProps> = ({
   voiceState,
   transcript,
   spokenResponse,
@@ -29,7 +29,7 @@ export const AlexaVoiceOrb: React.FC<AlexaVoiceOrbProps> = ({
 
     const ctx = gsap.context(() => {
       if (voiceState === "listening") {
-        // Alexa blue-cyan energetic spinning pulse
+        // MAHR holographic blue-cyan energetic spinning pulse
         gsap.to(ring1Ref.current, {
           scale: 1.35,
           opacity: 0.8,
@@ -198,7 +198,7 @@ export const AlexaVoiceOrb: React.FC<AlexaVoiceOrbProps> = ({
         )}
         {voiceState === "idle" && (
           <span className="text-[10px] text-zinc-500 font-mono">
-            MAHR Alexa Assistant
+            MAHR AI Assistant
           </span>
         )}
       </div>

@@ -1,19 +1,27 @@
+/**
+ * LAYER 3: StudioHeader (Clean, Minimalist 3-Zone Presentation Studio Navbar)
+ * Zone 1: Back & Deck Title
+ * Zone 2: AI Slide Generator · Theme & Motion · Assets Drawer
+ * Zone 3: Present & Export (.PPTX / PDF / Google Slides)
+ */
+
 import React, { useState } from "react";
 import {
   ChevronLeft,
   Play,
   Share2,
   Palette,
-  ExternalLink,
   Layers,
-  Sparkles,
-  LogIn,
-  LogOut,
+  Wand2,
   Check,
-  Zap
+  Sparkles
 } from "lucide-react";
 import { SlideDeck } from "../../../services/slides/slideTypes";
 import { SLIDE_THEMES } from "../../../services/slides/slideThemes";
+import {
+  SLIDE_TRANSITION_METADATA,
+  SlideTransitionPreset
+} from "../../../slidesStudio/layer1_data/presentonTypes";
 
 interface StudioHeaderProps {
   deck: SlideDeck;
@@ -23,6 +31,12 @@ interface StudioHeaderProps {
   onSelectTheme: (themeId: string) => void;
   onOpenInfographics?: () => void;
   onOpenPipeline?: () => void;
+  onOpenManimGX?: () => void;
+  onOpenPresentonArchitect?: () => void;
+  onAutoEnrichMultimedia?: () => void;
+  onSelectTransition?: (transition: SlideTransitionPreset) => void;
+  isInspectorOpen?: boolean;
+  onToggleInspector?: () => void;
   isAuthenticated: boolean;
   user: any;
   onSignIn: () => void;
@@ -35,154 +49,186 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onPresent,
   onExport,
   onSelectTheme,
-  onOpenInfographics,
-  onOpenPipeline,
-  isAuthenticated,
-  user,
-  onSignIn,
-  onSignOut
+  onOpenManimGX,
+  onOpenPresentonArchitect,
+  onSelectTransition,
+  isInspectorOpen,
+  onToggleInspector
 }) => {
-  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showStyleMenu, setShowStyleMenu] = useState(false);
+  const activeTransition: SlideTransitionPreset = deck.defaultTransition || "morph_smooth";
 
   return (
-    <header className="h-14 border-b border-white/10 bg-[#070913]/95 backdrop-blur-xl px-3 sm:px-5 flex items-center justify-between z-20 shrink-0 select-none">
-      {/* Left: Back & Title */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+    <header className="h-14 border-b border-white/10 bg-[#090c15] px-4 sm:px-6 flex items-center justify-between gap-4 z-20 shrink-0 select-none">
+      {/* Zone 1: Back & Clean Deck Title */}
+      <div className="flex items-center gap-3 min-w-0">
         {onBackToSlate && (
           <button
             type="button"
             onClick={onBackToSlate}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-xs font-mono text-zinc-300 hover:text-white transition-all cursor-pointer shrink-0"
-            title="Return to Slate Chalkboard"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-colors cursor-pointer shrink-0 whitespace-nowrap"
           >
             <ChevronLeft size={14} />
-            <span className="hidden sm:inline">Chalkboard</span>
+            <span className="hidden sm:inline">Back</span>
           </button>
         )}
 
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
-            <Layers size={14} className="text-amber-400" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs sm:text-sm font-bold text-white truncate max-w-[140px] sm:max-w-xs">
-                {deck.title || "Presentation Studio"}
-              </span>
-              <span className="hidden md:inline-flex text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                Google Slides Live
-              </span>
-            </div>
-          </div>
+          <span className="text-sm font-semibold text-white truncate max-w-[160px] sm:max-w-xs">
+            {deck.title || "Untitled Presentation"}
+          </span>
+          <span className="hidden md:inline text-xs text-zinc-500 tabular-nums whitespace-nowrap">
+            · {deck.slides.length} slides
+          </span>
         </div>
       </div>
 
-      {/* Right Toolbar Actions */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
-        {/* Theme Picker Dropdown */}
+      {/* Zone 2: Clean Center Studio Controls */}
+      <div className="flex items-center gap-1.5 bg-zinc-900/80 p-1 rounded-xl border border-white/10">
+        {onOpenPresentonArchitect && (
+          <button
+            type="button"
+            onClick={onOpenPresentonArchitect}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <Wand2 size={13} />
+            <span>AI Slide Builder</span>
+          </button>
+        )}
+
+        {/* Unified Theme & Animation Dropdown */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => setShowThemePicker(!showThemePicker)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-xs font-mono text-zinc-300 hover:text-white transition-all cursor-pointer"
-            title="Change Presentation Visual Theme"
+            onClick={() => setShowStyleMenu(!showStyleMenu)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/5 text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Palette size={13} className="text-amber-400" />
-            <span className="hidden sm:inline">Theme</span>
+            <Palette size={13} className="text-zinc-400" />
+            <span className="hidden sm:inline">Style & Motion</span>
           </button>
 
-          {showThemePicker && (
-            <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-zinc-950 border border-white/15 shadow-2xl p-2 z-50 space-y-1 backdrop-blur-2xl animate-in fade-in duration-150">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 px-2 py-1">
-                Visual Themes
+          {showStyleMenu && (
+            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 rounded-2xl bg-zinc-950 border border-white/15 shadow-2xl p-3 z-50 space-y-3">
+              <div>
+                <div className="text-[11px] font-medium text-zinc-400 px-1 mb-1.5">
+                  Color Theme
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {Object.values(SLIDE_THEMES).map((thm) => {
+                    const isSelected = deck.themeId === thm.id;
+                    return (
+                      <button
+                        key={thm.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectTheme(thm.id);
+                          setShowStyleMenu(false);
+                        }}
+                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-amber-500/20 text-amber-300 font-semibold"
+                            : "text-zinc-300 hover:bg-white/5"
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ background: thm.accentCol || "#f59e0b" }}
+                          />
+                          <span className="truncate">{thm.name}</span>
+                        </span>
+                        {isSelected && <Check size={11} className="text-amber-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              {Object.values(SLIDE_THEMES).map((thm) => {
-                const isSelected = deck.themeId === thm.id;
-                return (
+
+              {onSelectTransition && (
+                <div className="pt-2 border-t border-white/10">
+                  <div className="text-[11px] font-medium text-zinc-400 px-1 mb-1.5">
+                    Slide Transition
+                  </div>
+                  <div className="space-y-1">
+                    {Object.entries(SLIDE_TRANSITION_METADATA).map(([key, meta]) => {
+                      const isSel = activeTransition === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            onSelectTransition(key as SlideTransitionPreset);
+                            setShowStyleMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors cursor-pointer ${
+                            isSel
+                              ? "bg-white/10 text-white font-semibold"
+                              : "text-zinc-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          <span>{meta.name}</span>
+                          {isSel && <Check size={12} className="text-amber-400" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {onOpenManimGX && (
+                <div className="pt-2 border-t border-white/10">
                   <button
-                    key={thm.id}
                     type="button"
                     onClick={() => {
-                      onSelectTheme(thm.id);
-                      setShowThemePicker(false);
+                      setShowStyleMenu(false);
+                      onOpenManimGX();
                     }}
-                    className={`w-full flex items-center justify-between p-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
-                      isSelected
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold"
-                        : "text-zinc-300 hover:text-white hover:bg-white/5"
-                    }`}
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-cyan-300 hover:bg-cyan-500/10 transition-colors cursor-pointer"
                   >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0"
-                        style={{ background: thm.accentCol || "#f59e0b" }}
-                      />
-                      <span className="truncate">{thm.name}</span>
-                    </div>
-                    {isSelected && <Check size={12} className="text-amber-400" />}
+                    <span>Open 3D Math Studio (ManimGX)</span>
+                    <Sparkles size={12} />
                   </button>
-                );
-              })}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Present Mode Button */}
+        {onToggleInspector && (
+          <button
+            type="button"
+            onClick={onToggleInspector}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              isInspectorOpen
+                ? "bg-white/10 text-white"
+                : "text-zinc-300 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <Layers size={13} className="text-amber-400" />
+            <span className="hidden sm:inline">Assets & Edit</span>
+          </button>
+        )}
+      </div>
+
+      {/* Zone 3: Present & Export */}
+      <div className="flex items-center gap-2 shrink-0">
         <button
           type="button"
           onClick={onPresent}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-xs font-mono text-zinc-200 hover:text-white transition-all cursor-pointer"
-          title="Fullscreen Presentation Mode"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-xs font-medium text-zinc-200 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
         >
           <Play size={13} className="text-amber-400 fill-amber-400" />
-          <span className="hidden sm:inline">Present</span>
+          <span>Present</span>
         </button>
 
-        {/* Google Slides Export & Sync */}
         <button
           type="button"
           onClick={onExport}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs transition-all shadow-md cursor-pointer"
-          title="Export Deck directly to Google Slides"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs transition-colors shadow-sm cursor-pointer whitespace-nowrap"
         >
           <Share2 size={13} />
-          <span>Export to Slides</span>
+          <span>Export</span>
         </button>
-
-        {/* User Auth Info (Google Slides API) */}
-        {isAuthenticated && user ? (
-          <div className="flex items-center gap-1.5 pl-1">
-            {user.picture ? (
-              <img
-                src={user.picture}
-                alt={user.name || "User"}
-                className="w-7 h-7 rounded-full border border-amber-400/40"
-              />
-            ) : (
-              <div className="w-7 h-7 rounded-full bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-xs font-bold text-amber-300">
-                {user.name ? user.name.charAt(0) : "G"}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="p-1.5 text-zinc-400 hover:text-white rounded-lg transition-colors cursor-pointer"
-              title="Sign out of Google Slides session"
-            >
-              <LogOut size={13} />
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={onSignIn}
-            className="hidden lg:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 text-xs font-mono text-zinc-300 hover:text-white transition-all cursor-pointer"
-            title="Sign in with Google"
-          >
-            <LogIn size={13} className="text-amber-400" />
-            <span>Connect Google</span>
-          </button>
-        )}
       </div>
     </header>
   );

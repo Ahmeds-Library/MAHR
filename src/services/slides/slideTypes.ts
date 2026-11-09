@@ -1,4 +1,14 @@
 import { SlideVectorGraphic } from "./infographics/infographicTypes";
+import {
+  AutonomousSlideMediaBundle,
+  ElementEntrancePreset,
+  SlideTransitionPreset
+} from "../../slidesStudio/layer1_data/presentonTypes";
+import {
+  AutonomousAssetItem,
+  SlideAssetArrangement,
+  SlideAutoLayoutConfig
+} from "../../slidesStudio/layer1_data/autonomousAssetTypes";
 
 export type SlideLayout =
   | "title"
@@ -45,6 +55,12 @@ export interface Slide {
   callout?: string;
   speakerNotes?: string;
   animationStyle?: "fade" | "slide-up" | "zoom-in" | "stagger";
+  transitionPreset?: SlideTransitionPreset;
+  entrancePreset?: ElementEntrancePreset;
+  presentonMedia?: AutonomousSlideMediaBundle;
+  assetArrangement?: SlideAssetArrangement;
+  autoLayout?: SlideAutoLayoutConfig;
+  droppedAssets?: AutonomousAssetItem[];
   imageUrl?: string;
   imageCaption?: string;
   videoUrl?: string;
@@ -84,6 +100,8 @@ export interface SlideDeck {
   topic: string;
   audience: string;
   themeId: string;
+  defaultTransition?: SlideTransitionPreset;
+  defaultEntrance?: ElementEntrancePreset;
   slides: Slide[];
   createdAt: string;
   updatedAt: string;

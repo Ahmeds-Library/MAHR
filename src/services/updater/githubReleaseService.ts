@@ -11,15 +11,19 @@ export const CURRENT_APP_VERSION = APP_VERSION;
 export const GITHUB_REPO = "Ahmeds-Library/MAHR";
 
 /**
- * Parses and compares two semantic version strings (e.g., "2.4.1" > "2.4.0")
+ * Parses and compares two semantic version strings (e.g., "2.4.1-build-2" > "2.4.1" > "2.4.0")
  * Returns 1 if vA > vB, -1 if vA < vB, 0 if equal
  */
 export function compareSemver(vA: string, vB: string): number {
-  const cleanA = vA.replace(/^v/, "").split("-")[0];
-  const cleanB = vB.replace(/^v/, "").split("-")[0];
+  if (!vA || !vB) return 0;
+  const cleanA = vA.replace(/^v/, "").trim();
+  const cleanB = vB.replace(/^v/, "").trim();
 
-  const partsA = cleanA.split(".").map((n) => parseInt(n, 10) || 0);
-  const partsB = cleanB.split(".").map((n) => parseInt(n, 10) || 0);
+  const [coreA, buildA] = cleanA.split("-build-");
+  const [coreB, buildB] = cleanB.split("-build-");
+
+  const partsA = (coreA || "").split(".").map((n) => parseInt(n, 10) || 0);
+  const partsB = (coreB || "").split(".").map((n) => parseInt(n, 10) || 0);
 
   const len = Math.max(partsA.length, partsB.length);
   for (let i = 0; i < len; i++) {
@@ -28,6 +32,12 @@ export function compareSemver(vA: string, vB: string): number {
     if (a > b) return 1;
     if (a < b) return -1;
   }
+
+  const bNumA = buildA ? parseInt(buildA, 10) || 0 : 0;
+  const bNumB = buildB ? parseInt(buildB, 10) || 0 : 0;
+  if (bNumA > bNumB) return 1;
+  if (bNumA < bNumB) return -1;
+
   return 0;
 }
 
@@ -46,8 +56,22 @@ export async function checkForAppUpdates(currentVer: string = CURRENT_APP_VERSIO
     });
     if (res.ok) {
       const data = await res.json();
-      if (data && data.version) {
-        manifest = data;
+      const detectedVersion = data.latestVersion || data.version;
+      if (data && detectedVersion) {
+        manifest = {
+          version: detectedVersion,
+          releaseName: data.releaseName || `MAHR v${detectedVersion}`,
+          releaseDate: data.releaseDate || new Date().toISOString(),
+          mandatory: Boolean(data.isMandatory || data.mandatory),
+          releaseNotes: data.releaseNotes || [
+            "Latest performance updates and model integration enhancements."
+          ],
+          downloadUrls: data.downloadUrls || {
+            windows: "/api/download/windows-exe",
+            linux: "/api/download/linux-deb",
+            github: data.githubReleaseUrl || `https://github.com/${GITHUB_REPO}/releases/latest`
+          }
+        };
       }
     }
   } catch (err) {
@@ -78,7 +102,7 @@ export async function checkForAppUpdates(currentVer: string = CURRENT_APP_VERSIO
       });
       if (ghRes.ok) {
         const gh = await ghRes.json();
-        const tagVer = (gh.tag_name || "2.4.0").replace(/^v/, "");
+        const tagVer = (gh.tag_name || "2.4.1").replace(/^v/, "");
         manifest = {
           version: tagVer,
           releaseName: gh.name || `MAHR v${tagVer}`,
@@ -89,8 +113,8 @@ export async function checkForAppUpdates(currentVer: string = CURRENT_APP_VERSIO
             : ["Continuous release improvements and stability updates."],
           downloadUrls: {
             github: gh.html_url,
-            windows: gh.assets?.find((a: any) => a.name.endsWith(".exe"))?.browser_download_url || `/api/download/windows-exe`,
-            linux: gh.assets?.find((a: any) => a.name.endsWith(".deb"))?.browser_download_url || `/api/download/linux-deb`
+            windows: "/api/download/windows-exe",
+            linux: "/api/download/linux-deb"
           }
         };
       }
@@ -129,10 +153,11 @@ export async function checkForAppUpdates(currentVer: string = CURRENT_APP_VERSIO
     releaseName: manifest.releaseName || `MAHR v${manifest.version}`,
     releaseDate: manifest.releaseDate || new Date().toISOString(),
     downloadUrl: targetDownloadUrl,
-    githubReleaseUrl: manifest.downloadUrls.github,
+    githubReleaseUrl: manifest.downloadUrls.github || `https://github.com/${GITHUB_REPO}/releases/latest`,
     assets: {
-      windowsExe: manifest.downloadUrls.windows,
-      linuxDeb: manifest.downloadUrls.linux
+      windowsExe: manifest.downloadUrls.windows || "/api/download/windows-exe",
+      linuxDeb: manifest.downloadUrls.linux || "/api/download/linux-deb"
     }
   };
 }
+

@@ -1,17 +1,18 @@
 {
-  "version": "2.4.1",
-  "releaseName": "MAHR Horizon v2.4.1 — Autonomous AI Companion",
-  "releaseDate": "2026-10-01",
+  "version": "2.4.1-build-2",
+  "releaseName": "MAHR Horizon v2.4.1-build-2 — Autonomous AI Companion",
+  "releaseDate": "2026-10-06",
   "minSupportedVersion": "1.0.0",
   "mandatory": false,
   "releaseNotes": [
+    "Latest full autonomous release v2.4.1-build-2 with native MAHR.exe engine",
     "Autonomous Smart Layout Engine for Whiteboard & Mind Map with fluid GSAP physics",
-    "Concentric circular, hierarchical tree, and categorical grid density classification",
-    "Seamless in-place desktop upgrade engine preserving all user brain memories and cognitive states",
-    "Automated CI/CD release pipeline with real-time update notifications"
+    "Direct streaming binary installer delivery with zero CORS latency and full resume support",
+    "Seamless in-place desktop upgrade engine preserving all user brain memories and cognitive states"
   ],
   "downloadUrls": {
     "windows": "/api/download/windows-exe",
+    "windowsPortable": "/api/download/windows-exe-portable",
     "linux": "/api/download/linux-deb",
     "github": "https://github.com/Ahmeds-Library/MAHR/releases/latest"
   }

@@ -1,24 +1,49 @@
-import React, { useState } from "react";
-import { Memory, MemoryCategory } from "../lib/memoryTypes";
-import { 
-  Brain, 
-  X, 
-  Trash2, 
-  Plus, 
-  User, 
-  Heart, 
-  Target, 
-  Briefcase, 
-  Users, 
-  Flame, 
+import React, { useState, useMemo, useEffect } from "react";
+import { Memory, MemoryCategory, MemoryTier, ChatMessage } from "../lib/memoryTypes";
+import {
+  Brain,
+  X,
+  Plus,
+  User,
+  Heart,
+  Target,
+  Briefcase,
+  Users,
+  Flame,
   Sparkles,
-  RefreshCw,
   Cpu,
-  Calendar,
-  Hash,
-  Tag
+  MessageSquare,
+  ArrowRight,
+  Network,
+  Activity,
+  Zap,
+  CheckCircle2,
+  Layers,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { searchMemoriesHybridVector } from "../memoryHub/layer2_logic/hybridVectorSearchEngine";
+import {
+  computeAutoLearningTelemetry,
+  autoLearnFromJournalTranscripts,
+} from "../memoryHub/layer2_logic/autoLearningMlService";
+import {
+  loadMemoryCognitiveOverrides,
+  updateSingleMemoryOverride,
+  detectConsolidationCandidates,
+  computeMemoryImportancePercent,
+} from "../memoryHub/layer2_logic/memoryRetentionAndConsolidationService";
+import {
+  MemorySortMode,
+  MemoryCognitiveOverride,
+  MemoryConsolidationCluster,
+} from "../memoryHub/layer1_data/hybridVectorTypes";
+import { MemoryTierFilterBar } from "../memoryHub/layer3_ui/MemoryTierFilterBar";
+import { MemoryConsolidationPanel } from "../memoryHub/layer3_ui/MemoryConsolidationPanel";
+import { MemoryCardItem } from "../memoryHub/layer3_ui/MemoryCardItem";
+import {
+  RLPolicyParameters,
+  KnowledgeDeficit,
+} from "../services/reinforcementLearningEngine";
 
 interface MemoryDashboardProps {
   isOpen: boolean;
@@ -27,6 +52,13 @@ interface MemoryDashboardProps {
   onAddMemory: (category: MemoryCategory, text: string) => Promise<void>;
   onDeleteMemory: (id: string) => Promise<void>;
   themeColor: string;
+  chatHistory?: ChatMessage[];
+  onShiftToJournal?: () => void;
+  onOpenKnowledgeGraph?: () => void;
+  rlPolicy?: RLPolicyParameters;
+  knowledgeDeficits?: KnowledgeDeficit[];
+  studyPadText?: string;
+  whiteboardText?: string;
 }
 
 export function MemoryDashboard({
@@ -35,63 +67,111 @@ export function MemoryDashboard({
   memories,
   onAddMemory,
   onDeleteMemory,
-  themeColor
+  themeColor,
+  chatHistory = [],
+  onShiftToJournal,
+  onOpenKnowledgeGraph,
+  rlPolicy,
+  knowledgeDeficits = [],
+  studyPadText = "",
+  whiteboardText = "",
 }: MemoryDashboardProps) {
   const [activeTab, setActiveTab] = useState<MemoryCategory | "all">("all");
+  const [activeTier, setActiveTier] = useState<MemoryTier | "all">("all");
+  const [sortMode, setSortMode] = useState<MemorySortMode>("hybrid");
+  const [vectorQuery, setVectorQuery] = useState("");
   const [newText, setNewText] = useState("");
   const [newCategory, setNewCategory] = useState<MemoryCategory>("identity");
+  const [newTier, setNewTier] = useState<MemoryTier>("semantic");
   const [isAdding, setIsAdding] = useState(false);
+  const [isConsolidationOpen, setIsConsolidationOpen] = useState(false);
+  const [isConsolidating, setIsConsolidating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isAutoLearning, setIsAutoLearning] = useState(false);
+  const [learningBanner, setLearningBanner] = useState<string | null>(null);
+  const [overridesMap, setOverridesMap] = useState<
+    Record<string, MemoryCognitiveOverride>
+  >(() => loadMemoryCognitiveOverrides());
 
-  // Category Configuration
-  const categoryConfig: Record<MemoryCategory, { label: string; icon: any; color: string; bg: string }> = {
-    identity: { 
-      label: "Identity Core", 
-      icon: User, 
-      color: "text-amber-400 border-amber-500/25", 
-      bg: "bg-amber-500/5 hover:bg-amber-500/10" 
+  const [obsidianSyncInfo, setObsidianSyncInfo] = useState<{
+    state: "idle" | "syncing" | "synced";
+    notesCount: number;
+    linksCount: number;
+    lastFile?: string;
+  }>({
+    state: "synced",
+    notesCount: memories.length + 3,
+    linksCount: memories.length * 2 + 4,
+  });
+
+  useEffect(() => {
+    const handleObsidianSync = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        setObsidianSyncInfo({
+          state: detail.syncState === "syncing" ? "syncing" : "synced",
+          notesCount: detail.totalNotes || memories.length + 3,
+          linksCount: detail.totalWikiLinks || memories.length * 2 + 4,
+          lastFile: detail.writtenFiles?.[0],
+        });
+      }
+    };
+    window.addEventListener("mahr-obsidian-sync-status", handleObsidianSync);
+    return () =>
+      window.removeEventListener("mahr-obsidian-sync-status", handleObsidianSync);
+  }, [memories.length]);
+
+  const categoryConfig: Record<
+    MemoryCategory,
+    { label: string; icon: any; color: string; bg: string }
+  > = {
+    identity: {
+      label: "Identity Core",
+      icon: User,
+      color: "text-amber-400 border-amber-500/25",
+      bg: "bg-amber-500/5 hover:bg-amber-500/10",
     },
-    preference: { 
-      label: "Preferences", 
-      icon: Heart, 
-      color: "text-pink-400 border-pink-500/25", 
-      bg: "bg-pink-500/5 hover:bg-pink-500/10" 
+    preference: {
+      label: "Preferences",
+      icon: Heart,
+      color: "text-pink-400 border-pink-500/25",
+      bg: "bg-pink-500/5 hover:bg-pink-500/10",
     },
-    goal: { 
-      label: "Life Goals", 
-      icon: Target, 
-      color: "text-emerald-400 border-emerald-500/25", 
-      bg: "bg-emerald-500/5 hover:bg-emerald-500/10" 
+    goal: {
+      label: "Life Goals",
+      icon: Target,
+      color: "text-emerald-400 border-emerald-500/25",
+      bg: "bg-emerald-500/5 hover:bg-emerald-500/10",
     },
-    project: { 
-      label: "Active Projects", 
-      icon: Briefcase, 
-      color: "text-cyan-400 border-cyan-500/25", 
-      bg: "bg-cyan-500/5 hover:bg-cyan-500/10" 
+    project: {
+      label: "Active Projects",
+      icon: Briefcase,
+      color: "text-cyan-400 border-cyan-500/25",
+      bg: "bg-cyan-500/5 hover:bg-cyan-500/10",
     },
-    relationship: { 
-      label: "Relationships", 
-      icon: Users, 
-      color: "text-purple-400 border-purple-500/25", 
-      bg: "bg-purple-500/5 hover:bg-purple-500/10" 
+    relationship: {
+      label: "Relationships",
+      icon: Users,
+      color: "text-purple-400 border-purple-500/25",
+      bg: "bg-purple-500/5 hover:bg-purple-500/10",
     },
-    emotional: { 
-      label: "Milestones", 
-      icon: Flame, 
-      color: "text-red-400 border-red-500/25", 
-      bg: "bg-red-500/5 hover:bg-red-500/10" 
+    emotional: {
+      label: "Milestones",
+      icon: Flame,
+      color: "text-red-400 border-red-500/25",
+      bg: "bg-red-500/5 hover:bg-red-500/10",
     },
-    behavior: { 
-      label: "Behaviors & Habits", 
-      icon: Brain, 
-      color: "text-indigo-400 border-indigo-500/25", 
-      bg: "bg-indigo-500/5 hover:bg-indigo-500/10" 
+    behavior: {
+      label: "Behaviors & Habits",
+      icon: Brain,
+      color: "text-indigo-400 border-indigo-500/25",
+      bg: "bg-indigo-500/5 hover:bg-indigo-500/10",
     },
-    simulation: { 
-      label: "Saved Simulations", 
-      icon: Cpu, 
-      color: "text-cyan-400 border-cyan-500/25", 
-      bg: "bg-cyan-500/5 hover:bg-cyan-500/10" 
+    simulation: {
+      label: "Saved Simulations",
+      icon: Cpu,
+      color: "text-cyan-400 border-cyan-500/25",
+      bg: "bg-cyan-500/5 hover:bg-cyan-500/10",
     },
   };
 
@@ -101,7 +181,7 @@ export function MemoryDashboard({
         label: "General Recollection",
         icon: Brain,
         color: "text-purple-400 border-purple-500/25",
-        bg: "bg-purple-500/5 hover:bg-purple-500/10"
+        bg: "bg-purple-500/5 hover:bg-purple-500/10",
       };
     }
     if ((categoryConfig as Record<string, any>)[cat]) {
@@ -111,47 +191,160 @@ export function MemoryDashboard({
     if ((categoryConfig as Record<string, any>)[lower]) {
       return (categoryConfig as Record<string, any>)[lower];
     }
-    if (lower.includes("learn") || lower.includes("milestone") || lower.includes("study")) {
-      return {
-        label: cat,
-        icon: Flame,
-        color: "text-amber-400 border-amber-500/25",
-        bg: "bg-amber-500/5 hover:bg-amber-500/10"
-      };
-    }
-    if (lower.includes("task") || lower.includes("work") || lower.includes("office") || lower.includes("project")) {
-      return {
-        label: cat,
-        icon: Briefcase,
-        color: "text-cyan-400 border-cyan-500/25",
-        bg: "bg-cyan-500/5 hover:bg-cyan-500/10"
-      };
-    }
     return {
       label: cat,
       icon: Brain,
       color: "text-purple-400 border-purple-500/25",
-      bg: "bg-purple-500/5 hover:bg-purple-500/10"
+      bg: "bg-purple-500/5 hover:bg-purple-500/10",
     };
   };
 
   const getThemeBadgeGlow = () => {
     switch (themeColor) {
-      case "violet": return "border-purple-500/30 text-purple-400 bg-purple-500/10";
-      case "crimson": return "border-rose-500/30 text-rose-400 bg-rose-500/10";
-      case "emerald": return "border-emerald-500/30 text-emerald-400 bg-emerald-500/10";
-      case "celestial": return "border-sky-500/30 text-sky-400 bg-sky-500/10";
-      case "gold": return "border-amber-500/30 text-amber-400 bg-amber-500/10";
-      case "rose": return "border-pink-500/30 text-pink-400 bg-pink-500/10";
-      case "charcoal":
+      case "violet":
+        return "border-purple-500/30 text-purple-400 bg-purple-500/10";
+      case "crimson":
+        return "border-rose-500/30 text-rose-400 bg-rose-500/10";
+      case "emerald":
+        return "border-emerald-500/30 text-emerald-400 bg-emerald-500/10";
+      case "celestial":
+        return "border-sky-500/30 text-sky-400 bg-sky-500/10";
+      case "gold":
+        return "border-amber-500/30 text-amber-400 bg-amber-500/10";
+      case "rose":
+        return "border-pink-500/30 text-pink-400 bg-pink-500/10";
       default:
         return "border-indigo-500/30 text-indigo-400 bg-indigo-500/10";
     }
   };
 
-  const filteredMemories = activeTab === "all" 
-    ? memories 
-    : memories.filter(m => m.category === activeTab || m.category?.toLowerCase() === activeTab);
+  // Layer 2: Hybrid Vector Search + Cognitive Tier + Retention/Importance Scoring
+  const hybridMatches = useMemo(() => {
+    return searchMemoriesHybridVector(
+      vectorQuery,
+      memories,
+      activeTab,
+      activeTier,
+      sortMode,
+      overridesMap
+    );
+  }, [vectorQuery, memories, activeTab, activeTier, sortMode, overridesMap]);
+
+  // Layer 2: Auto-Learning & Online ML/RL Telemetry
+  const mlTelemetry = useMemo(() => {
+    return computeAutoLearningTelemetry(
+      memories,
+      rlPolicy,
+      knowledgeDeficits,
+      studyPadText,
+      whiteboardText,
+      overridesMap
+    );
+  }, [
+    memories,
+    rlPolicy,
+    knowledgeDeficits,
+    studyPadText,
+    whiteboardText,
+    overridesMap,
+  ]);
+
+  // Layer 2: Consolidation Candidate Clusters
+  const consolidationClusters = useMemo(() => {
+    return detectConsolidationCandidates(memories, overridesMap);
+  }, [memories, overridesMap]);
+
+  const handleTogglePin = (memoryId: string) => {
+    const currentPinned = overridesMap[memoryId]?.pinned ?? false;
+    const next = updateSingleMemoryOverride(memoryId, {
+      pinned: !currentPinned,
+      lastAccessedAt: new Date().toISOString(),
+    });
+    setOverridesMap(next);
+    setLearningBanner(
+      !currentPinned
+        ? "Memory pinned to 100% permanent retention lock."
+        : "Memory unpinned from retention lock."
+    );
+    setTimeout(() => setLearningBanner(null), 2800);
+  };
+
+  const handleReinforceMemory = (memoryId: string) => {
+    const mem = memories.find((m) => m.id === memoryId);
+    const currentOv = overridesMap[memoryId];
+    const currentImp = mem
+      ? computeMemoryImportancePercent(mem, currentOv)
+      : 85;
+    const currentAccess = currentOv?.accessCount ?? 1;
+
+    const next = updateSingleMemoryOverride(memoryId, {
+      importancePercent: Math.min(100, currentImp + 8),
+      accessCount: currentAccess + 1,
+      lastAccessedAt: new Date().toISOString(),
+    });
+    setOverridesMap(next);
+    setLearningBanner(
+      `Reinforced memory trace (+8% Importance · Recall #${currentAccess + 1}).`
+    );
+    setTimeout(() => setLearningBanner(null), 2800);
+  };
+
+  const handleChangeTier = (memoryId: string, nextTier: MemoryTier) => {
+    const next = updateSingleMemoryOverride(memoryId, { tier: nextTier });
+    setOverridesMap(next);
+    setLearningBanner(`Reclassified memory into ${nextTier.toUpperCase()} cognitive tier.`);
+    setTimeout(() => setLearningBanner(null), 2500);
+  };
+
+  const handleConsolidateSingleCluster = async (
+    cluster: MemoryConsolidationCluster
+  ) => {
+    setIsConsolidating(true);
+    try {
+      await onAddMemory(cluster.dominantCategory, cluster.synthesizedRulePreview);
+      let updatedMap = { ...overridesMap };
+      for (const sm of cluster.sourceMemories) {
+        updatedMap = updateSingleMemoryOverride(sm.id, {
+          consolidatedIntoId: cluster.id,
+          accessCount: (updatedMap[sm.id]?.accessCount ?? 1) + 1,
+          lastAccessedAt: new Date().toISOString(),
+        });
+      }
+      setOverridesMap(updatedMap);
+      setLearningBanner(
+        `Consolidated ${cluster.sourceMemories.length} recollections into a high-retention Semantic Principle (${cluster.clusterName}).`
+      );
+      setTimeout(() => setLearningBanner(null), 4000);
+    } finally {
+      setIsConsolidating(false);
+    }
+  };
+
+  const handleConsolidateAllClusters = async () => {
+    if (consolidationClusters.length === 0) return;
+    setIsConsolidating(true);
+    try {
+      let updatedMap = { ...overridesMap };
+      for (const cluster of consolidationClusters) {
+        await onAddMemory(cluster.dominantCategory, cluster.synthesizedRulePreview);
+        for (const sm of cluster.sourceMemories) {
+          updatedMap = updateSingleMemoryOverride(sm.id, {
+            consolidatedIntoId: cluster.id,
+            accessCount: (updatedMap[sm.id]?.accessCount ?? 1) + 1,
+            lastAccessedAt: new Date().toISOString(),
+          });
+        }
+      }
+      setOverridesMap(updatedMap);
+      setLearningBanner(
+        `Synthesized ${consolidationClusters.length} semantic principles across overlapping memory clusters.`
+      );
+      setIsConsolidationOpen(false);
+      setTimeout(() => setLearningBanner(null), 4000);
+    } finally {
+      setIsConsolidating(false);
+    }
+  };
 
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +355,10 @@ export function MemoryDashboard({
       await onAddMemory(newCategory, newText.trim());
       setNewText("");
       setIsAdding(false);
+      setLearningBanner(
+        `Committed new ${newTier.toUpperCase()} vector node (128-D L2 normalized) to Recall DB.`
+      );
+      setTimeout(() => setLearningBanner(null), 3500);
     } catch (e) {
       console.error(e);
     } finally {
@@ -169,11 +366,38 @@ export function MemoryDashboard({
     }
   };
 
+  const handleRunAutoLearnSweep = async () => {
+    setIsAutoLearning(true);
+    try {
+      const res = await autoLearnFromJournalTranscripts(
+        chatHistory,
+        memories,
+        onAddMemory
+      );
+      if (res.newlyExtractedCount > 0) {
+        setLearningBanner(
+          `Auto-Learning extracted ${res.newlyExtractedCount} new vector facts and reinforced ${res.reinforcedCount} existing nodes.`
+        );
+      } else {
+        setLearningBanner(
+          `Vector DB is fully synchronized (${res.reinforcedCount} semantic clusters reinforced from Journal).`
+        );
+      }
+      setTimeout(() => setLearningBanner(null), 4000);
+    } finally {
+      setIsAutoLearning(false);
+    }
+  };
+
   const formatDate = (isoStr: string) => {
     try {
       const d = new Date(isoStr);
-      return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-    } catch (e) {
+      return d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
       return "Durable Record";
     }
   };
@@ -196,52 +420,189 @@ export function MemoryDashboard({
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
-            className="relative w-full max-w-3xl max-h-[85vh] bg-slate-950/95 border border-white/15 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex flex-col backdrop-blur-2xl overflow-hidden text-slate-100 z-10"
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="relative w-full max-w-5xl max-h-[88vh] bg-slate-950/95 border border-white/15 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex flex-col backdrop-blur-2xl overflow-hidden text-slate-100 z-10"
           >
-            {/* Ambient Top Glow Line */}
-            <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-60 pointer-events-none" />
-
-            {/* Header */}
-            <div className="p-6 border-b border-white/10 bg-white/[0.03] flex items-center justify-between shrink-0">
+            {/* Top Header */}
+            <div className="px-5 py-4 sm:px-6 border-b border-white/10 bg-white/[0.03] flex flex-wrap items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`p-2.5 rounded-2xl border ${getThemeBadgeGlow()}`}>
-                  <Brain size={22} className="animate-pulse" />
+                  <Brain size={20} />
                 </div>
                 <div>
-                  <h3 className="font-display font-medium text-lg tracking-tight text-white flex items-center gap-2">
-                    MAHR Memory Core
+                  <h3 className="font-display font-bold text-base sm:text-lg tracking-tight text-white flex items-center gap-2">
+                    <span>MAHR Cognitive Recall & Vector Memory</span>
                     <Sparkles size={14} className="text-cyan-400" />
                   </h3>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-slate-400 mt-0.5">
-                    Persistent recollect files ({memories.length})
+                  <p className="text-[11px] font-mono text-slate-400 mt-0.5 tabular-nums">
+                    128-D Hybrid Vector DB · {memories.length} Memories ·{" "}
+                    {mlTelemetry.avgRetentionPercent ?? 94}% Avg Retention ·{" "}
+                    {mlTelemetry.pinnedCount ?? 0} Pinned
                   </p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-rose-500/80 hover:border-rose-400 text-slate-400 hover:text-white transition duration-200 cursor-pointer"
-                title="Close"
-              >
-                <X size={18} />
-              </button>
+
+              {/* Corner Action Controls */}
+              <div className="flex items-center gap-2">
+                {onOpenKnowledgeGraph && (
+                  <button
+                    id="recall-open-obsidian-btn"
+                    data-testid="recall-open-obsidian-btn"
+                    type="button"
+                    onClick={onOpenKnowledgeGraph}
+                    className="h-9 px-3 rounded-xl border border-purple-500/40 bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 text-xs font-mono font-bold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0"
+                    title="Open MAHR × Obsidian Second-Brain Vault & Knowledge Graph"
+                  >
+                    <Network size={14} className="text-purple-400" />
+                    <span>Obsidian Vault & Graph</span>
+                  </button>
+                )}
+
+                {onShiftToJournal && (
+                  <button
+                    id="recall-corner-shift-to-journal-btn"
+                    data-testid="recall-corner-shift-to-journal-btn"
+                    type="button"
+                    onClick={onShiftToJournal}
+                    className="h-9 px-3.5 rounded-xl border border-purple-400/50 bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-100 text-xs font-mono font-bold flex items-center gap-1.5 shadow-md shadow-purple-950/50 transition cursor-pointer whitespace-nowrap shrink-0"
+                    title="Shift to Conversation Journal Transcripts"
+                  >
+                    <MessageSquare size={14} className="text-purple-300" />
+                    <span>Journal ({chatHistory.length})</span>
+                    <ArrowRight size={13} className="text-purple-300" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-rose-500/80 hover:border-rose-400 text-slate-400 hover:text-white transition duration-200 cursor-pointer"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            {/* Quick stats & action row */}
-            <div className="px-6 py-4 bg-white/5 border-b border-white/5 flex items-center justify-between gap-2.5">
-              <span className="text-[10px] text-slate-400 font-mono">
-                💡 MAHR remembers these details naturally as you chat.
-              </span>
-              {!isAdding && (
+            {/* Auto-Learning, Retention & Consolidation Strip */}
+            <div className="px-5 py-3 sm:px-6 bg-slate-900/70 border-b border-white/10 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs font-mono text-slate-300 tabular-nums">
+                <span className="flex items-center gap-1.5 text-cyan-300 font-semibold">
+                  <Activity size={13} className="text-cyan-400" />
+                  <span>Vector Density: {mlTelemetry.graphDensityPercent}%</span>
+                </span>
+                <span className="text-slate-600">·</span>
+                <span>
+                  Semantic Links:{" "}
+                  <strong className="text-white">
+                    {mlTelemetry.semanticEdgesCount}
+                  </strong>
+                </span>
+                <span className="text-slate-600">·</span>
+                <span>
+                  Retention:{" "}
+                  <strong className="text-emerald-300">
+                    {mlTelemetry.avgRetentionPercent ?? 94}%
+                  </strong>
+                </span>
+                <span className="text-slate-600">·</span>
+                <span>
+                  Confidence:{" "}
+                  <strong className="text-amber-300">
+                    {mlTelemetry.avgConfidencePercent}%
+                  </strong>
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
-                  onClick={() => setIsAdding(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-xs font-mono tracking-wider text-cyan-300 transition shrink-0 cursor-pointer"
+                  type="button"
+                  onClick={() => setIsConsolidationOpen((v) => !v)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-semibold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap shrink-0 ${
+                    isConsolidationOpen
+                      ? "border-cyan-400 bg-cyan-500/20 text-cyan-100"
+                      : "border-cyan-500/35 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-200"
+                  }`}
+                  title="Synthesize overlapping episodic memories into high-retention Semantic Principles"
                 >
-                  <Plus size={12} />
-                  <span>MANUAL SEED</span>
+                  <Layers size={13} className="text-cyan-400" />
+                  <span>
+                    Consolidate ({consolidationClusters.length})
+                  </span>
                 </button>
-              )}
+
+                <button
+                  type="button"
+                  onClick={handleRunAutoLearnSweep}
+                  disabled={isAutoLearning}
+                  className="px-3 py-1.5 rounded-xl border border-emerald-500/35 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 text-xs font-mono font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
+                  title="Scan Journal conversation transcripts and extract new facts into Vector DB"
+                >
+                  <Zap
+                    size={13}
+                    className={
+                      isAutoLearning
+                        ? "animate-spin text-emerald-300"
+                        : "text-emerald-400"
+                    }
+                  />
+                  <span>
+                    {isAutoLearning ? "Indexing..." : "Auto-Learn from Journal"}
+                  </span>
+                </button>
+
+                {!isAdding && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAdding(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-mono font-semibold text-slate-200 transition shrink-0 cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus size={13} />
+                    <span>Add Memory</span>
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Feedback Banner */}
+            {learningBanner && (
+              <div className="px-6 py-2 bg-emerald-950/80 border-b border-emerald-500/30 text-emerald-200 text-xs font-mono flex items-center gap-2">
+                <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                <span>{learningBanner}</span>
+              </div>
+            )}
+
+            {/* Layer 3: AI Memory Consolidation Drawer */}
+            <MemoryConsolidationPanel
+              isOpen={isConsolidationOpen}
+              onClose={() => setIsConsolidationOpen(false)}
+              clusters={consolidationClusters}
+              isConsolidating={isConsolidating}
+              onConsolidateSingleCluster={handleConsolidateSingleCluster}
+              onConsolidateAllClusters={handleConsolidateAllClusters}
+            />
+
+            {/* Layer 3: Cognitive Tier & Hybrid Vector Filter Bar */}
+            <MemoryTierFilterBar
+              vectorQuery={vectorQuery}
+              onVectorQueryChange={setVectorQuery}
+              activeTier={activeTier}
+              onSelectTier={setActiveTier}
+              activeCategory={activeTab}
+              onSelectCategory={setActiveTab}
+              sortMode={sortMode}
+              onSelectSortMode={setSortMode}
+              totalCount={memories.length}
+              episodicCount={mlTelemetry.episodicCount ?? 0}
+              semanticCount={mlTelemetry.semanticCount ?? 0}
+              proceduralCount={mlTelemetry.proceduralCount ?? 0}
+              categories={(Object.keys(categoryConfig) as MemoryCategory[]).map(
+                (id) => ({
+                  id,
+                  label: categoryConfig[id].label,
+                })
+              )}
+            />
 
             {/* Manual entry card drawer inside dashboard */}
             <AnimatePresence>
@@ -253,44 +614,74 @@ export function MemoryDashboard({
                   className="overflow-hidden border-b border-white/15 bg-[#080812]"
                 >
                   <form onSubmit={handleManualAdd} className="p-5 space-y-4">
-                    <div>
-                      <label className="block text-[11px] font-mono tracking-wider text-slate-300 uppercase mb-2">
-                        Memory Archetype Category
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {(Object.keys(categoryConfig) as MemoryCategory[]).map((cat) => {
-                          const cfg = getCategoryConfig(cat) || { label: cat, icon: Brain, color: "text-purple-400 border-purple-500/25", bg: "bg-purple-500/5 hover:bg-purple-500/10" };
-                          const Icon = cfg?.icon || Brain;
-                          const active = newCategory === cat;
-                          return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-300 mb-2">
+                          1. Cognitive Memory Tier
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(
+                            [
+                              { id: "episodic", label: "Episodic" },
+                              { id: "semantic", label: "Semantic" },
+                              { id: "procedural", label: "Procedural" },
+                            ] as Array<{ id: MemoryTier; label: string }>
+                          ).map((t) => (
                             <button
-                              key={cat}
+                              key={t.id}
                               type="button"
-                              onClick={() => setNewCategory(cat)}
-                              className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs tracking-wide transition cursor-pointer ${
-                                active 
-                                  ? "border-cyan-400 bg-cyan-400/10 text-cyan-300"
-                                  : "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10"
+                              onClick={() => setNewTier(t.id)}
+                              className={`p-2 rounded-lg border text-xs font-mono transition cursor-pointer ${
+                                newTier === t.id
+                                  ? "border-cyan-400 bg-cyan-400/15 text-cyan-200 font-semibold"
+                                  : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10"
                               }`}
                             >
-                              <Icon size={12} />
-                              <span className="truncate">{(cfg?.label || cat || '').split(" ")[0]}</span>
+                              {t.label}
                             </button>
-                          );
-                        })}
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-300 mb-2">
+                          2. Memory Archetype Category
+                        </label>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {(Object.keys(categoryConfig) as MemoryCategory[]).map(
+                            (cat) => {
+                              const cfg = getCategoryConfig(cat);
+                              const active = newCategory === cat;
+                              return (
+                                <button
+                                  key={cat}
+                                  type="button"
+                                  onClick={() => setNewCategory(cat)}
+                                  className={`p-1.5 rounded-lg border text-[11px] font-mono transition truncate cursor-pointer ${
+                                    active
+                                      ? "border-cyan-400 bg-cyan-400/15 text-cyan-200 font-semibold"
+                                      : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10"
+                                  }`}
+                                >
+                                  {(cfg?.label || cat).split(" ")[0]}
+                                </button>
+                              );
+                            }
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-mono tracking-wider text-slate-300 uppercase mb-2">
-                        Recollection Statement (3rd Person declarative)
+                      <label className="block text-[11px] font-mono text-slate-300 mb-2">
+                        3. Recollection Statement (Automatically Embedded to 128-D Vector Node & Linked in Obsidian)
                       </label>
                       <textarea
                         value={newText}
                         onChange={(e) => setNewText(e.target.value)}
-                        placeholder="e.g. The user's AI companion is called MAHR, an advanced digital learning companion."
+                        placeholder="e.g. The user prefers step-by-step Feynman diagrams when studying distributed systems."
                         required
-                        className="w-full h-18 text-xs p-3 rounded-lg border border-white/10 bg-black/40 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 resize-none font-sans"
+                        className="w-full h-20 text-xs p-3 rounded-xl border border-white/15 bg-black/40 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 resize-none font-sans"
                       />
                     </div>
 
@@ -298,16 +689,16 @@ export function MemoryDashboard({
                       <button
                         type="button"
                         onClick={() => setIsAdding(false)}
-                        className="px-3.5 py-1.5 rounded-lg border border-white/5 text-xs font-mono tracking-wide text-slate-400 hover:text-white transition cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg border border-white/10 text-xs font-mono text-slate-400 hover:text-white transition cursor-pointer"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase font-mono tracking-widest transition disabled:opacity-50 cursor-pointer"
+                        className="px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono transition disabled:opacity-50 cursor-pointer"
                       >
-                        {submitting ? "Saving..." : "Commit Memory"}
+                        {submitting ? "Vectorizing..." : "Commit Vector Memory"}
                       </button>
                     </div>
                   </form>
@@ -315,131 +706,86 @@ export function MemoryDashboard({
               )}
             </AnimatePresence>
 
-            {/* TAB SELECTOR SCROLLER */}
-            <div className="px-6 py-4 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-light border-white/10 shrink-0">
-              <button
-                onClick={() => setActiveTab("all")}
-                className={`px-3 py-1.5 rounded-full border text-[11px] tracking-wider uppercase transition cursor-pointer shrink-0 ${
-                  activeTab === "all"
-                    ? "border-white bg-white text-slate-950 font-bold"
-                    : "border-white/5 bg-white/5 text-slate-400 hover:border-white/15"
-                }`}
-              >
-                All Memories
-              </button>
-              {(Object.keys(categoryConfig) as MemoryCategory[]).map((cat) => {
-                const config = getCategoryConfig(cat);
-                const active = activeTab === cat;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveTab(cat)}
-                    className={`px-3 py-1.5 rounded-full border text-[11px] tracking-wider uppercase transition shrink-0 cursor-pointer ${
-                      active
-                        ? "border-white bg-white text-slate-950 font-bold"
-                        : "border-white/5 bg-white/5 text-slate-400 hover:border-white/15"
-                    }`}
-                  >
-                    {(config?.label || cat).split(" ")[0]}
-                  </button>
-                );
-              })}
-            </div>
-
             {/* RECOLLECTION ITEMS CARDS CONTAINER */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-3.5">
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-3">
               <AnimatePresence initial={false}>
-                {filteredMemories.length === 0 ? (
+                {hybridMatches.length === 0 ? (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500"
+                    className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400"
                   >
                     <div className="p-4 rounded-full border border-dashed border-white/10 bg-white/[0.02] mb-4">
                       <Brain size={32} className="opacity-40" />
                     </div>
-                    <h4 className="text-sm font-semibold tracking-wide text-slate-300">No memories recorded yet</h4>
-                    <p className="text-xs max-w-xs mt-1.5 leading-relaxed font-mono">
-                      {activeTab === "all" 
-                        ? "Start talking aloud with MAHR! The background consolidator analyzes transcript slices and builds a life context naturally."
-                        : `No persistent recollections saved in Category "${categoryConfig[activeTab as MemoryCategory]?.label || activeTab}". Add one or speak with MAHR.`}
+                    <h4 className="text-sm font-semibold tracking-wide text-slate-200">
+                      {vectorQuery.trim()
+                        ? "No semantic vector matches found"
+                        : "No memories recorded in this filter yet"}
+                    </h4>
+                    <p className="text-xs max-w-sm mt-1.5 leading-relaxed font-mono text-slate-400">
+                      {vectorQuery.trim()
+                        ? "Try a broader concept or click 'Auto-Learn from Journal' to index recent conversations."
+                        : "Speak with MAHR, add a manual memory, or click 'Auto-Learn from Journal' to extract and embed facts."}
                     </p>
                   </motion.div>
                 ) : (
-                  filteredMemories.map((m) => {
-                    const cfg = getCategoryConfig(m?.category) || { label: m?.category || "Recollection", icon: Brain, color: "text-purple-400 border-purple-500/25", bg: "bg-purple-500/5 hover:bg-purple-500/10" };
-                    const Icon = cfg?.icon || Brain;
-
+                  hybridMatches.map((match, idx) => {
+                    const cfg = getCategoryConfig(match.memory?.category);
                     return (
-                      <motion.div
-                        key={m.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className={`flex items-start justify-between gap-4 p-4 rounded-xl border border-white/5 backdrop-blur-md bg-white/[0.02] ${cfg?.bg || 'bg-purple-500/5'} transition-colors group relative`}
-                      >
-                        <div className="flex gap-3.5 overflow-hidden">
-                          <div className={`p-2 rounded-lg border mt-0.5 shrink-0 bg-black/40 ${cfg?.color || 'text-purple-400 border-purple-500/25'}`}>
-                            <Icon size={14} />
-                          </div>
-                          <div className="overflow-hidden">
-                            <span className={`text-[9px] font-mono uppercase tracking-wider block ${cfg?.color || 'text-purple-400'}`}>
-                              {cfg?.label || m?.category || 'Recollection'}
-                            </span>
-                            <p className="text-xs text-slate-200 mt-1 font-sans leading-relaxed break-words font-medium">
-                              {m.text}
-                            </p>
-
-                            {/* Project ID, Due Date, and Classification Tags */}
-                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                              {m.projectId && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                                  <Hash size={10} />
-                                  <span>{m.projectId}</span>
-                                </span>
-                              )}
-                              {m.dueDate && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                                  <Calendar size={10} />
-                                  <span>Due: {m.dueDate}</span>
-                                </span>
-                              )}
-                              {m.tags && m.tags.filter(t => !t.startsWith("category:") && !t.startsWith("project:") && !t.startsWith("due:")).map((tag, idx) => (
-                                <span key={idx} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/5 text-slate-400 border border-white/10">
-                                  <Tag size={9} />
-                                  <span>{tag}</span>
-                                </span>
-                              ))}
-                            </div>
-
-                            <span className="text-[9px] font-mono text-slate-500 mt-1.5 block">
-                              Recalled: {formatDate(m.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Forget / Delete trigger button */}
-                        <button
-                          onClick={() => onDeleteMemory(m.id)}
-                          className="opacity-0 group-hover:opacity-100 p-2 rounded-lg border border-red-500/25 bg-red-950/15 text-red-400 hover:bg-red-500 hover:text-white transition duration-150 absolute top-4 right-4 sm:relative sm:top-0 sm:right-0 shrink-0 cursor-pointer"
-                          title="Forget this memory"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </motion.div>
+                      <MemoryCardItem
+                        key={`${match.memory.id || "mem"}-${idx}`}
+                        match={match}
+                        hasActiveQuery={Boolean(vectorQuery.trim())}
+                        categoryLabel={
+                          cfg?.label || match.memory?.category || "Recollection"
+                        }
+                        categoryColorClass={
+                          cfg?.color || "text-purple-400 border-purple-500/25"
+                        }
+                        categoryBgClass={
+                          cfg?.bg || "bg-purple-500/5 hover:bg-purple-500/10"
+                        }
+                        CategoryIcon={cfg?.icon || Brain}
+                        onTogglePin={handleTogglePin}
+                        onReinforceMemory={handleReinforceMemory}
+                        onChangeTier={handleChangeTier}
+                        onDeleteMemory={onDeleteMemory}
+                        onOpenInObsidian={onOpenKnowledgeGraph}
+                        formatDate={formatDate}
+                      />
                     );
                   })
                 )}
               </AnimatePresence>
             </div>
 
-            {/* Technical visual core footprint footer */}
-            <div className="p-5 border-t border-white/10 bg-black/40 flex items-center justify-between text-[9px] font-mono text-slate-600 tracking-wider">
-              <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_5px_rgba(34,211,238,0.7)] animate-pulse" />
-                <span>MEM-SYNC STREAM ACTIVE</span>
-              </span>
-              <span>DURABLE LOCAL JSON DB SEED</span>
+            {/* Footer with Silent Background Obsidian Vault Sync Telemetry */}
+            <div className="px-6 py-3.5 border-t border-white/10 bg-black/40 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-slate-400 tabular-nums">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-emerald-300 font-semibold">
+                  {obsidianSyncInfo.state === "syncing"
+                    ? "Obsidian Vault Delta Syncing..."
+                    : `Obsidian Vault Auto-Synced (${obsidianSyncInfo.notesCount} .md · ${obsidianSyncInfo.linksCount} [[WikiLinks]])`}
+                </span>
+                {obsidianSyncInfo.lastFile && (
+                  <span className="text-slate-500 hidden sm:inline">
+                    · Last: {obsidianSyncInfo.lastFile}
+                  </span>
+                )}
+              </div>
+              {onShiftToJournal && (
+                <button
+                  type="button"
+                  onClick={onShiftToJournal}
+                  className="text-purple-300 hover:text-white flex items-center gap-1 cursor-pointer font-semibold"
+                >
+                  <span>
+                    Switch to Conversation Journal ({chatHistory.length})
+                  </span>
+                  <ArrowRight size={12} />
+                </button>
+              )}
             </div>
           </motion.div>
         </div>

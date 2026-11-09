@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { SlideDeck, Slide, SlideLayout } from "../../services/slides/slideTypes";
 import { DEFAULT_THEME_ID } from "../../services/slides/slideThemes";
 import { generateSlideDeckWithAI, createFallbackPresentationDeck } from "../../services/slides/slideAIEngine";
@@ -7,13 +7,16 @@ import {
   GroundedVectorContext
 } from "../../services/slides/slideVectorIntelligence";
 
+const DEFAULT_FALLBACK_TOPIC = "FMCG Market Dynamics & Omnichannel Strategy";
+
 interface UseSlideStudioProps {
   initialTopic?: string;
 }
 
-export function useSlideStudio({ initialTopic = "FMCG Market Dynamics & Omnichannel Strategy" }: UseSlideStudioProps = {}) {
+export function useSlideStudio({ initialTopic = DEFAULT_FALLBACK_TOPIC }: UseSlideStudioProps = {}) {
+  const effectiveTopic = (initialTopic && initialTopic.trim()) ? initialTopic.trim() : DEFAULT_FALLBACK_TOPIC;
   const [deck, setDeck] = useState<SlideDeck>(() =>
-    createFallbackPresentationDeck(initialTopic, "Executive Leadership", 10, DEFAULT_THEME_ID)
+    createFallbackPresentationDeck(effectiveTopic, "Executive Leadership", 10, DEFAULT_THEME_ID)
   );
 
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
@@ -22,6 +25,49 @@ export function useSlideStudio({ initialTopic = "FMCG Market Dynamics & Omnichan
   const [isPresenting, setIsPresenting] = useState<boolean>(false);
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const lastSynthesizedTopicRef = useRef<string>("");
+
+  // Automatically synthesize live presentation deck whenever a voice/tool initialTopic is passed or updated
+  useEffect(() => {
+    const cleanTopic = (initialTopic || "").trim();
+    if (!cleanTopic || cleanTopic === DEFAULT_FALLBACK_TOPIC) return;
+    if (lastSynthesizedTopicRef.current === cleanTopic) return;
+    lastSynthesizedTopicRef.current = cleanTopic;
+
+    // Immediately show tailored fallback deck while AI builds the full grounded presentation
+    setDeck((prev) => createFallbackPresentationDeck(cleanTopic, "Executive Leadership", 8, prev.themeId || DEFAULT_THEME_ID));
+    setCurrentSlideIndex(0);
+    setIsGenerating(true);
+    setStatusMessage(`MAHR is building your live presentation on "${cleanTopic}"...`);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const ctx = await getVectorGroundingForTopic(cleanTopic).catch(() => undefined);
+        if (cancelled) return;
+        if (ctx) setVectorContext(ctx);
+        const generated = await generateSlideDeckWithAI({
+          topic: cleanTopic,
+          themeId: DEFAULT_THEME_ID,
+          slideCount: 8,
+          vectorContext: ctx
+        });
+        if (!cancelled && generated && generated.slides && generated.slides.length > 0) {
+          setDeck(generated);
+          setCurrentSlideIndex(0);
+          setStatusMessage(`Live presentation ready: ${generated.title || cleanTopic}`);
+        }
+      } catch (err) {
+        console.warn("[useSlideStudio] Auto-synthesis fallback:", err);
+      } finally {
+        if (!cancelled) setIsGenerating(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialTopic]);
 
   // Load vector grounding on topic change or mount
   useEffect(() => {

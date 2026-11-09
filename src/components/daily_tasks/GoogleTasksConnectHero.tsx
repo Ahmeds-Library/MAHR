@@ -60,7 +60,7 @@ export const GoogleTasksConnectHero: React.FC<GoogleTasksConnectHeroProps> = ({
         </div>
         <div className="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-1">
           <Sparkles className="w-4 h-4 text-amber-400" />
-          <div className="text-xs font-semibold text-slate-200">Alexa & Voice</div>
+          <div className="text-xs font-semibold text-slate-200">MAHR & Voice</div>
           <div className="text-[11px] text-slate-400 leading-snug">Say "Add task" or "Complete task" to manage hands-free.</div>
         </div>
         <div className="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-1">

@@ -36,6 +36,8 @@ const MIME_TYPES = {
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',
   '.ogg': 'audio/ogg',
@@ -59,7 +61,7 @@ function getAvailablePort(startPort = 19842) {
   });
 }
 
-// Function to serve static files with SPA fallback
+// Function to serve static files with SPA fallback and HTTP 206 video range support
 function serveFile(req, res, filePath) {
   fs.stat(filePath, (err, stats) => {
     if (err || !stats.isFile()) {
@@ -82,10 +84,33 @@ function serveFile(req, res, filePath) {
 
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const totalSize = stats.size;
+    const range = req.headers.range;
+
+    // Support HTTP 206 Partial Content for media streaming (.mp4, .webm, audio)
+    if (range && (ext === '.mp4' || ext === '.webm' || ext === '.mp3' || ext === '.wav')) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+      const chunkSize = (end - start) + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      });
+
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.pipe(res);
+      return;
+    }
 
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Content-Length': stats.size,
+      'Content-Length': totalSize,
+      'Accept-Ranges': 'bytes',
       'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable'
     });
 

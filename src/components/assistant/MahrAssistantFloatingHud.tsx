@@ -12,16 +12,16 @@ import {
   Radio,
   Plus,
 } from "lucide-react";
-import { AlexaVoiceOrb } from "./AlexaVoiceOrb";
-import { useAlexaAssistantVoice } from "../../hooks/google/useAlexaAssistantVoice";
+import { MahrVoiceOrb } from "./MahrVoiceOrb";
+import { useMahrAssistantVoice } from "../../hooks/google/useMahrAssistantVoice";
 import { useGoogleWorkspace } from "../../hooks/google/useGoogleWorkspace";
 
-interface AlexaAssistantFloatingHudProps {
+interface MahrAssistantFloatingHudProps {
   onOpenSettings?: (tab?: "google_workspace") => void;
   className?: string;
 }
 
-export const AlexaAssistantFloatingHud: React.FC<AlexaAssistantFloatingHudProps> = ({
+export const MahrAssistantFloatingHud: React.FC<MahrAssistantFloatingHudProps> = ({
   onOpenSettings,
   className = "",
 }) => {
@@ -34,7 +34,7 @@ export const AlexaAssistantFloatingHud: React.FC<AlexaAssistantFloatingHudProps>
     startListening,
     stopListening,
     handleVoiceCommand,
-  } = useAlexaAssistantVoice();
+  } = useMahrAssistantVoice();
 
   const { isAuthenticated, user } = useGoogleWorkspace();
 
@@ -61,7 +61,7 @@ export const AlexaAssistantFloatingHud: React.FC<AlexaAssistantFloatingHudProps>
               </div>
               <div>
                 <h4 className="text-xs font-bold text-white tracking-wide">MAHR Assistant Engine</h4>
-                <p className="text-[10px] text-zinc-400">Alexa-Class Ambient Companion</p>
+                <p className="text-[10px] text-zinc-400">Ambient AI Companion</p>
               </div>
             </div>
 
@@ -100,7 +100,7 @@ export const AlexaAssistantFloatingHud: React.FC<AlexaAssistantFloatingHudProps>
 
           {/* Orb Center */}
           <div className="py-2 flex justify-center">
-            <AlexaVoiceOrb
+            <MahrVoiceOrb
               voiceState={voiceState}
               transcript={transcript}
               spokenResponse={spokenResponse}

@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Sparkles, Sun, Users, Focus, Brain, Edit3, Activity, ArrowRight, Play, Layers } from "lucide-react";
+import { X, Sparkles, Sun, Users, Focus, Brain, Edit3, Activity, ArrowRight, Play, Layers, Film } from "lucide-react";
 
 interface RoutineItem {
   id: string;
@@ -65,6 +65,18 @@ export const QuickRoutinesDrawer: React.FC<QuickRoutinesDrawerProps> = ({
       category: "workspace",
       action: () => {
         onRunRoutine("automated_pipeline_routine");
+        onOpenSlides?.();
+        onClose();
+      },
+    },
+    {
+      id: "manimgx_3d_math_routine",
+      title: "ManimGX 3D Math Studio",
+      subtitle: "GPU-accelerated 3D mathematical visualizer, WebGPU parametric surfaces & storyboard inspector.",
+      icon: <Film className="w-5 h-5 text-purple-400" />,
+      category: "workspace",
+      action: () => {
+        onRunRoutine("manimgx_3d_math_routine");
         onOpenSlides?.();
         onClose();
       },

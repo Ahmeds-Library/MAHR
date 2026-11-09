@@ -1,7 +1,9 @@
 import React, { useState } from "react";
-import { Film, Play, Code2, RefreshCw, BarChart3, Youtube, CheckCircle2, AlertCircle } from "lucide-react";
+import { Film, Play, Code2, RefreshCw, BarChart3, Youtube, CheckCircle2, AlertCircle, Sparkles, Box } from "lucide-react";
 import { ManimSceneAsset, ChartAsset, YouTubeAsset } from "../../../services/slides/pipeline/pipelineTypes";
 import { PRESET_MANIM_SNIPPETS } from "../../../services/slides/pipeline/manimRenderEngine";
+import { ManimGXStudioModal } from "../../manimgx/ManimGXStudioModal";
+import { MANIMGX_PRESETS } from "../../../hooks/manimgx/useManimGXPresetLibrary";
 
 interface Step2AssetCreationViewProps {
   manimAssets: ManimSceneAsset[];
@@ -15,9 +17,10 @@ export const Step2AssetCreationView: React.FC<Step2AssetCreationViewProps> = ({
   chartAssets,
   youtubeAssets
 }) => {
-  const [activeTab, setActiveTab] = useState<"manim" | "chart" | "youtube">("manim");
+  const [activeTab, setActiveTab] = useState<"manimgx" | "chart" | "youtube">("manimgx");
+  const [showGXStudio, setShowGXStudio] = useState(false);
   const [editableCode, setEditableCode] = useState(
-    manimAssets[0]?.pythonCode || PRESET_MANIM_SNIPPETS.calculus_limit.code
+    MANIMGX_PRESETS.riemann.code
   );
 
   const activeManim = manimAssets[0];
@@ -27,58 +30,70 @@ export const Step2AssetCreationView: React.FC<Step2AssetCreationViewProps> = ({
   return (
     <div className="space-y-4">
       {/* Sub-tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-        <button
-          onClick={() => setActiveTab("manim")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === "manim"
-              ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Film className="w-3.5 h-3.5" />
-          Manim Python Video Engine
-        </button>
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab("manimgx")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              activeTab === "manimgx"
+                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Film className="w-3.5 h-3.5 text-cyan-400" />
+            ManimGX 3D GPU Engine
+          </button>
 
-        <button
-          onClick={() => setActiveTab("chart")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === "chart"
-              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <BarChart3 className="w-3.5 h-3.5" />
-          FMC Chart & Infographics
-        </button>
+          <button
+            onClick={() => setActiveTab("chart")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              activeTab === "chart"
+                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            FMC Chart & Infographics
+          </button>
 
-        <button
-          onClick={() => setActiveTab("youtube")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === "youtube"
-              ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Youtube className="w-3.5 h-3.5" />
-          YouTube Media Finder
-        </button>
+          <button
+            onClick={() => setActiveTab("youtube")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              activeTab === "youtube"
+                ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Youtube className="w-3.5 h-3.5" />
+            YouTube Media Finder
+          </button>
+        </div>
+
+        {activeTab === "manimgx" && (
+          <button
+            onClick={() => setShowGXStudio(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-semibold text-xs rounded-lg shadow transition-all active:scale-95"
+          >
+            <Box className="w-3.5 h-3.5" />
+            <span>Launch WebGPU 3D Studio & Storyboards</span>
+          </button>
+        )}
       </div>
 
-      {/* Tab 1: Manim Engine */}
-      {activeTab === "manim" && (
+      {/* Tab 1: ManimGX Engine */}
+      {activeTab === "manimgx" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Python Code Panel */}
           <div className="flex flex-col bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 bg-slate-950 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <Code2 className="w-3.5 h-3.5 text-purple-400" />
+                <Code2 className="w-3.5 h-3.5 text-cyan-400" />
                 <span className="text-xs font-mono text-slate-300">
-                  {activeManim?.conceptName || "Scene"}.py
+                  {activeManim?.conceptName || "RiemannZeta"}.py
                 </span>
               </div>
               <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Python 3.11 AST Ready
+                <CheckCircle2 className="w-3 h-3" /> ManimGX GPU AST Ready (3.08s)
               </span>
             </div>
 
@@ -196,6 +211,19 @@ export const Step2AssetCreationView: React.FC<Step2AssetCreationViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Interactive 3D ManimGX Studio & Storyboard Inspector Modal */}
+      <ManimGXStudioModal
+        isOpen={showGXStudio}
+        onClose={() => setShowGXStudio(false)}
+        initialPresetId="riemann"
+        onInjectIntoSlides={(videoUrl) => {
+          if (activeManim) {
+            activeManim.videoUrl = videoUrl;
+          }
+          setShowGXStudio(false);
+        }}
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
-import { Memory } from "../lib/memoryTypes";
-import { EntityNode, EntityRelation } from "../components/KnowledgeGraphDashboard";
-import { dbGet, dbSet } from "../lib/db";
+import type { Memory } from "../lib/memoryTypes.ts";
+import type { EntityNode, EntityRelation } from "../components/KnowledgeGraphDashboard.tsx";
+import { dbGet, dbSet } from "../lib/db.ts";
 
 export interface VectorNode {
   id: string;

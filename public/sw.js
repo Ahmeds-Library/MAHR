@@ -1,10 +1,10 @@
 // MAHR OS Service Worker - Offline Resilience & PWA Support
-const CACHE_NAME = 'mahr-os-v1';
+const CACHE_NAME = 'mahr-os-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/icon.jpeg',
+  '/logo.png',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-maskable-512.png'
@@ -38,12 +38,18 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip WebSocket connections, API endpoints, and installer binary downloads from service worker cache
+  // Skip WebSocket connections, API endpoints, dev files, and installer binary downloads from service worker cache
   if (
     url.protocol === 'ws:' || 
     url.protocol === 'wss:' || 
     url.pathname.startsWith('/api/') || 
     url.pathname.startsWith('/downloads/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.includes('.vite/') ||
+    url.searchParams.has('v') ||
+    url.searchParams.has('t') ||
     url.pathname.endsWith('.deb') ||
     url.pathname.endsWith('.exe')
   ) {

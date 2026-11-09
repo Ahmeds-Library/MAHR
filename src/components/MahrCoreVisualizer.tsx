@@ -7,6 +7,7 @@ import { HumanMoodType } from "@/services/humanEmotionEngine";
 import { RLAtmospherePolicy } from "@/services/ml/rlMoodOptimizer";
 import { useMoodPulseResonance } from "@/hooks/visualizer/useMoodPulseResonance";
 import { MahrMoodResonanceAura } from "@/components/visualizer/MahrMoodResonanceAura";
+import { MahrCharacterAvatar } from "@/components/character/MahrCharacterAvatar";
 
 export type MahrEmotion = 
   | "idle" 
@@ -101,12 +102,6 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
   const [isRippleActive, setIsRippleActive] = useState<boolean>(false);
   const [isSleepActive, setIsSleepActive] = useState<boolean>(false);
 
-  // Video element refs for character state machine
-  const idleVideoRef = useRef<HTMLVideoElement | null>(null);
-  const thinkingVideoRef = useRef<HTMLVideoElement | null>(null);
-  const talkingVideoRef = useRef<HTMLVideoElement | null>(null);
-  const [hasError, setHasError] = useState<boolean>(false);
-
   useEffect(() => {
     if (wakeWordTriggered) {
       setIsRippleActive(true);
@@ -122,44 +117,6 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
       return () => clearTimeout(timer);
     }
   }, [sleepTriggered]);
-
-  const handleVideoError = (videoName: string) => {
-    console.warn(`[Myraa Web Video] Failed to load video source for: ${videoName}`);
-    setHasError(true);
-  };
-
-  // Video playback sync
-  useEffect(() => {
-    const playVideo = (videoEl: HTMLVideoElement | null) => {
-      if (!videoEl) return;
-      try {
-        videoEl.currentTime = 0;
-        const playPromise = videoEl.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(() => {});
-        }
-      } catch (err) {}
-    };
-
-    const pauseVideo = (videoEl: HTMLVideoElement | null) => {
-      if (!videoEl) return;
-      try { videoEl.pause(); } catch (err) {}
-    };
-
-    if (characterState === "idle") {
-      playVideo(idleVideoRef.current);
-      pauseVideo(thinkingVideoRef.current);
-      pauseVideo(talkingVideoRef.current);
-    } else if (characterState === "thinking") {
-      playVideo(thinkingVideoRef.current);
-      pauseVideo(idleVideoRef.current);
-      pauseVideo(talkingVideoRef.current);
-    } else if (characterState === "talking") {
-      playVideo(talkingVideoRef.current);
-      pauseVideo(idleVideoRef.current);
-      pauseVideo(thinkingVideoRef.current);
-    }
-  }, [characterState]);
 
   // Cursor position tracking
   useEffect(() => {
@@ -256,43 +213,19 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
   }, [themeColor, projectorIntensity, state, session]);
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-      {/* 1. Behind Overlay / Atmospheric Backlight Glow */}
-      <div className="absolute inset-0 bg-transparent flex items-center justify-center pointer-events-none z-0">
-        <div className={`w-[500px] h-[500px] rounded-full blur-[140px] opacity-25 bg-gradient-to-tr transition-all duration-1000 ${
-          themeColor === "violet" ? "from-purple-600/30 to-fuchsia-600/5" :
-          themeColor === "crimson" ? "from-rose-600/30 to-orange-600/5" :
-          themeColor === "emerald" ? "from-emerald-600/30 to-teal-600/5" :
-          themeColor === "celestial" ? "from-sky-600/30 to-cyan-600/5" :
-          themeColor === "gold" ? "from-amber-600/30 to-yellow-600/5" :
-          themeColor === "rose" ? "from-rose-600/30 to-pink-600/5" :
-          "from-indigo-600/30 to-cyan-600/5"
-        }`} />
-      </div>
-
+    <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-transparent">
       {/* 2. Character Videos State Crossfade Manager */}
       <div 
         id="myraa-animated-presence"
         className="absolute z-10 w-full h-full flex items-center justify-center pointer-events-auto transition-all duration-700"
       >
         <div 
-          className="relative w-full max-w-4xl aspect-[16/9] flex items-center justify-center scale-[0.95] sm:scale-110 select-none pointer-events-none md:max-h-[72vh] max-h-[62vh]"
+          className="relative w-full h-full flex items-center justify-center select-none pointer-events-none"
           style={{
-            transform: `scale(${pulseScale})`,
+            transform: `scale(${characterState === "idle" ? 1.0 : pulseScale})`,
             transition: "transform 0.08s ease-out",
           }}
         >
-          {/* Subtle Outer Ambient Shadow Cast */}
-          <div className="absolute inset-0 rounded-[2.5rem] blur-[30px] opacity-20 bg-cyan-600/15 pointer-events-none mix-blend-screen" />
-
-          {/* REAL-TIME EMOTIONAL RESONANCE AURA PULSING IN SYNC WITH DETECTED HUMAN MOOD */}
-          <MahrMoodResonanceAura
-            isResponding={isResponding}
-            pulseScale={pulseScale}
-            auraOpacity={auraOpacity}
-            profile={resonanceProfile}
-            characterState={characterState}
-          />
 
           {/* SUBTLE HOLOGRAPHIC RIPPLE ANIMATION ON WAKE WORD DETECTION */}
           <AnimatePresence>
@@ -309,10 +242,8 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
                       ease: [0.16, 1, 0.3, 1],
                       delay: ring * 0.15
                     }}
-                    className="absolute rounded-[2.5rem] border-2 pointer-events-none"
+                    className="absolute rounded-full border-2 pointer-events-none aspect-square w-72 sm:w-96 md:w-[480px]"
                     style={{
-                      width: "92%",
-                      height: "92%",
                       borderColor: themeColor === "crimson" ? "rgba(244, 63, 94, 0.9)" :
                                    themeColor === "emerald" ? "rgba(16, 185, 129, 0.9)" :
                                    themeColor === "gold" ? "rgba(245, 158, 11, 0.9)" :
@@ -350,10 +281,8 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
                       ease: "easeInOut",
                       delay: ring * 0.2
                     }}
-                    className="absolute rounded-[2.5rem] border-2 border-indigo-400/80 pointer-events-none"
+                    className="absolute rounded-full border-2 border-indigo-400/80 pointer-events-none aspect-square w-72 sm:w-96 md:w-[480px]"
                     style={{
-                      width: "90%",
-                      height: "90%",
                       boxShadow: "0 0 50px rgba(99, 102, 241, 0.4), inset 0 0 30px rgba(79, 70, 229, 0.3)",
                       background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, rgba(15,23,42,0.4) 80%)"
                     }}
@@ -373,104 +302,16 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
             )}
           </AnimatePresence>
 
-          {/* IDLE VIDEO */}
-          <motion.div
-            key="idle-video-container"
-            animate={{ 
-              opacity: characterState === "idle" ? 1 : 0,
-              scale: characterState === "idle" ? 1.0 : 0.96,
-              filter: characterState === "idle" ? "blur(0px) brightness(1.05)" : "blur(14px) brightness(0.55)",
-            }}
-            transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
-            className={`absolute inset-0 w-full h-full pointer-events-none ${characterState === "idle" ? "z-10" : "z-0"}`}
-          >
-            <video
-              ref={idleVideoRef}
-              src="/assets/idle.mp4"
-              loop
-              muted
-              playsInline
-              autoPlay
-              className="w-full h-full object-cover rounded-[2.5rem]"
-              style={{
-                maskImage: "radial-gradient(circle, rgba(0,0,0,1) 55%, rgba(0,0,0,0) 80%)",
-                WebkitMaskImage: "radial-gradient(circle, rgba(0,0,0,1) 55%, rgba(0,0,0,0) 80%)",
-              }}
-              onError={() => handleVideoError("idle")}
-            />
-          </motion.div>
-
-          {/* THINKING VIDEO */}
-          <motion.div
-            key="thinking-video-container"
-            animate={{ 
-              opacity: characterState === "thinking" ? 1 : 0,
-              scale: characterState === "thinking" ? 1.0 : 0.96,
-              filter: characterState === "thinking" ? "blur(0px) brightness(1.05)" : "blur(14px) brightness(0.55)",
-            }}
-            transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
-            className={`absolute inset-0 w-full h-full pointer-events-none ${characterState === "thinking" ? "z-10" : "z-0"}`}
-          >
-            <video
-              ref={thinkingVideoRef}
-              src="/assets/thinking.mp4"
-              loop
-              muted
-              playsInline
-              className="w-full h-full object-cover rounded-[2.5rem]"
-              style={{
-                maskImage: "radial-gradient(circle, rgba(0,0,0,1) 55%, rgba(0,0,0,0) 80%)",
-                WebkitMaskImage: "radial-gradient(circle, rgba(0,0,0,1) 55%, rgba(0,0,0,0) 80%)",
-              }}
-              onError={() => handleVideoError("thinking")}
-            />
-          </motion.div>
-
-          {/* TALKING VIDEO */}
-          <motion.div
-            key="talking-video-container"
-            animate={{ 
-              opacity: characterState === "talking" ? 1 : 0,
-              scale: characterState === "talking" ? 1.015 : 0.96,
-              filter: characterState === "talking" ? "blur(0px) brightness(1.1)" : "blur(14px) brightness(0.55)",
-            }}
-            transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
-            className={`absolute inset-0 w-full h-full pointer-events-none ${characterState === "talking" ? "z-10" : "z-0"}`}
-          >
-            <video
-              ref={talkingVideoRef}
-              src="/assets/talking.mp4"
-              loop
-              muted
-              playsInline
-              className="w-full h-full object-cover rounded-[2.5rem]"
-              style={{
-                maskImage: "radial-gradient(circle, rgba(0,0,0,1) 55%, rgba(0,0,0,0) 80%)",
-                WebkitMaskImage: "radial-gradient(circle, rgba(0,0,0,1) 55%, rgba(0,0,0,0) 80%)",
-              }}
-              onError={() => handleVideoError("talking")}
-            />
-          </motion.div>
-
-          {/* Holographic Avatar Core Fallback when video is loading or unsupported */}
-          {hasError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-radial from-cyan-950/20 via-[#05060f]/60 to-[#05060f]/90 backdrop-blur-sm rounded-3xl p-6 text-center z-10 pointer-events-auto">
-              <div className="relative flex items-center justify-center w-36 h-36 mb-4">
-                <div className="absolute inset-0 rounded-full bg-cyan-500/20 blur-2xl animate-pulse" />
-                <div className="absolute inset-2 rounded-full border border-cyan-400/40 animate-spin" style={{ animationDuration: '12s' }} />
-                <div className="absolute inset-6 rounded-full border border-purple-500/30 animate-spin" style={{ animationDuration: '8s', animationDirection: 'reverse' }} />
-                <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-cyan-400/30 via-purple-600/30 to-blue-500/20 backdrop-blur-md border border-cyan-300/50 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-                  <Sparkles className="text-cyan-300 animate-pulse" size={28} />
-                </div>
-              </div>
-              <span className="text-xs font-mono font-semibold tracking-widest text-cyan-300 uppercase">
-                MAHR Neural Core
-              </span>
-              <span className="text-[11px] text-slate-400 mt-1 font-sans">
-                Real-Time Quantum Holographic Avatar
-              </span>
-            </div>
-          )}
+          {/* Real-Time MAHR Holographic Character Avatar */}
+          <MahrCharacterAvatar
+            characterState={characterState}
+            themeColor={themeColor}
+            activeEmotion={activeEmotion}
+            currentHumanMood={currentHumanMood}
+            pulseScale={pulseScale}
+            isResponding={isResponding}
+            onCharacterClick={onManualWakeRequested}
+          />
         </div>
       </div>
 
