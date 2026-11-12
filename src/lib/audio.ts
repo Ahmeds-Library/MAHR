@@ -10,6 +10,7 @@
  */
 
 import { getSkillsFromDB } from "./db";
+import type { AssistantFsmEvent } from "../voiceSync/layer1_data/assistantSessionTypes";
 
 export type LiveState = "disconnected" | "connecting" | "listening" | "speaking";
 
@@ -89,6 +90,7 @@ export class MyraaAudioSession {
   private activeSources: AudioBufferSourceNode[] = [];
   private silenceTimeout: any = null;
   private lastActiveTime = 0;
+  private lastVadEventTime = 0;
   
   // State Callbacks
   private onStateChange: (state: LiveState) => void;
@@ -96,9 +98,11 @@ export class MyraaAudioSession {
   private onToolCall: (name: string, args: any, callback: (result: any) => void) => void;
   private onError: (error: string) => void;
   private onMemorySync?: (memories: any[]) => void;
+  private onFsmEvent?: (event: AssistantFsmEvent) => void;
   
   private currentState: LiveState = "disconnected";
   private isActivated = false;
+  private manualDisconnectLock = false;
   private lastWsUrl: string = "";
   private warmReconnectAttempts = 0;
   private reconnectTimer: any = null;
@@ -113,13 +117,19 @@ export class MyraaAudioSession {
     onToolCall: (name: string, args: any, callback: (result: any) => void) => void;
     onError: (error: string) => void;
     onMemorySync?: (memories: any[]) => void;
+    onFsmEvent?: (event: AssistantFsmEvent) => void;
   }) {
     this.onStateChange = handlers.onStateChange;
     this.onTranscription = handlers.onTranscription;
     this.onToolCall = handlers.onToolCall;
     this.onError = handlers.onError;
     this.onMemorySync = handlers.onMemorySync;
+    this.onFsmEvent = handlers.onFsmEvent;
     globalAudioSession = this;
+  }
+
+  public setFsmEventDispatcher(dispatcher: (event: AssistantFsmEvent) => void) {
+    this.onFsmEvent = dispatcher;
   }
 
   private setState(state: LiveState) {
@@ -142,6 +152,7 @@ export class MyraaAudioSession {
 
   // Requests microphone and creates connections
   public async connect(agentMode: string = "human", currentContextText: string = "", subAgent?: { name?: string; role?: string; systemPrompt?: string }) {
+    this.manualDisconnectLock = false;
     if (this.isActivated) return;
     this.isActivated = true;
     this.setState("connecting");
@@ -207,15 +218,16 @@ export class MyraaAudioSession {
       this.outputGainNode.connect(this.outputAnalyser);
       this.outputAnalyser.connect(this.outputAudioCtx.destination);
 
-      // Setup custom input Analyser
+      // Setup custom input Analyser tuned for high-sensitivity, zero-lag vocal syllable tracking
       this.inputAnalyser = this.inputAudioCtx.createAnalyser();
-      this.inputAnalyser.fftSize = 256;
+      this.inputAnalyser.fftSize = 512;
+      this.inputAnalyser.smoothingTimeConstant = 0.42;
       
       this.micSourceNode = this.inputAudioCtx.createMediaStreamSource(this.micStream);
       this.micSourceNode.connect(this.inputAnalyser);
 
-      // Stream input PCM 16-bit to WS
-      this.micProcessorNode = this.inputAudioCtx.createScriptProcessor(2048, 1, 1);
+      // Stream input PCM 16-bit to WS with low-latency 1024-sample frame size (64ms @ 16kHz)
+      this.micProcessorNode = this.inputAudioCtx.createScriptProcessor(1024, 1, 1);
       this.micSourceNode.connect(this.micProcessorNode);
       this.micProcessorNode.connect(this.inputAudioCtx.destination);
 
@@ -278,9 +290,13 @@ export class MyraaAudioSession {
         
         if (hasActiveSpeech) {
           this.lastActiveTime = now;
+          if (now - this.lastVadEventTime > 450) {
+            this.lastVadEventTime = now;
+            this.onFsmEvent?.({ type: "VAD_SPEECH_START" });
+          }
         }
 
-        const isWithinHangover = (now - this.lastActiveTime) < 1200; // 1.2s VAD hangover prevents clipping of syllable/word endings
+        const isWithinHangover = (now - this.lastActiveTime) < 450; // 450ms fast VAD hangover for rapid turn detection without clipping syllables
 
         if (!hasActiveSpeech && !isWithinHangover) {
           return; // Gate keeps silent or low hums out of Gemini
@@ -662,8 +678,9 @@ export class MyraaAudioSession {
     // Notify speech ended
     this.notifySpeechEnd();
 
-    // Set state back to user listening
+    // Set state back to user listening & notify authoritative FSM
     this.setState("listening");
+    this.onFsmEvent?.({ type: "BARGE_IN_INTERRUPTED" });
   }
 
   private notifySpeechStart() {
@@ -714,10 +731,9 @@ export class MyraaAudioSession {
 
       const currentTime = this.outputAudioCtx.currentTime;
       
-      // Gapless scheduler sync
+      // Gapless scheduler sync (12ms ultra-low-latency lookahead)
       if (this.nextStartTime < currentTime) {
-        // Start fresh: 30ms ahead to bridge schedule timing
-        this.nextStartTime = currentTime + 0.03;
+        this.nextStartTime = currentTime + 0.012;
       }
 
       source.start(this.nextStartTime);
@@ -730,8 +746,7 @@ export class MyraaAudioSession {
           this.activeSources.splice(index, 1);
         }
         
-        // If there are no more active play nodes, we wait for a slight debounce delay
-        // to handle brief network gaps and allow the room's residual feedback to decay.
+        // Fast 320ms debounce after final audio buffer ends
         if (this.activeSources.length === 0 && this.currentState === "speaking") {
           if (this.silenceTimeout) {
             clearTimeout(this.silenceTimeout);
@@ -740,15 +755,25 @@ export class MyraaAudioSession {
             if (this.activeSources.length === 0 && this.currentState === "speaking") {
               this.setState("listening");
               this.notifySpeechEnd();
+              this.onFsmEvent?.({
+                type: "AUDIO_PLAYBACK_UPDATED",
+                activePcmSourcesCount: 0,
+                pendingSpeechQueueCount: this.pendingSpeechQueue.length,
+              });
               if (typeof window !== "undefined") {
                 window.dispatchEvent(new CustomEvent("myraa-speech-end"));
               }
             }
-          }, 800); // 800ms gives space for network packets and allows echoing to completely decay
+          }, 320);
         }
       };
 
       this.activeSources.push(source);
+      this.onFsmEvent?.({
+        type: "AUDIO_PLAYBACK_UPDATED",
+        activePcmSourcesCount: this.activeSources.length,
+        pendingSpeechQueueCount: this.pendingSpeechQueue.length,
+      });
 
     } catch (playbackError) {
       console.error("PCM Chunk buffering/playback failed:", playbackError);
@@ -777,6 +802,7 @@ export class MyraaAudioSession {
       console.log("[Myraa] Connected to server side WS bridge");
       if (!this.isActivated) return;
       this.setState("listening");
+      this.onFsmEvent?.({ type: "WS_CONNECTED" });
     };
 
     socket.onmessage = async (event) => {
@@ -786,7 +812,7 @@ export class MyraaAudioSession {
         // Root Error Handler message
         if (data.type === "error") {
           const errStr = String(data.error || "");
-          if (this.isActivated && this.warmReconnectAttempts < 3 && /link error|closed|timeout|reset|network/i.test(errStr)) {
+          if (this.isActivated && !this.manualDisconnectLock && this.warmReconnectAttempts < 3 && /link error|closed|timeout|reset|network/i.test(errStr)) {
             this.scheduleWarmReconnect(errStr, sendDiagnosticLog);
             return;
           }
@@ -803,9 +829,10 @@ export class MyraaAudioSession {
           } else if (data.status === "connected") {
             this.warmReconnectAttempts = 0;
             this.setState("listening");
+            this.onFsmEvent?.({ type: "WS_CONNECTED" });
             this.flushPendingSpeechQueue();
           } else if (data.status === "session_closed") {
-            if (this.isActivated && this.warmReconnectAttempts < 3) {
+            if (this.isActivated && !this.manualDisconnectLock && this.warmReconnectAttempts < 3) {
               this.scheduleWarmReconnect("session_closed", sendDiagnosticLog);
             } else {
               this.disconnect();
@@ -826,6 +853,7 @@ export class MyraaAudioSession {
 
         // Turn complete
         if (data.type === "turnComplete") {
+          this.onFsmEvent?.({ type: "GEMINI_TURN_COMPLETE" });
           if (this.activeSources.length === 0 && this.currentState === "speaking") {
             if (this.silenceTimeout) {
               clearTimeout(this.silenceTimeout);
@@ -833,8 +861,13 @@ export class MyraaAudioSession {
             this.silenceTimeout = setTimeout(() => {
               if (this.activeSources.length === 0 && this.currentState === "speaking") {
                 this.setState("listening");
+                this.onFsmEvent?.({
+                  type: "AUDIO_PLAYBACK_UPDATED",
+                  activePcmSourcesCount: 0,
+                  pendingSpeechQueueCount: this.pendingSpeechQueue.length,
+                });
               }
-            }, 800);
+            }, 320);
           }
         }
 
@@ -911,17 +944,31 @@ export class MyraaAudioSession {
   // Fully cleanup and release microphones & connection sockets
   public disconnect() {
     this.isActivated = false;
+    this.manualDisconnectLock = true;
     this.warmReconnectAttempts = 0;
+    this.pendingSpeechQueue = [];
+    pendingGlobalSpeechQueue.length = 0;
+
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.setState("disconnected");
 
     if (this.silenceTimeout) {
       clearTimeout(this.silenceTimeout);
       this.silenceTimeout = null;
     }
+
+    // Stop any currently playing audio buffers immediately
+    this.activeSources.forEach((source) => {
+      try {
+        source.stop();
+      } catch (e) {}
+    });
+    this.activeSources = [];
+    this.nextStartTime = 0;
+
+    this.setState("disconnected");
 
     // Close WS socket
     if (this.ws) {
@@ -1046,7 +1093,7 @@ export class MyraaAudioSession {
   // Real Voice WebSocket speech generator - transmits directly into Gemini Live Session
   public speakViaWebSocket(
     text: string, 
-    options?: { emotion?: string; mood?: string; speechPitch?: number; speechRate?: number } | string
+    options?: { emotion?: string; mood?: string; speechPitch?: number; speechRate?: number; interruptCurrent?: boolean } | string
   ): boolean {
     const cleanText = (text || "").trim();
     if (!cleanText) return false;
@@ -1055,13 +1102,16 @@ export class MyraaAudioSession {
     const mood = typeof options === "object" ? options?.mood : undefined;
     const speechPitch = typeof options === "object" ? options?.speechPitch : undefined;
     const speechRate = typeof options === "object" ? options?.speechRate : undefined;
+    const interruptCurrent = typeof options === "object" ? options?.interruptCurrent : false;
 
-    // Immediately stop any currently playing voice buffers to prevent overlapping speech
-    this.stopPlayback();
+    // Only stop currently playing voice buffers if explicitly requested (prevents cutting off Mahr mid-sentence during synchronized actions)
+    if (interruptCurrent) {
+      this.stopPlayback();
+    }
 
-    // If disconnected, trigger connect immediately
-    if (this.currentState === "disconnected") {
-      this.connect().catch((e) => console.warn("[Myraa WS] Auto-connect on speak error:", e));
+    // Never auto-reconnect if the user explicitly clicked Disconnect / Sleep
+    if (this.manualDisconnectLock || this.currentState === "disconnected") {
+      return false;
     }
 
     const payload = { 
@@ -1079,7 +1129,6 @@ export class MyraaAudioSession {
         return true;
       } catch (err) {
         console.error("[Myraa WS] Failed to send speak message over WebSocket:", err);
-        this.pendingSpeechQueue.push({ text: cleanText, emotion });
         return false;
       }
     } else {
@@ -1140,7 +1189,7 @@ export function getActiveAudioSession(): MyraaAudioSession | null {
  */
 export function speakViaWebSocket(
   text: string,
-  options?: { emotion?: string; mood?: string; speechPitch?: number; speechRate?: number; onStart?: () => void; onEnd?: () => void }
+  options?: { emotion?: string; mood?: string; speechPitch?: number; speechRate?: number; interruptCurrent?: boolean; onStart?: () => void; onEnd?: () => void }
 ): boolean {
   if (globalAudioSession) {
     if (options?.onStart || options?.onEnd) {
@@ -1157,6 +1206,7 @@ export function speakViaWebSocket(
       mood: options?.mood,
       speechPitch: options?.speechPitch,
       speechRate: options?.speechRate,
+      interruptCurrent: options?.interruptCurrent,
     });
   } else {
     // Queue until the session mounts

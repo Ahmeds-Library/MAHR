@@ -13,6 +13,8 @@ import {
   parseTypedInstruction,
   formatReplyForChalkboard,
 } from "../components/chat/services/chatInstructionDispatcher";
+import type { AssistantFsmEvent } from "../voiceSync/layer1_data/assistantSessionTypes";
+import { globalSessionEpochManager } from "../voiceSync/layer2_logic/sessionEpochAbortManager";
 
 export interface AskMahrMessage {
   id?: string;
@@ -68,6 +70,7 @@ interface UseAskMahrOptions {
   ) => void;
   onSendToRealtimeSession?: (text: string) => void;
   isRealtimeSessionActive?: boolean;
+  onFsmEvent?: (event: AssistantFsmEvent) => void;
 }
 
 export type UseAskMyraaOptions = UseAskMahrOptions;
@@ -91,6 +94,7 @@ export function useAskMahr({
   onAppendToChatHistory,
   onSendToRealtimeSession,
   isRealtimeSessionActive = false,
+  onFsmEvent,
 }: UseAskMahrOptions) {
   const [isAskMahrOpen, setIsAskMahrOpen] = useState<boolean>(false);
   const [askMahrInput, setAskMahrInput] = useState<string>("");
@@ -260,6 +264,16 @@ Opening your presentation deck on the Classroom Whiteboard now...`;
         return;
       }
 
+      const capturedEpochId = globalSessionEpochManager.getEpochId();
+      const abortSignal = globalSessionEpochManager.getTurnAbortSignal();
+      onFsmEvent?.({
+        type: "CHAT_REQUEST_START",
+        label:
+          parsedInstruction.effectiveMode !== "auto"
+            ? `Ask MAHR (${parsedInstruction.effectiveMode})`
+            : "Ask MAHR Reasoning",
+      });
+
       setAskMahrLoading(true);
       setIsVectorRecalling(true);
 
@@ -275,6 +289,10 @@ Opening your presentation deck on the Classroom Whiteboard now...`;
           recentHistory: chatHistory,
         });
         setIsVectorRecalling(false);
+
+        if (abortSignal.aborted || capturedEpochId !== globalSessionEpochManager.getEpochId()) {
+          return;
+        }
 
         const payloadBody = JSON.stringify({
           message: parsedInstruction.cleanedPrompt,
@@ -292,6 +310,7 @@ Opening your presentation deck on the Classroom Whiteboard now...`;
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: payloadBody,
+          signal: abortSignal,
         });
 
         if (!res.ok) {
@@ -299,7 +318,12 @@ Opening your presentation deck on the Classroom Whiteboard now...`;
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: payloadBody,
+            signal: abortSignal,
           });
+        }
+
+        if (abortSignal.aborted || capturedEpochId !== globalSessionEpochManager.getEpochId()) {
+          return;
         }
 
         const rawBody = await res.text();
@@ -415,14 +439,21 @@ Opening your presentation deck on the Classroom Whiteboard now...`;
           });
         }
 
-        // Speak Mahr's reply aloud using voice synthesis if enabled
-        if (isAutoSpeakEnabled) {
+        // Speak Mahr's reply aloud using voice synthesis if enabled and session was not terminated to standby
+        if (
+          isAutoSpeakEnabled &&
+          capturedEpochId === globalSessionEpochManager.getEpochId()
+        ) {
           speakUtterance({
             text: replyText,
             activeEmotion: "happy",
           });
         }
       } catch (err: any) {
+        if (err?.name === "AbortError" || abortSignal.aborted) {
+          console.log("[useAskMahr] Request aborted cleanly due to session sleep/power or interruption.");
+          return;
+        }
         console.error("Ask Mahr error:", err);
         setIsVectorRecalling(false);
         const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -437,6 +468,7 @@ Opening your presentation deck on the Classroom Whiteboard now...`;
       } finally {
         setAskMahrLoading(false);
         setIsVectorRecalling(false);
+        onFsmEvent?.({ type: "CHAT_REQUEST_COMPLETE" });
       }
     },
     [
@@ -463,6 +495,7 @@ Opening your presentation deck on the Classroom Whiteboard now...`;
       isAutoSpeakEnabled,
       isRealtimeSessionActive,
       onSendToRealtimeSession,
+      onFsmEvent,
     ]
   );
 

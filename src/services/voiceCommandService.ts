@@ -383,8 +383,19 @@ export function detectVoiceAction(
   const lower = transcript.toLowerCase().trim();
   const agentNameLower = activeAgentFirstName.toLowerCase().trim();
 
+  // Strip leading wake-word address ("Hey Mahr,", "Suno Mahr,", "Mahr please") so action intents are never shadowed
+  const strippedLower = lower
+    .replace(
+      new RegExp(
+        `^(?:hey|hello|hi|suno|acha|ok|okay)?[\\s,]*(?:mahr|mahir|mehar|myraa|maira|mira|${agentNameLower})[\\s,!.:;-]*(?:please|zara|abhi)?[\\s,]*`,
+        "i"
+      ),
+      ""
+    )
+    .trim();
+
   // 1. Check Voice-to-Mindmap (high priority for verbal concept/workflow mapping)
-  const mindMapCheck = isVoiceToMindMapTrigger(transcript);
+  const mindMapCheck = isVoiceToMindMapTrigger(strippedLower || transcript);
   if (mindMapCheck.isMatch) {
     return {
       type: "voice_to_mindmap",
@@ -415,7 +426,133 @@ export function detectVoiceAction(
     return { type: "sleep", rawText: transcript };
   }
 
-  // 3. Check Wake Word
+  // 3. Check Vector Memory & Obsidian Vault Semantic Recall
+  if (
+    lower.includes("search memory") ||
+    lower.includes("vector search") ||
+    lower.includes("recall memory") ||
+    lower.includes("what do you remember about") ||
+    lower.includes("what do you know about") ||
+    lower.includes("search vector") ||
+    lower.includes("obsidian") ||
+    lower.includes("knowledge graph") ||
+    lower.includes("vault kholo")
+  ) {
+    const topic = (strippedLower || transcript)
+      .replace(/^(hey\s+)?(mahr|myraa)?[,\s]*(please\s+)?(search memory for|vector search for|recall memory about|what do you remember about|what do you know about|search vector for|search memory|vector search|recall memory|search vector|open obsidian|obsidian kholo|knowledge graph)/i, "")
+      .trim();
+    return {
+      type: "vector_search",
+      topic: topic || transcript,
+      rawText: transcript,
+    };
+  }
+
+  // 4. Check Presentation Slides Request (English + Roman Urdu)
+  if (
+    lower.includes("presentation") ||
+    lower.includes("ppt") ||
+    lower.includes("slide deck") ||
+    lower.includes("slides banao") ||
+    lower.includes("presentation banao") ||
+    lower.includes("ppt banao") ||
+    lower.includes("make slides") ||
+    lower.includes("create slides") ||
+    lower.includes("create presentation")
+  ) {
+    const topic = (strippedLower || transcript)
+      .replace(/^(hey\s+)?(mahr|myraa)?[,\s]*(please\s+)?(make|create|generate|prepare|build|open)?\s*(a\s+)?(presentation|ppt|slides|slide deck|deck)\s*(banao|kholo|on|about|for|par)?/i, "")
+      .trim();
+    return {
+      type: "open_slides",
+      topic: topic || "Strategic Keynote",
+      rawText: transcript,
+    };
+  }
+
+  // 5. Check Virtual Office Request
+  if (
+    lower.includes("open office") ||
+    lower.includes("virtual office") ||
+    lower.includes("office kholo") ||
+    lower.includes("munder difflin") ||
+    lower.includes("call jim") ||
+    lower.includes("call dwight") ||
+    lower.includes("call pam") ||
+    lower.includes("team floor")
+  ) {
+    return {
+      type: "open_office",
+      rawText: transcript,
+    };
+  }
+
+  // 6. Check Smart Routines Request
+  if (
+    lower.includes("open routine") ||
+    lower.includes("smart routine") ||
+    lower.includes("routines kholo") ||
+    lower.includes("morning briefing") ||
+    lower.includes("daily briefing") ||
+    lower.includes("quick routines")
+  ) {
+    return {
+      type: "open_routines",
+      rawText: transcript,
+    };
+  }
+
+  // 7. Focus Mode Voice Detector
+  if (
+    lower.includes("focus mode") ||
+    lower.includes("hide distractions") ||
+    lower.includes("distractions hatao") ||
+    lower.includes("hide the sidebar") ||
+    lower.includes("center the visualizer")
+  ) {
+    const isDeactivate =
+      lower.includes("off") ||
+      lower.includes("deactivate") ||
+      lower.includes("exit") ||
+      lower.includes("stop") ||
+      lower.includes("disable") ||
+      lower.includes("band");
+    return {
+      type: "focus_mode",
+      isFocusDeactivate: isDeactivate,
+      rawText: transcript
+    };
+  }
+
+  // 8. Match explicit registered voice command (excluding generic wake_word so it doesn't shadow sketch/actions)
+  const matchedCmd = matchVoiceCommand(strippedLower || transcript);
+  if (matchedCmd && matchedCmd.id !== "wake_word") {
+    return {
+      type: "voice_command",
+      command: matchedCmd,
+      rawText: transcript
+    };
+  }
+
+  // 9. General Whiteboard / Sketch detection (English + Roman Urdu)
+  if (
+    lower.includes("flowchart") ||
+    lower.includes("flow chart") ||
+    lower.includes("diagram") ||
+    lower.includes("whiteboard") ||
+    lower.includes("chalkboard") ||
+    lower.includes("board kholo") ||
+    lower.includes("draw") ||
+    lower.includes("sketch")
+  ) {
+    return {
+      type: "sketch",
+      topic: strippedLower || transcript,
+      rawText: transcript
+    };
+  }
+
+  // 10. Check Wake Word (ONLY if no specific action intent was matched above)
   const isWakeWord =
     lower.includes("mahr") ||
     lower.includes("mahir") ||
@@ -436,122 +573,6 @@ export function detectVoiceAction(
 
   if (isWakeWord) {
     return { type: "wake", rawText: transcript };
-  }
-
-  // 4. Check Vector Memory Semantic Recall
-  if (
-    lower.includes("search memory") ||
-    lower.includes("vector search") ||
-    lower.includes("recall memory") ||
-    lower.includes("what do you remember about") ||
-    lower.includes("what do you know about") ||
-    lower.includes("search vector")
-  ) {
-    const topic = transcript
-      .replace(/^(hey\s+)?(mahr|myraa)?[,\s]*(please\s+)?(search memory for|vector search for|recall memory about|what do you remember about|what do you know about|search vector for|search memory|vector search|recall memory|search vector)/i, "")
-      .trim();
-    return {
-      type: "vector_search",
-      topic: topic || transcript,
-      rawText: transcript,
-    };
-  }
-
-  // 5. Check Presentation Slides Request
-  if (
-    lower.includes("presentation") ||
-    lower.includes("ppt") ||
-    lower.includes("slide deck") ||
-    lower.includes("slides banao") ||
-    lower.includes("make slides") ||
-    lower.includes("create slides") ||
-    lower.includes("create presentation")
-  ) {
-    const topic = transcript
-      .replace(/^(hey\s+)?(mahr|myraa)?[,\s]*(please\s+)?(make|create|generate|prepare|build|open)?\s*(a\s+)?(presentation|ppt|slides|slide deck|deck)\s*(on|about|for)?/i, "")
-      .trim();
-    return {
-      type: "open_slides",
-      topic: topic || "Strategic Keynote",
-      rawText: transcript,
-    };
-  }
-
-  // 6. Check Virtual Office Request
-  if (
-    lower.includes("open office") ||
-    lower.includes("virtual office") ||
-    lower.includes("munder difflin") ||
-    lower.includes("call jim") ||
-    lower.includes("call dwight") ||
-    lower.includes("call pam") ||
-    lower.includes("team floor")
-  ) {
-    return {
-      type: "open_office",
-      rawText: transcript,
-    };
-  }
-
-  // 7. Check Smart Routines Request
-  if (
-    lower.includes("open routine") ||
-    lower.includes("smart routine") ||
-    lower.includes("morning briefing") ||
-    lower.includes("daily briefing") ||
-    lower.includes("quick routines")
-  ) {
-    return {
-      type: "open_routines",
-      rawText: transcript,
-    };
-  }
-
-  // 8. Focus Mode Voice Detector
-  if (
-    lower.includes("focus mode") ||
-    lower.includes("hide distractions") ||
-    lower.includes("hide the sidebar") ||
-    lower.includes("center the visualizer")
-  ) {
-    const isDeactivate =
-      lower.includes("off") ||
-      lower.includes("deactivate") ||
-      lower.includes("exit") ||
-      lower.includes("stop") ||
-      lower.includes("disable");
-    return {
-      type: "focus_mode",
-      isFocusDeactivate: isDeactivate,
-      rawText: transcript
-    };
-  }
-
-  // 9. Match explicit registered voice command
-  const matchedCmd = matchVoiceCommand(transcript);
-  if (matchedCmd) {
-    return {
-      type: "voice_command",
-      command: matchedCmd,
-      rawText: transcript
-    };
-  }
-
-  // 10. General Whiteboard / Sketch detection
-  if (
-    lower.includes("flowchart") ||
-    lower.includes("flow chart") ||
-    lower.includes("diagram") ||
-    lower.includes("whiteboard") ||
-    lower.includes("chalkboard") ||
-    lower.includes("draw") ||
-    lower.includes("sketch")
-  ) {
-    return {
-      type: "sketch",
-      topic: transcript,
-      rawText: transcript
-    };
   }
 
   return { type: "none", rawText: transcript };

@@ -44,7 +44,7 @@ export function computeHolographicEyeMetrics(
       ? 0.88
       : expression === "wink" && side === "right"
       ? 1.08
-      : expression === "surprised" || expression === "excited"
+      : (expression as string) === "surprised" || expression === "excited"
       ? 1.12
       : 1.0;
 

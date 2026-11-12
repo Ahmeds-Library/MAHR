@@ -40,6 +40,15 @@ export interface MahrResponsiveShellProps {
   // Session & Audio
   session: any | null;
   state: LiveState;
+  assistantStage?: import("@/voiceSync/layer1_data/assistantSessionTypes").AssistantStage;
+  followUpRemainingMs?: number | null;
+  activeToolName?: string | null;
+  isSessionPinned?: boolean;
+  onTogglePinSession?: () => void;
+  pendingApprovalRequest?: import("@/voiceSync/layer1_data/assistantSessionTypes").ToolApprovalRequest | null;
+  onResolveToolApproval?: (approved: boolean) => void;
+  lastErrorDiagnostic?: string | null;
+  onPowerDisconnect?: () => void;
   voiceConfidence: number;
   isMuted: boolean;
   onToggleConnect: () => void;
@@ -156,6 +165,15 @@ export const MahrResponsiveShell: React.FC<MahrResponsiveShellProps> = ({
 
   session,
   state,
+  assistantStage,
+  followUpRemainingMs,
+  activeToolName,
+  isSessionPinned,
+  onTogglePinSession,
+  pendingApprovalRequest,
+  onResolveToolApproval,
+  lastErrorDiagnostic,
+  onPowerDisconnect,
   voiceConfidence,
   isMuted,
   onToggleConnect,
@@ -400,6 +418,15 @@ export const MahrResponsiveShell: React.FC<MahrResponsiveShellProps> = ({
         <FooterVisualizer
           session={session}
           state={state}
+          assistantStage={assistantStage}
+          followUpRemainingMs={followUpRemainingMs}
+          activeToolName={activeToolName}
+          isSessionPinned={isSessionPinned}
+          onTogglePinSession={onTogglePinSession}
+          pendingApprovalRequest={pendingApprovalRequest}
+          onResolveToolApproval={onResolveToolApproval}
+          lastErrorDiagnostic={lastErrorDiagnostic}
+          onPowerDisconnect={onPowerDisconnect}
           themeColor={themeColor}
           voiceConfidence={voiceConfidence}
           isMuted={isMuted}

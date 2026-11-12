@@ -218,7 +218,7 @@ export const PresentonStudioRoot: React.FC<PresentonStudioRootProps> = ({
     ]
   );
 
-  // When Mahr Voice Assistant passes a new live initialTopic, automatically run outline + slide synthesis
+  // When Mahr Voice Assistant passes a new live initialTopic, automatically run outline + full slide deck synthesis
   useEffect(() => {
     const clean = (initialTopic || "").trim();
     if (!clean || clean.includes("FMCG Market Dynamics")) return;
@@ -229,7 +229,7 @@ export const PresentonStudioRoot: React.FC<PresentonStudioRootProps> = ({
 
     (async () => {
       setIsGeneratingOutline(true);
-      showNotice(`Mahr is creating your presentation on "${clean}"...`);
+      showNotice(`Mahr is structuring outline for "${clean}"...`);
       try {
         const outlineRes = await generatePresentonOutline({
           ...inputConfig,
@@ -240,13 +240,70 @@ export const PresentonStudioRoot: React.FC<PresentonStudioRootProps> = ({
         setOutlineItems(outlineRes.outline);
         setCitations(outlineRes.citations || []);
         setActiveStep("step2_outline");
+
+        // Automatically continue to build full slide deck for seamless voice UX
+        if (outlineRes.outline && outlineRes.outline.length > 0) {
+          setIsGeneratingOutline(false);
+          setIsBuildingDeck(true);
+          showNotice(`Mahr is designing ${outlineRes.outline.length} visual slides for "${clean}"...`);
+          const fullDeck = await generatePresentonDeck({
+            topic: clean,
+            title: outlineRes.title || clean,
+            subtitle: outlineRes.subtitle || "",
+            audience: inputConfig.audience,
+            tone: inputConfig.tone,
+            language: inputConfig.language,
+            themeId: selectedThemeId,
+            outline: outlineRes.outline,
+            documentContext: inputConfig.documentContext,
+            customInstructions: inputConfig.customInstructions,
+            citations: outlineRes.citations || []
+          });
+          setDeck(fullDeck);
+          setActiveSlideIndex(0);
+          setActiveStep("step4_studio");
+          showNotice(`Presentation ready: "${fullDeck.title}"`);
+        }
       } catch {
         // Fallback handled in router
       } finally {
         setIsGeneratingOutline(false);
+        setIsBuildingDeck(false);
       }
     })();
   }, [initialTopic]);
+
+  // Listen to global voice & mascot slide commands (prompt, next, prev, export, add_slide)
+  useEffect(() => {
+    const handleMascotSlideCommand = (e: Event) => {
+      const custom = e as CustomEvent<{
+        type: "prompt" | "next" | "prev" | "export" | "add_slide" | "enhance" | "metrics" | "open_builder";
+        prompt?: string;
+      }>;
+      const detail = custom.detail;
+      if (!detail) return;
+
+      if (detail.type === "next" && deck && deck.slides.length > 0) {
+        setActiveStep("step4_studio");
+        setActiveSlideIndex((i) => Math.min(deck.slides.length - 1, i + 1));
+      } else if (detail.type === "prev" && deck && deck.slides.length > 0) {
+        setActiveStep("step4_studio");
+        setActiveSlideIndex((i) => Math.max(0, i - 1));
+      } else if (detail.type === "export" && deck) {
+        exportPresentonDeckToPptx(deck).catch(() => {});
+      } else if (detail.type === "prompt" && detail.prompt) {
+        const cleanTopic = detail.prompt.trim();
+        if (cleanTopic && lastVoiceTopicRef.current !== cleanTopic) {
+          lastVoiceTopicRef.current = cleanTopic;
+          setInputConfig((prev) => ({ ...prev, topic: cleanTopic }));
+          handleGenerateOutline(cleanTopic);
+        }
+      }
+    };
+
+    window.addEventListener("mahr:slides-mascot-command", handleMascotSlideCommand);
+    return () => window.removeEventListener("mahr:slides-mascot-command", handleMascotSlideCommand);
+  }, [deck, handleGenerateOutline]);
 
   // Outline Manipulation Handlers
   const handleUpdateOutlineItem = (idx: number, updated: PresentonOutlineItem) => {

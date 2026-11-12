@@ -75,6 +75,7 @@ import { updaterRouter } from "./src/server/updaterEndpoint.ts";
 import { modelRouterEndpoint } from "./src/server/modelRouterEndpoint.ts";
 import { obsidianVaultEndpoint } from "./src/server/obsidianVaultEndpoint.ts";
 import { presentonRouter } from "./src/server/presentonRouter.ts";
+import { securitySandboxMiddleware } from "./src/server/securitySandboxMiddleware.ts";
 
 dotenv.config();
 
@@ -204,6 +205,7 @@ async function startServer() {
   app.set("trust proxy", true);
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use("/api", securitySandboxMiddleware);
 
   // Global Health & Status Ping Endpoint
   app.get("/api/health", (req, res) => {

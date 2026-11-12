@@ -184,9 +184,6 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
     cyanRim.position.set(-50, 50, 50);
     scene.add(cyanRim);
 
-    // Clean background without 3D particles or orb overlays
-    let clock = new THREE.Clock();
-
     const render = () => {
       animFrameIdRef.current = requestAnimationFrame(render);
       renderer.render(scene, camera);
@@ -310,7 +307,7 @@ export const MahrCoreVisualizer: React.FC<MahrCoreVisualizerProps> = ({
             currentHumanMood={currentHumanMood}
             pulseScale={pulseScale}
             isResponding={isResponding}
-            onCharacterClick={onManualWakeRequested}
+            onCharacterClick={state === "disconnected" ? onManualWakeRequested : onManualSleepRequested}
           />
         </div>
       </div>

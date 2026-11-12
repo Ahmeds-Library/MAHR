@@ -68,6 +68,12 @@ import { SettingsTabId } from "@components/settings/SettingsModal";
 import { parseAssistantVoiceIntent } from "@/core/services/mahrVoiceDispatcher";
 import { SystemSettingsState, saveSettingToDB, loadSettingsFromDB, runSettingsDiagnosticCycle } from "@/services/settingsService";
 import { VoiceCommand, matchVoiceCommand, detectVoiceAction } from "@/services/voiceCommandService";
+import { matchStreamingVoiceIntent } from "@/voiceSync/layer2_logic/bilingualVoiceIntentParser";
+import { runSynchronizedVoiceAction } from "@/voiceSync/layer2_logic/synchronizedActionNarrator";
+import { LiveVoiceActionSyncHud } from "@/voiceSync/layer3_ui/LiveVoiceActionSyncHud";
+import { useUnifiedAssistantSessionController } from "@/voiceSync/layer2_logic/useUnifiedAssistantSessionController";
+import { parseWakeWordAndTrailingCommand } from "@/voiceSync/layer2_logic/assistantSessionReducer";
+import { globalSessionEpochManager } from "@/voiceSync/layer2_logic/sessionEpochAbortManager";
 import { getThemeConfig, getVisualizerBarStyle } from "@/services/themeService";
 import { analyzeSpeechColorPsychology, PsychologyProfile, PSYCHOLOGY_PROFILES } from "@/services/colorPsychologyEngine";
 import { MahrPluginId } from "@/plugins/layer1_data/pluginTypes";
@@ -196,6 +202,12 @@ export default function App() {
   const lastConfidenceUpdateRef = useRef<number>(0);
   const wakeWordRecognitionRef = useRef<any>(null);
   const wakeWordRestartTimeoutRef = useRef<any>(null);
+  const sessionRef = useRef<MyraaAudioSession | null>(null);
+  const visualizerRef = useRef<HTMLDivElement | null>(null);
+  const userClickedDisconnectRef = useRef<boolean>(true);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const wasEverConnectedRef = useRef<boolean>(false);
+  const pendingTrailingWakeCommandRef = useRef<string | null>(null);
 
   const chatMaxMessagesRef = useRef<number>(30);
   const chatRetentionTimeRef = useRef<number>(60);
@@ -1133,6 +1145,42 @@ export default function App() {
   }, [handleAddDailyTask]);
 
   const {
+    fsmState,
+    dispatchEvent,
+    micLeaseCoordinator,
+    executeGuardedTool,
+    resolvePendingToolApproval,
+    togglePinSession,
+  } = useUnifiedAssistantSessionController({
+    onFollowUpExpiredDisconnect: () => {
+      userClickedDisconnectRef.current = true;
+      reconnectAttemptsRef.current = 99;
+      stopAllSpeech();
+      micLeaseCoordinator.setLeaseOwner("none");
+      if (sessionRef.current) {
+        sessionRef.current.disconnect();
+      }
+      setState("disconnected");
+      setUserCaption("");
+      setModelCaption("");
+      setActiveEmotion("idle");
+      setCharacterState("idle");
+      setNotesStatusAlert("🌙 8s Follow-up window complete • Standby listening for 'Hey MAHR'");
+      setTimeout(() => setNotesStatusAlert(null), 3200);
+    },
+  });
+
+  const dispatchEventRef = useRef(dispatchEvent);
+  const executeGuardedToolRef = useRef(executeGuardedTool);
+  useEffect(() => {
+    dispatchEventRef.current = dispatchEvent;
+    executeGuardedToolRef.current = executeGuardedTool;
+    if (sessionRef.current) {
+      sessionRef.current.setFsmEventDispatcher(dispatchEvent);
+    }
+  }, [dispatchEvent, executeGuardedTool]);
+
+  const {
     isAskMahrOpen,
     setIsAskMahrOpen,
     isAskMyraaOpen,
@@ -1166,9 +1214,9 @@ export default function App() {
     activeSubAgent,
     studyPadText,
     whiteboardText,
-    setWhiteboardText: (updater) => {
+    setWhiteboardText: (updater: string | ((prev: string) => string)) => {
       setWhiteboardText((prev) => {
-        const next = typeof updater === "function" ? updater(prev) : updater;
+        const next = typeof updater === "function" ? (updater as (p: string) => string)(prev) : updater;
         dbSet("myraa_whiteboard_text", next);
         return next;
       });
@@ -1178,7 +1226,7 @@ export default function App() {
     getScreenSnapshot,
     onExecuteAction: handleExecuteActionFromChat,
     isScreenSharing,
-    onAppendToChatHistory: (role, text, meta) => appendToChatHistory(role, text, meta),
+    onAppendToChatHistory: (role, text, meta) => appendToChatHistory(role, text, meta as any),
     onSendToRealtimeSession: (text: string) => {
       if (sessionRef.current) {
         sessionRef.current.sendTextMessage(text);
@@ -1190,6 +1238,7 @@ export default function App() {
     knowledgeDeficits,
     chatHistory,
     onAddManualMemory: (category, text) => handleAddManualMemory(category, text),
+    onFsmEvent: dispatchEvent,
   });
 
   // Sync settings with the active audio session
@@ -1499,47 +1548,36 @@ export default function App() {
     lastSleepTriggerTimeRef.current = Date.now();
     setSleepRipple(Date.now());
     const agentName = activeSubAgent?.name?.split(" ")[0] || "MAHR";
-    const sleepGreeting = {
-      ur: `${agentName} standby mode par hai. Jab zaroorat ho, batayen.`,
-      en: `${agentName} is entering standby mode. Say 'Hey ${agentName}' whenever you need me.`
-    };
-    
-    // Explicitly abort background wake-word speech recognition if active
+
+    // Increment monotonic sessionEpochId and abort any in-flight tool or HTTP request
+    globalSessionEpochManager.advanceEpochAndAbortAll("sleep_or_power");
+    dispatchEventRef.current({ type: "SLEEP_COMMAND" });
+    pendingTrailingWakeCommandRef.current = null;
+
+    // Cleanly stop active wake-word recognizer so the standby effect can re-arm after echo cooldown
     if (wakeWordRecognitionRef.current) {
       try { wakeWordRecognitionRef.current.abort(); } catch (e) {}
       try { wakeWordRecognitionRef.current.stop(); } catch (e) {}
       wakeWordRecognitionRef.current = null;
     }
+    micLeaseCoordinator.setLeaseOwner("none");
 
     userClickedDisconnectRef.current = true;
-    if (sessionRef.current && stateRef.current !== "disconnected") {
+    reconnectAttemptsRef.current = 99;
+    stopAllSpeech();
+
+    if (sessionRef.current) {
       sessionRef.current.disconnect();
     }
-
-    speakNotification(sleepGreeting);
-    setNotesStatusAlert(`🌙 ${agentName} entered Sleep Standby Mode.`);
-    
-    // Ensure background wake listener is re-initialized for subsequent wake up calls
-    if (wakeWordRestartTimeoutRef.current) clearTimeout(wakeWordRestartTimeoutRef.current);
-    wakeWordRestartTimeoutRef.current = setTimeout(() => {
-      // Re-trigger state effect or restart recognition if still disconnected
-      if (stateRef.current === "disconnected" && isWakeWordEnabled) {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (SpeechRecognition && !wakeWordRecognitionRef.current) {
-          try {
-            const rec = new SpeechRecognition();
-            rec.continuous = true;
-            rec.interimResults = true;
-            rec.lang = navigator.language || "en-US";
-            rec.onend = () => { wakeWordRecognitionRef.current = null; };
-            wakeWordRecognitionRef.current = rec;
-          } catch (e) {}
-        }
-      }
-    }, 1200);
+    setState("disconnected");
+    setUserCaption("");
+    setModelCaption("");
+    setActiveEmotion("idle");
+    setCharacterState("idle");
+    setNotesStatusAlert(`🌙 ${agentName} disconnected & entered Standby Mode. Say "Hey ${agentName}" anytime.`);
 
     setTimeout(() => setNotesStatusAlert(null), 3500);
-  }, [agentMode, activeSubAgent, speakNotification, isWakeWordEnabled]);
+  }, [activeSubAgent, micLeaseCoordinator]);
 
   const handleExecuteVoiceShortcut = (cmd: VoiceCommand) => {
     switch (cmd.id) {
@@ -1818,11 +1856,7 @@ export default function App() {
     }
   };
 
-  const sessionRef = useRef<MyraaAudioSession | null>(null);
-  const visualizerRef = useRef<HTMLDivElement | null>(null);
-  const userClickedDisconnectRef = useRef<boolean>(true);
-  const reconnectAttemptsRef = useRef<number>(0);
-  const wasEverConnectedRef = useRef<boolean>(false);
+  // Session refs moved to top of App component
 
   // Load settings and data from IndexedDB on startup (migrating from localStorage if needed)
   useEffect(() => {
@@ -2819,6 +2853,7 @@ export default function App() {
   // Initialize the audio session handlers once on mount
   useEffect(() => {
     sessionRef.current = new MyraaAudioSession({
+      onFsmEvent: (evt) => dispatchEventRef.current(evt),
       onStateChange: (newState) => {
         setState(newState);
         setIsMicDenied(sessionRef.current?.isMicDenied || false);
@@ -2832,6 +2867,18 @@ export default function App() {
           // Return to receptive resting state
           setActiveEmotion("idle");
           setCharacterState("idle");
+          // If the user spoke a wake phrase + trailing command in one breath, execute it immediately upon connect
+          if (pendingTrailingWakeCommandRef.current) {
+            const trailingCmd = pendingTrailingWakeCommandRef.current;
+            pendingTrailingWakeCommandRef.current = null;
+            dispatchEventRef.current({ type: "QUEUED_COMMAND_CONSUMED" });
+            dispatchEventRef.current({ type: "VAD_SPEECH_START" });
+            setUserCaption(trailingCmd);
+            appendToChatHistory("user", trailingCmd);
+            if (sessionRef.current) {
+              sessionRef.current.sendTextMessage(trailingCmd);
+            }
+          }
         } else if (newState === "speaking") {
           setCharacterState("talking");
         }
@@ -2845,128 +2892,328 @@ export default function App() {
 
           appendToChatHistory("user", text);
 
-          // Unified voice intent classifier
-          const action = detectVoiceAction(text, activeSubAgent?.name?.split(" ")[0] || "MAHR");
+          const ensurePluginAndRun = (pluginId: MahrPluginId, fn: () => void | Promise<void>) => {
+            if (!pluginManagerRef.current.isPluginActive(pluginId)) {
+              pluginManagerRef.current.installPlugin(pluginId);
+            }
+            return fn();
+          };
 
-          if (action.type === "voice_to_mindmap") {
-            pluginManagerRef.current.requestPluginOrRun(
-              "whiteboard-chalkboard",
-              () =>
-                handleVoiceToMindMap(action.topic || text, {
-                  isWorkflow: action.isWorkflow,
-                  autoSpeakFeedback: true,
-                }),
-              speakNotification
-            );
-          } else if (action.type === "sleep") {
+          // Coalesced bilingual (Urdu / Roman Urdu / English) intent matcher with wake-word unshadowing
+          const match = matchStreamingVoiceIntent(
+            text,
+            activeSubAgent?.name?.split(" ")[0] || "MAHR"
+          );
+
+          if (!match) {
+            const detectedPluginId = detectUninstalledPluginInTranscript(text);
+            if (detectedPluginId) {
+              runSynchronizedVoiceAction({
+                domain: "system",
+                title: detectedPluginId,
+                userTranscript: text,
+                onStatusCaption: setModelCaption,
+                executeAction: () => {
+                  ensurePluginAndRun(detectedPluginId, () => openPluginWorkspaceById(detectedPluginId));
+                },
+              });
+            }
+            return;
+          }
+
+          if (match.type === "sleep") {
             handlePutToSleep();
             return;
-          } else if (action.type === "focus_mode") {
-            if (action.isFocusDeactivate) {
-              setIsFocusMode(false);
-              setWhiteboardStatusAlert("✨ Focus Mode Deactivated. Full dashboard restored.");
-              setTimeout(() => setWhiteboardStatusAlert(null), 3000);
-            } else {
-              setIsFocusMode(true);
-              setIsStudyPadOpen(false);
-              setIsWhiteboardOpen(false);
-              setWhiteboardStatusAlert("🧘 Focus Mode Activated. Distractions cleared.");
-              setTimeout(() => setWhiteboardStatusAlert(null), 3500);
-            }
-          } else if (action.type === "voice_command" && action.command) {
-            handleExecuteVoiceShortcut(action.command);
-          } else if (action.type === "vector_search") {
-            pluginManagerRef.current.requestPluginOrRun(
-              "knowledge-graph",
-              () => {
-                const query = action.topic || text;
-                speakNotification(`Querying your 128-dimensional vector memory graph for ${query}...`);
-                fetch("/api/vector-memory/query", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ query, topK: 3, minSimilarity: 0.28 }),
-                })
-                  .then((r) => r.json())
-                  .then((d) => {
+          }
+
+          if (match.type === "voice_to_mindmap") {
+            const targetTopic = match.topic || match.cleanedCommandText || text;
+            runSynchronizedVoiceAction({
+              domain: "mindmap",
+              title: targetTopic,
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: async (reportMid) => {
+                reportMid(match.cues.midAction[match.detectedLanguage], 55);
+                await ensurePluginAndRun("whiteboard-chalkboard", () =>
+                  handleVoiceToMindMap(targetTopic, {
+                    isWorkflow: match.isWorkflow,
+                    autoSpeakFeedback: false,
+                  })
+                );
+              },
+            });
+          } else if (match.type === "open_slides") {
+            const targetTopic = match.topic || "Strategic Keynote";
+            runSynchronizedVoiceAction({
+              domain: "slides",
+              title: targetTopic,
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: (reportMid) => {
+                ensurePluginAndRun("slides-studio", () => {
+                  closeAllPanels();
+                  setSlidesStudioTopic(targetTopic);
+                  setWhiteboardDiagramType("slides");
+                  setWhiteboardActiveMode("split");
+                  setIsWhiteboardOpen(true);
+                  reportMid(match.cues.midAction[match.detectedLanguage], 64);
+                  setTimeout(() => {
+                    window.dispatchEvent(
+                      new CustomEvent("mahr:slides-mascot-command", {
+                        detail: { type: "prompt", prompt: targetTopic },
+                      })
+                    );
+                  }, 180);
+                });
+              },
+            });
+          } else if (match.type === "slides_navigate") {
+            const navAction = match.slideAction || "next";
+            runSynchronizedVoiceAction({
+              domain: "slides_nav",
+              title: navAction === "prev" ? "Previous Slide" : navAction === "export" ? "Export Deck" : "Next Slide",
+              userTranscript: text,
+              extraCueMode: navAction,
+              onStatusCaption: setModelCaption,
+              executeAction: () => {
+                window.dispatchEvent(
+                  new CustomEvent("mahr:slides-mascot-command", {
+                    detail: { type: navAction },
+                  })
+                );
+              },
+            });
+          } else if (match.type === "save_memory") {
+            const memoryText = match.topic || match.cleanedCommandText || text;
+            runSynchronizedVoiceAction({
+              domain: "memory",
+              title: memoryText.slice(0, 42),
+              userTranscript: text,
+              extraCueMode: "save",
+              onStatusCaption: setModelCaption,
+              executeAction: (reportMid) => {
+                reportMid(match.cues.midAction[match.detectedLanguage], 60);
+                handleAddManualMemory("identity", memoryText);
+                setWhiteboardStatusAlert(`🧠 Memory Saved: "${memoryText.slice(0, 48)}"`);
+                setTimeout(() => setWhiteboardStatusAlert(null), 3500);
+              },
+            });
+          } else if (match.type === "open_memory") {
+            runSynchronizedVoiceAction({
+              domain: "memory",
+              title: "Hybrid Memory Bank",
+              userTranscript: text,
+              extraCueMode: "open",
+              onStatusCaption: setModelCaption,
+              executeAction: () => {
+                ensurePluginAndRun("memory-vault", () => {
+                  closeAllPanels();
+                  setShowMemoryDashboard(true);
+                });
+              },
+            });
+          } else if (match.type === "open_obsidian" || match.type === "vector_search") {
+            const query = match.topic || match.cleanedCommandText || text;
+            runSynchronizedVoiceAction({
+              domain: "obsidian",
+              title: query.slice(0, 42),
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: async (reportMid) => {
+                ensurePluginAndRun("knowledge-graph", () => {
+                  closeAllPanels();
+                  setShowKnowledgeGraph(true);
+                });
+                if (match.type === "vector_search") {
+                  reportMid(match.cues.midAction[match.detectedLanguage], 58);
+                  try {
+                    const r = await fetch("/api/vector-memory/query", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ query, topK: 3, minSimilarity: 0.25 }),
+                    });
+                    const d = await r.json();
                     const topMatches = d.topMatches || [];
                     if (topMatches.length > 0) {
                       const best = topMatches[0];
                       const matchLabel = best.node?.label || "Memory Concept";
-                      const matchDesc = best.node?.description || "";
-                      const simPercent = Math.round((best.similarity || 0.8) * 100);
-                      speakNotification(
-                        `Found related vector memory: ${matchLabel} with ${simPercent}% relevance. ${matchDesc.slice(0, 100)}`
-                      );
+                      const simPercent = Math.round((best.similarity || 0.82) * 100);
                       setWhiteboardStatusAlert(`🧠 Vector Recall: ${matchLabel} (${simPercent}%)`);
-                    } else {
-                      speakNotification(`Searched vector memory for ${query}. Opening your Knowledge Graph.`);
+                      setTimeout(() => setWhiteboardStatusAlert(null), 4000);
                     }
-                    setTimeout(() => setWhiteboardStatusAlert(null), 4000);
-                  })
-                  .catch(() => {});
+                  } catch {}
+                }
+              },
+            });
+          } else if (match.type === "add_task") {
+            const taskTitle = match.topic || "Study Session";
+            runSynchronizedVoiceAction({
+              domain: "tasks",
+              title: taskTitle,
+              userTranscript: text,
+              extraCueMode: "add",
+              onStatusCaption: setModelCaption,
+              executeAction: (reportMid) => {
+                ensurePluginAndRun("daily-tasks", () => {
+                  reportMid(match.cues.midAction[match.detectedLanguage], 65);
+                  handleAddDailyTask({
+                    title: taskTitle,
+                    completed: false,
+                    priority: "high",
+                    timeBlock: "09:00 AM",
+                    category: "study",
+                    date: getLocalTodayDateString(),
+                    reminder: true,
+                  });
+                  setIsDailyTaskManagerOpen(true);
+                });
+              },
+            });
+          } else if (match.type === "open_tasks") {
+            runSynchronizedVoiceAction({
+              domain: "tasks",
+              title: "Daily Task Planner",
+              userTranscript: text,
+              extraCueMode: "open",
+              onStatusCaption: setModelCaption,
+              executeAction: () => {
+                ensurePluginAndRun("daily-tasks", () => {
+                  closeAllPanels();
+                  setIsDailyTaskManagerOpen(true);
+                });
+              },
+            });
+          } else if (match.type === "open_simulation") {
+            const simTopic = match.topic || "Interactive 3D Physics & Biology Lab";
+            runSynchronizedVoiceAction({
+              domain: "simulation",
+              title: simTopic,
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: (reportMid) => {
+                reportMid(match.cues.midAction[match.detectedLanguage], 62);
                 closeAllPanels();
-                setShowKnowledgeGraph(true);
+                setSimulationPrompt(simTopic);
+                setIsSimulationStudioOpen(true);
               },
-              speakNotification
-            );
-          } else if (action.type === "open_office") {
-            pluginManagerRef.current.requestPluginOrRun(
-              "mahr-office",
-              () => {
-                closeAllPanels();
-                setIsMunderDifflinOpen(true);
-                speakNotification(
-                  "Opening MAHR Virtual Office Floor. Michael, Jim, Pam, and Dwight are on standby."
-                );
+            });
+          } else if (match.type === "generate_study_pack") {
+            runSynchronizedVoiceAction({
+              domain: "studypad",
+              title: "Flashcards & Practice Quiz",
+              userTranscript: text,
+              extraCueMode: "pack",
+              onStatusCaption: setModelCaption,
+              executeAction: async (reportMid) => {
+                ensurePluginAndRun("study-pad", () => {
+                  setIsStudyPadOpen(true);
+                });
+                reportMid(match.cues.midAction[match.detectedLanguage], 60);
+                await handleGenerateStudyPack();
               },
-              speakNotification
-            );
-          } else if (action.type === "open_slides") {
-            if (!pluginManagerRef.current.isPluginActive("slides-studio")) {
-              pluginManagerRef.current.installPlugin("slides-studio");
-            }
-            closeAllPanels();
-            const targetTopic = action.topic || text;
-            if (targetTopic) {
-              setSlidesStudioTopic(targetTopic);
-            }
-            setWhiteboardDiagramType("slides");
-            setWhiteboardActiveMode("split");
-            setIsWhiteboardOpen(true);
-            setTimeout(() => {
-              window.dispatchEvent(
-                new CustomEvent("mahr:slides-mascot-command", {
-                  detail: { type: "prompt", prompt: targetTopic }
-                })
-              );
-            }, 250);
-          } else if (action.type === "open_routines") {
-            pluginManagerRef.current.requestPluginOrRun(
-              "quick-routines",
-              () => {
-                closeAllPanels();
-                setIsQuickRoutinesOpen(true);
-                speakNotification("Opening Mahr Smart Routines.");
+            });
+          } else if (match.type === "open_studypad") {
+            runSynchronizedVoiceAction({
+              domain: "studypad",
+              title: "Study Pad Notebook",
+              userTranscript: text,
+              extraCueMode: "open",
+              onStatusCaption: setModelCaption,
+              executeAction: () => {
+                ensurePluginAndRun("study-pad", () => {
+                  setIsStudyPadOpen(true);
+                });
               },
-              speakNotification
-            );
-          } else if (action.type === "sketch") {
-            pluginManagerRef.current.requestPluginOrRun(
-              "whiteboard-chalkboard",
-              () => {
-                setIsWhiteboardOpen(true);
-                setVoiceSketchTriggerText(text);
+            });
+          } else if (match.type === "code_chalkboard") {
+            const codeTopic = match.topic || match.cleanedCommandText || "Algorithm Walkthrough";
+            runSynchronizedVoiceAction({
+              domain: "code",
+              title: codeTopic,
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: (reportMid) => {
+                ensurePluginAndRun("whiteboard-chalkboard", () => {
+                  reportMid(match.cues.midAction[match.detectedLanguage], 64);
+                  setIsWhiteboardOpen(true);
+                  setVoiceSketchTriggerText(`Write clean, well-commented code for: ${codeTopic}`);
+                });
               },
-              speakNotification
-            );
-          } else {
-            const detectedPluginId = detectUninstalledPluginInTranscript(text);
-            if (detectedPluginId) {
-              pluginManagerRef.current.requestPluginOrRun(
-                detectedPluginId,
-                () => openPluginWorkspaceById(detectedPluginId),
-                speakNotification
-              );
+            });
+          } else if (match.type === "sketch") {
+            const sketchTopic = match.topic || match.cleanedCommandText || text;
+            runSynchronizedVoiceAction({
+              domain: "chalkboard",
+              title: sketchTopic.slice(0, 42),
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: (reportMid) => {
+                ensurePluginAndRun("whiteboard-chalkboard", () => {
+                  reportMid(match.cues.midAction[match.detectedLanguage], 60);
+                  setIsWhiteboardOpen(true);
+                  setVoiceSketchTriggerText(sketchTopic);
+                });
+              },
+            });
+          } else if (match.type === "open_office") {
+            runSynchronizedVoiceAction({
+              domain: "office",
+              title: "MAHR Virtual Office Floor",
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: () => {
+                ensurePluginAndRun("mahr-office", () => {
+                  closeAllPanels();
+                  setIsMunderDifflinOpen(true);
+                });
+              },
+            });
+          } else if (match.type === "open_routines") {
+            runSynchronizedVoiceAction({
+              domain: "routines",
+              title: "Smart Autonomous Routines",
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: () => {
+                ensurePluginAndRun("quick-routines", () => {
+                  closeAllPanels();
+                  setIsQuickRoutinesOpen(true);
+                });
+              },
+            });
+          } else if (match.type === "focus_mode") {
+            runSynchronizedVoiceAction({
+              domain: "system",
+              title: match.isFocusDeactivate ? "Restore Workspace" : "Deep Focus Mode",
+              userTranscript: text,
+              onStatusCaption: setModelCaption,
+              executeAction: () => {
+                if (match.isFocusDeactivate) {
+                  setIsFocusMode(false);
+                  setWhiteboardStatusAlert("✨ Focus Mode Deactivated. Full dashboard restored.");
+                  setTimeout(() => setWhiteboardStatusAlert(null), 3000);
+                } else {
+                  setIsFocusMode(true);
+                  setIsStudyPadOpen(false);
+                  setIsWhiteboardOpen(false);
+                  setWhiteboardStatusAlert("🧘 Focus Mode Activated. Distractions cleared.");
+                  setTimeout(() => setWhiteboardStatusAlert(null), 3500);
+                }
+              },
+            });
+          } else if (match.type === "voice_command") {
+            const cmd = matchVoiceCommand(match.cleanedCommandText);
+            if (cmd) {
+              runSynchronizedVoiceAction({
+                domain: "system",
+                title: cmd.phrase,
+                userTranscript: text,
+                onStatusCaption: setModelCaption,
+                executeAction: () => {
+                  handleExecuteVoiceShortcut(cmd);
+                },
+              });
             }
           }
         } else if (role === "model") {
@@ -2986,10 +3233,20 @@ export default function App() {
           appendToChatHistory("model", text);
         }
       },
-      onToolCall: (name, args, callback) => {
+      onToolCall: (name, args, rawCallback) => {
         console.log(`[App] Tool call triggered: ${name}`, args);
-        
-        if (name === "ingestToVectorGraph") {
+
+        executeGuardedToolRef.current(
+          name,
+          args || {},
+          (epochGuard) => {
+            const callback = (payload: any) => {
+              epochGuard(() => {
+                rawCallback(payload);
+              });
+            };
+
+            if (name === "ingestToVectorGraph") {
           // Direct ingestion into high-dimensional vector memory graph + Go microservice
           const concept = String(args.concept || "Concept");
           const notes = String(args.notes || "");
@@ -3048,132 +3305,195 @@ export default function App() {
               callback({ error: `Go vector query failed: ${err.message}` });
             });
         } else if (name === "generateStudyMaterials") {
-          setIsStudyPadOpen(true);
-          const override = args.notesContentOverride;
-          handleGenerateStudyPack(override)
-            .then((res) => {
-              callback({ 
-                result: `Successfully analyzed notes and compiled ${res?.countFlashcards || 0} flashcards and ${res?.countMcqs || 0} MCQs inside the Study Pad drawer. Let TECH know!` 
-              });
-            })
-            .catch((err) => {
-              callback({ error: `Could not generate study materials: ${err.message}` });
-            });
+          runSynchronizedVoiceAction({
+            domain: "studypad",
+            title: "Flashcards & Quiz Pack",
+            extraCueMode: "pack",
+            onStatusCaption: setModelCaption,
+            executeAction: async (reportMid) => {
+              if (!pluginManagerRef.current.isPluginActive("study-pad")) {
+                pluginManagerRef.current.installPlugin("study-pad");
+              }
+              setIsStudyPadOpen(true);
+              reportMid("Analyzing your notes and compiling flashcards and practice quiz questions...", 62);
+              const override = args.notesContentOverride;
+              try {
+                const res = await handleGenerateStudyPack(override);
+                callback({
+                  result: `Successfully analyzed notes and compiled ${res?.countFlashcards || 0} flashcards and ${res?.countMcqs || 0} MCQs inside the Study Pad drawer. Let TECH know!`,
+                });
+              } catch (err: any) {
+                callback({ error: `Could not generate study materials: ${err?.message}` });
+              }
+            },
+          });
         } else if (name === "updateWhiteboard") {
-          setIsWhiteboardOpen(true);
           const boardTitle = args.title || "MAHR's Blackboard Lesson";
-          const boardNotes = args.notes || "";
-          const dType = args.diagramType || "notes";
-          const dClear = !!args.clearBoard;
-          const drawings = args.drawings || [];
-          const customModel = args.customModelData || null;
+          runSynchronizedVoiceAction({
+            domain: "chalkboard",
+            title: boardTitle,
+            onStatusCaption: setModelCaption,
+            executeAction: (reportMid) => {
+              if (!pluginManagerRef.current.isPluginActive("whiteboard-chalkboard")) {
+                pluginManagerRef.current.installPlugin("whiteboard-chalkboard");
+              }
+              setIsWhiteboardOpen(true);
+              const boardNotes = args.notes || "";
+              const dType = args.diagramType || "notes";
+              const dClear = !!args.clearBoard;
+              const drawings = args.drawings || [];
+              const customModel = args.customModelData || null;
 
-          if (dClear) {
-            setWhiteboardClearCounter((c) => c + 1);
-          }
+              reportMid(`Plotting "${boardTitle}" notes and visual elements onto the live chalkboard...`, 65);
 
-          setWhiteboardText((prevText) => {
-            let updatedValue = "";
-            if (dClear) {
-              updatedValue = `# 🎓 ${boardTitle}\n\n${boardNotes}`;
-            } else {
-              updatedValue = `# 🎓 ${boardTitle}\n\n${boardNotes}\n\n---\n\n${prevText}`;
-            }
-            dbSet("myraa_whiteboard_text", updatedValue);
-            return updatedValue;
+              if (dClear) {
+                setWhiteboardClearCounter((c) => c + 1);
+              }
+
+              setWhiteboardText((prevText) => {
+                let updatedValue = "";
+                if (dClear) {
+                  updatedValue = `# 🎓 ${boardTitle}\n\n${boardNotes}`;
+                } else {
+                  updatedValue = `# 🎓 ${boardTitle}\n\n${boardNotes}\n\n---\n\n${prevText}`;
+                }
+                dbSet("myraa_whiteboard_text", updatedValue);
+                return updatedValue;
+              });
+              setWhiteboardDiagramType(dType);
+              setWhiteboardDrawings(drawings);
+              setWhiteboardCustomModelData(customModel);
+
+              if (drawings.length > 0 || customModel) {
+                setWhiteboardActiveMode("split");
+              }
+
+              setWhiteboardStatusAlert(
+                customModel
+                  ? `✨ MAHR generated a custom 3D model on: "${boardTitle}"`
+                  : drawings.length > 0
+                    ? `🎨 MAHR sketched a live diagram & notes on: "${boardTitle}"`
+                    : `✏️ MAHR added textbook notes on: "${boardTitle}"`
+              );
+              setTimeout(() => setWhiteboardStatusAlert(null), 4000);
+
+              const infoText = customModel
+                ? `🎨 **[3D MODEL GENERATED: ${boardTitle}]**\n\n${boardNotes}\n\n*(An interactive 3D model was loaded live on the chalkboard)*`
+                : drawings.length > 0
+                  ? `🎨 **[DIAGRAM SKETCHED: ${boardTitle}]**\n\n${boardNotes}\n\n*(A live blackboard drawing with ${drawings.length} shapes was plotted)*`
+                  : `✏️ **[WHITEBOARD LESSON: ${boardTitle}]**\n\n${boardNotes}`;
+              insertActionToChatHistory(infoText);
+
+              callback({
+                result: `Successfully updated virtual blackboard with title "${boardTitle}" and active 3D / drawing assets. It is now fully visible to TECH. Explain this or guide TECH verbally now.`,
+              });
+            },
           });
-          setWhiteboardDiagramType(dType);
-          setWhiteboardDrawings(drawings);
-          setWhiteboardCustomModelData(customModel);
-
-          if (drawings.length > 0 || customModel) {
-            setWhiteboardActiveMode("split");
-          }
-          
-          setWhiteboardStatusAlert(
-            customModel 
-              ? `✨ MAHR generated a custom 3D model on: "${boardTitle}"`
-              : drawings.length > 0 
-                ? `🎨 MAHR sketched a live diagram & notes on: "${boardTitle}"`
-                : `✏️ MAHR added textbook notes on: "${boardTitle}"`
-          );
-          setTimeout(() => setWhiteboardStatusAlert(null), 4000);
-
-          // Append blackboard update to persistent chat history/journal
-          const infoText = customModel 
-            ? `🎨 **[3D MODEL GENERATED: ${boardTitle}]**\n\n${boardNotes}\n\n*(An interactive 3D model was loaded live on the chalkboard)*`
-            : drawings.length > 0 
-              ? `🎨 **[DIAGRAM SKETCHED: ${boardTitle}]**\n\n${boardNotes}\n\n*(A live blackboard drawing with ${drawings.length} shapes was plotted)*`
-              : `✏️ **[WHITEBOARD LESSON: ${boardTitle}]**\n\n${boardNotes}`;
-          insertActionToChatHistory(infoText);
-
-          callback({ result: `Successfully updated virtual blackboard with title "${boardTitle}" and active 3D / drawing assets. It is now fully visible to TECH. Explain this or guide TECH verbally now.` });
         } else if (name === "renderVisualDiagram") {
-          setIsWhiteboardOpen(true);
           const boardTitle = args.title || "MAHR's Diagram Lesson";
-          const boardNotes = args.notes || "";
-          const dType = args.diagramType || "diagram";
-          const dClear = args.clearBoard !== undefined ? !!args.clearBoard : true;
-          const drawings = args.drawings || [];
+          runSynchronizedVoiceAction({
+            domain: "chalkboard",
+            title: boardTitle,
+            onStatusCaption: setModelCaption,
+            executeAction: (reportMid) => {
+              if (!pluginManagerRef.current.isPluginActive("whiteboard-chalkboard")) {
+                pluginManagerRef.current.installPlugin("whiteboard-chalkboard");
+              }
+              setIsWhiteboardOpen(true);
+              const boardNotes = args.notes || "";
+              const dType = args.diagramType || "diagram";
+              const dClear = args.clearBoard !== undefined ? !!args.clearBoard : true;
+              const drawings = args.drawings || [];
 
-          if (dClear) {
-            setWhiteboardClearCounter((c) => c + 1);
-          }
+              reportMid(`Laying out ${drawings.length || "structured"} vector diagram nodes for "${boardTitle}"...`, 68);
 
-          setWhiteboardText((prevText) => {
-            let updatedValue = "";
-            if (dClear) {
-              updatedValue = `# 📊 ${boardTitle}\n\n${boardNotes}`;
-            } else {
-              updatedValue = `# 📊 ${boardTitle}\n\n${boardNotes}\n\n---\n\n${prevText}`;
-            }
-            dbSet("myraa_whiteboard_text", updatedValue);
-            return updatedValue;
+              if (dClear) {
+                setWhiteboardClearCounter((c) => c + 1);
+              }
+
+              setWhiteboardText((prevText) => {
+                let updatedValue = "";
+                if (dClear) {
+                  updatedValue = `# 📊 ${boardTitle}\n\n${boardNotes}`;
+                } else {
+                  updatedValue = `# 📊 ${boardTitle}\n\n${boardNotes}\n\n---\n\n${prevText}`;
+                }
+                dbSet("myraa_whiteboard_text", updatedValue);
+                return updatedValue;
+              });
+              setWhiteboardDiagramType(dType);
+              const structuredDrawings = layoutVisualDiagram(drawings);
+              setWhiteboardDrawings(structuredDrawings);
+              setWhiteboardCustomModelData(null);
+
+              if (drawings.length > 0) {
+                setWhiteboardActiveMode("split");
+              } else {
+                setWhiteboardActiveMode("text");
+              }
+
+              setWhiteboardStatusAlert(`📊 MAHR rendered a live ${dType || "diagram"} on: "${boardTitle}"`);
+              setTimeout(() => setWhiteboardStatusAlert(null), 4000);
+
+              insertActionToChatHistory(
+                `📊 **[DIAGRAM RENDERED: ${boardTitle}]** (${dType.toUpperCase()})\n\n${boardNotes}\n\n*(A custom diagram with ${drawings.length} vector shapes has been rendered live on the chalkboard)*`
+              );
+
+              callback({
+                result: `Successfully rendered visual diagram "${boardTitle}" with ${drawings.length} shapes on the chalkboard. It is now fully visible to TECH. Please explain the diagram verbally!`,
+              });
+            },
           });
-          setWhiteboardDiagramType(dType);
-          const structuredDrawings = layoutVisualDiagram(drawings);
-          setWhiteboardDrawings(structuredDrawings);
-          setWhiteboardCustomModelData(null);
-
-          if (drawings.length > 0) {
-            setWhiteboardActiveMode("split");
-          } else {
-            setWhiteboardActiveMode("text");
-          }
-
-          setWhiteboardStatusAlert(`📊 MAHR rendered a live ${dType || "diagram"} on: "${boardTitle}"`);
-          setTimeout(() => setWhiteboardStatusAlert(null), 4000);
-
-          // Append diagram render to persistent chat history/journal
-          insertActionToChatHistory(`📊 **[DIAGRAM RENDERED: ${boardTitle}]** (${dType.toUpperCase()})\n\n${boardNotes}\n\n*(A custom diagram with ${drawings.length} vector shapes has been rendered live on the chalkboard)*`);
-
-          callback({ result: `Successfully rendered visual diagram "${boardTitle}" with ${drawings.length} shapes on the chalkboard. It is now fully visible to TECH. Please explain the diagram verbally!` });
         } else if (name === "render3DSimulation" || name === "open3DSimulation") {
           const simPrompt = args.prompt || args.title || "Human lungs breathing with asthma";
-          setSimulationPrompt(simPrompt);
-          setIsSimulationStudioOpen(true);
-          insertActionToChatHistory(`🪐 **[3D SIMULATION INITIALIZED: ${simPrompt}]**\n\n*(Real-time WebGL 3D Simulation Engine initialized on viewport)*`);
-          callback({ result: `Successfully launched real-time 3D Simulation Engine for "${simPrompt}". The interactive 3D WebGL laboratory is active and streaming on TECH's screen. Guide them and explain the dynamic physics/biology verbally now!` });
+          runSynchronizedVoiceAction({
+            domain: "simulation",
+            title: simPrompt,
+            onStatusCaption: setModelCaption,
+            executeAction: (reportMid) => {
+              reportMid(`Initializing 3D WebGL meshes and real-time simulation parameters for "${simPrompt}"...`, 66);
+              setSimulationPrompt(simPrompt);
+              setIsSimulationStudioOpen(true);
+              insertActionToChatHistory(
+                `🪐 **[3D SIMULATION INITIALIZED: ${simPrompt}]**\n\n*(Real-time WebGL 3D Simulation Engine initialized on viewport)*`
+              );
+              callback({
+                result: `Successfully launched real-time 3D Simulation Engine for "${simPrompt}". The interactive 3D WebGL laboratory is active and streaming on TECH's screen. Guide them and explain the dynamic physics/biology verbally now!`,
+              });
+            },
+          });
         } else if (name === "open_slides_studio" || name === "createPresentation" || name === "generateSlides") {
           const topic = args.topic || args.title || "Interactive Presentation";
-          if (!pluginManagerRef.current.isPluginActive("slides-studio")) {
-            pluginManagerRef.current.installPlugin("slides-studio");
-          }
-          setSlidesStudioTopic(topic);
-          setWhiteboardDiagramType("slides");
-          setWhiteboardActiveMode("split");
-          setIsWhiteboardOpen(true);
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent("mahr:slides-mascot-command", {
-                detail: { type: "prompt", prompt: topic }
-              })
-            );
-          }, 250);
-          setWhiteboardStatusAlert(`📊 MAHR opened Presentation Studio for: "${topic}" on Whiteboard`);
-          setTimeout(() => setWhiteboardStatusAlert(null), 4000);
-          insertActionToChatHistory(`📊 **[PRESENTATION STUDIO OPENED: ${topic}]**\n*(Slide Studio opened and generating live slides on Classroom Whiteboard)*`);
-          callback({ result: `Successfully opened Presentation & Slides Studio on Classroom Whiteboard and started generating slides for "${topic}". It is now visible to TECH—walk through the presentation warmly!` });
+          runSynchronizedVoiceAction({
+            domain: "slides",
+            title: topic,
+            onStatusCaption: setModelCaption,
+            executeAction: (reportMid) => {
+              if (!pluginManagerRef.current.isPluginActive("slides-studio")) {
+                pluginManagerRef.current.installPlugin("slides-studio");
+              }
+              setSlidesStudioTopic(topic);
+              setWhiteboardDiagramType("slides");
+              setWhiteboardActiveMode("split");
+              setIsWhiteboardOpen(true);
+              reportMid(`Structuring slide outline and visual cards for "${topic}" in Presenton Studio...`, 64);
+              setTimeout(() => {
+                window.dispatchEvent(
+                  new CustomEvent("mahr:slides-mascot-command", {
+                    detail: { type: "prompt", prompt: topic },
+                  })
+                );
+              }, 200);
+              setWhiteboardStatusAlert(`📊 MAHR opened Presentation Studio for: "${topic}" on Whiteboard`);
+              setTimeout(() => setWhiteboardStatusAlert(null), 4000);
+              insertActionToChatHistory(
+                `📊 **[PRESENTATION STUDIO OPENED: ${topic}]**\n*(Slide Studio opened and generating live slides on Classroom Whiteboard)*`
+              );
+              callback({
+                result: `Successfully opened Presentation & Slides Studio on Classroom Whiteboard and started generating slides for "${topic}". It is now visible to TECH—walk through the presentation warmly!`,
+              });
+            },
+          });
         } else if (name === "setHumanMood") {
           const mood = (args.mood?.toLowerCase() || "neutral") as HumanMoodType;
           const rawReason = String(args.reason || "");
@@ -3242,9 +3562,14 @@ export default function App() {
           } else {
             callback({ error: `Unsupported color '${colorName}'. Supported themes are: ${validColors.join(", ")}` });
           }
-        } else {
-          callback({ error: `Tool ${name} is not implemented.` });
-        }
+          } else {
+            callback({ error: `Tool ${name} is not implemented.` });
+          }
+          },
+          (deniedReason) => {
+            rawCallback({ error: deniedReason });
+          }
+        );
       },
       onError: (err) => {
         setErrorText(err);
@@ -3279,21 +3604,40 @@ export default function App() {
 
     if (state === "disconnected") {
       userClickedDisconnectRef.current = false;
+      reconnectAttemptsRef.current = 0;
+      dispatchEvent({ type: "MANUAL_CONNECT_CLICK", pinSession: true });
+
+      const handoff = await micLeaseCoordinator.releaseWakeRecognizerWithFailSafe();
+      if (!handoff.released) {
+        const diag = handoff.diagnostic || "Microphone handoff failed: Wake recognizer did not release.";
+        dispatchEvent({ type: "MIC_HANDOFF_FAILED", diagnostic: diag });
+        setErrorText(diag);
+        return;
+      }
+
+      micLeaseCoordinator.setLeaseOwner("live_pcm_vad");
+
       await sessionRef.current.connect(agentMode, studyPadText + " " + whiteboardText, activeSubAgent);
       setIsMicDenied(sessionRef.current?.isMicDenied || false);
     } else {
+      dispatchEvent({ type: "POWER_BUTTON_CLICK" });
       handlePutToSleep();
       setIsMicDenied(false);
     }
   };
 
-  // Automatic smart reconnection loop on unexpected drops (only if previously active)
+  // Automatic smart reconnection loop on unexpected drops (only if previously active and not suppressed by Sleep/Power)
   useEffect(() => {
     if (state === "disconnected") {
-      if (wasEverConnectedRef.current && !userClickedDisconnectRef.current && reconnectAttemptsRef.current < 3) {
+      if (
+        wasEverConnectedRef.current &&
+        !userClickedDisconnectRef.current &&
+        !fsmState.suppressAutoReconnect &&
+        reconnectAttemptsRef.current < 3
+      ) {
         reconnectAttemptsRef.current += 1;
         const timer = setTimeout(async () => {
-          if (sessionRef.current && stateRef.current === "disconnected") {
+          if (sessionRef.current && stateRef.current === "disconnected" && !userClickedDisconnectRef.current) {
             try {
               const presentationContext = slidesStudioTopic ? ` Active presentation topic: ${slidesStudioTopic}.` : "";
               await sessionRef.current.connect(
@@ -3314,9 +3658,10 @@ export default function App() {
       reconnectAttemptsRef.current = 0;
       setErrorText(null);
     }
-  }, [state, agentMode, studyPadText, whiteboardText, slidesStudioTopic, activeSubAgent]);
+  }, [state, fsmState.suppressAutoReconnect, agentMode, studyPadText, whiteboardText, slidesStudioTopic, activeSubAgent]);
 
-  // Real-time Background Wake Word Listener ("MAHR" / "Mahr" / "Wake up")
+  // Real-time Background Wake Word Listener ("Hey MAHR" / "Mahr" / "Wake up" + One-Breath Trailing Command)
+  // Note: suppressAutoReconnect NEVER blocks wake-word detection when isWakeWordEnabled === true!
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
@@ -3333,22 +3678,49 @@ export default function App() {
     let isStoppedPurposefully = false;
 
     const startWakeWordRecognition = () => {
-      if (state !== "disconnected" || !isWakeWordEnabled) return;
+      if (stateRef.current !== "disconnected" || !isWakeWordEnabled) return;
       if (wakeWordRecognitionRef.current) return;
 
       try {
         const rec = new SpeechRecognition();
         rec.continuous = true;
-        rec.interimResults = true; // Enabled instant real-time interim recognition
+        rec.interimResults = true;
         rec.lang = navigator.language || "en-US";
 
+        let endResolvers: Array<() => void> = [];
+        micLeaseCoordinator.registerWakeRecognizer({
+          stop: () => {
+            isStoppedPurposefully = true;
+            try { rec.stop(); } catch {}
+          },
+          abort: () => {
+            isStoppedPurposefully = true;
+            try { rec.abort(); } catch {}
+          },
+          isEnded: () => !wakeWordRecognitionRef.current,
+          waitForEnd: (timeoutMs: number) =>
+            new Promise<boolean>((resolve) => {
+              if (!wakeWordRecognitionRef.current) {
+                resolve(true);
+                return;
+              }
+              const timer = setTimeout(() => {
+                resolve(false);
+              }, timeoutMs);
+              endResolvers.push(() => {
+                clearTimeout(timer);
+                resolve(true);
+              });
+            }),
+        });
+
         rec.onstart = () => {
-          console.log("[MAHR WakeWord] Active & Listening in background...");
+          console.log("[MAHR WakeWord] Active & Listening in standby...");
         };
 
         rec.onresult = (event: any) => {
-          // Guard: Ignore microphone input if sleep was triggered less than 4.5s ago to avoid self-wake feedback
-          if (Date.now() - lastSleepTriggerTimeRef.current < 4500) {
+          // 2.0s echo cooldown after sleep to prevent self-wake from speaker echo, while allowing prompt "Hey MAHR" re-wake
+          if (Date.now() - lastSleepTriggerTimeRef.current < 2000) {
             return;
           }
 
@@ -3359,9 +3731,15 @@ export default function App() {
             const lower = transcript.toLowerCase().trim();
             console.log("[MAHR WakeWord Live Transcript]:", lower);
 
-            const action = detectVoiceAction(transcript, activeSubAgent?.name?.split(" ")[0] || "MAHR");
+            const agentName = activeSubAgent?.name?.split(" ")[0] || "MAHR";
+            const wakeParsed = parseWakeWordAndTrailingCommand(transcript, agentName);
+            const action = detectVoiceAction(transcript, agentName);
 
-            if (action.type === "voice_to_mindmap") {
+            if (action.type === "sleep") {
+              console.log("[MAHR SleepWord] Sleep command detected! Executing handlePutToSleep...");
+              handlePutToSleep();
+              return;
+            } else if (action.type === "voice_to_mindmap") {
               pluginManagerRef.current.requestPluginOrRun(
                 "whiteboard-chalkboard",
                 () =>
@@ -3371,10 +3749,6 @@ export default function App() {
                   }),
                 speakNotification
               );
-              return;
-            } else if (action.type === "sleep") {
-              console.log("[MAHR SleepWord] Sleep command detected! Executing handlePutToSleep...");
-              handlePutToSleep();
               return;
             } else if (action.type === "voice_command" && action.command) {
               handleExecuteVoiceShortcut(action.command);
@@ -3425,7 +3799,7 @@ export default function App() {
                 speakNotification
               );
               return;
-            } else {
+            } else if (!wakeParsed.matched) {
               const detectedPluginId = detectUninstalledPluginInTranscript(transcript);
               if (detectedPluginId && !pluginManagerRef.current.isPluginActive(detectedPluginId)) {
                 pluginManagerRef.current.requestPluginOrRun(
@@ -3437,41 +3811,68 @@ export default function App() {
               }
             }
 
-            if (action.type === "wake") {
-              const agentName = activeSubAgent?.name?.split(" ")[0] || "MAHR";
-              console.log(`[MAHR WakeWord] Match detected! Waking up ${agentName}...`);
+            if (wakeParsed.matched || action.type === "wake") {
+              console.log(
+                `[MAHR WakeWord] Match detected! Waking up ${agentName}...`,
+                wakeParsed.trailingCommand ? `(Trailing command: "${wakeParsed.trailingCommand}")` : ""
+              );
               setWakeWordRipple(Date.now());
-              
-              // Stop background speech recognizer cleanly to free mic track
               isStoppedPurposefully = true;
-              try { rec.stop(); } catch (e) {}
-              try { rec.abort(); } catch (e) {}
-              wakeWordRecognitionRef.current = null;
 
-              // Voice confirmation greeting (Natural Human Tone)
+              if (wakeParsed.trailingCommand) {
+                pendingTrailingWakeCommandRef.current = wakeParsed.trailingCommand;
+              }
+
+              dispatchEventRef.current({
+                type: "WAKE_DETECTED",
+                phrase: wakeParsed.wakePhrase || agentName,
+                trailingCommand: wakeParsed.trailingCommand,
+              });
+
               const wakeUpGreeting = {
                 ur: `Main active hoon, aayen shuru karte hain.`,
-                en: `I am active and ready. What shall we work on?`
+                en: wakeParsed.trailingCommand
+                  ? `I'm awake! Handling "${wakeParsed.trailingCommand}" right away.`
+                  : `I am active and ready. What shall we work on?`,
               };
-              
+
               speakNotification(wakeUpGreeting);
-              setNotesStatusAlert(`🎙️ Wake word detected! Waking up ${agentName}...`);
-              
-              // Connect to live interactive session once mic track is released
-              setTimeout(async () => {
+              setNotesStatusAlert(
+                wakeParsed.trailingCommand
+                  ? `🎙️ Wake + Command: "${wakeParsed.trailingCommand}"`
+                  : `🎙️ Wake word detected! Waking up ${agentName}...`
+              );
+
+              // Fail-safe mic handoff: wait for SpeechRecognition onend before opening getUserMedia
+              (async () => {
+                const handoff = await micLeaseCoordinator.releaseWakeRecognizerWithFailSafe();
+                if (!handoff.released) {
+                  const diag =
+                    handoff.diagnostic ||
+                    "Microphone handoff timeout: Wake-word recognizer did not release microphone.";
+                  dispatchEventRef.current({ type: "MIC_HANDOFF_FAILED", diagnostic: diag });
+                  setErrorText(diag);
+                  return;
+                }
+
                 if (sessionRef.current && stateRef.current === "disconnected") {
                   userClickedDisconnectRef.current = false;
+                  micLeaseCoordinator.setLeaseOwner("live_pcm_vad");
                   try {
-                    await sessionRef.current.connect(agentMode, studyPadText + " " + whiteboardText, activeSubAgent);
+                    await sessionRef.current.connect(
+                      agentMode,
+                      studyPadText + " " + whiteboardText,
+                      activeSubAgent
+                    );
                     setIsMicDenied(sessionRef.current?.isMicDenied || false);
                     setNotesStatusAlert(null);
                   } catch (connErr) {
                     console.error("[MAHR WakeWord Connect Error]:", connErr);
                   }
                 }
-              }, 500);
+              })();
 
-              break; // break loop on match
+              break;
             }
           }
         };
@@ -3487,6 +3888,9 @@ export default function App() {
 
         rec.onend = () => {
           wakeWordRecognitionRef.current = null;
+          endResolvers.forEach((r) => r());
+          endResolvers = [];
+
           if (!isStoppedPurposefully && isWakeWordEnabled && stateRef.current === "disconnected") {
             if (wakeWordRestartTimeoutRef.current) clearTimeout(wakeWordRestartTimeoutRef.current);
             wakeWordRestartTimeoutRef.current = setTimeout(() => {
@@ -3524,7 +3928,7 @@ export default function App() {
         wakeWordRecognitionRef.current = null;
       }
     };
-  }, [state, isWakeWordEnabled]);
+  }, [state, isWakeWordEnabled, sleepRipple]);
 
   // Real-time Audio Input and Output Waveform Visualizer Loop
   useEffect(() => {
@@ -3924,6 +4328,18 @@ export default function App() {
       }}
       session={sessionRef.current}
       state={state}
+      assistantStage={fsmState.stage}
+      followUpRemainingMs={fsmState.followUpRemainingMs}
+      activeToolName={fsmState.activeToolName}
+      isSessionPinned={fsmState.isSessionPinned}
+      onTogglePinSession={togglePinSession}
+      pendingApprovalRequest={fsmState.pendingApprovalRequest}
+      onResolveToolApproval={resolvePendingToolApproval}
+      lastErrorDiagnostic={fsmState.lastErrorDiagnostic}
+      onPowerDisconnect={() => {
+        dispatchEvent({ type: "POWER_BUTTON_CLICK" });
+        handlePutToSleep();
+      }}
       voiceConfidence={voiceConfidence}
       isMuted={isMuted}
       onToggleConnect={handleToggleConnection}
@@ -3932,6 +4348,10 @@ export default function App() {
         setIsWakeWordEnabled((prev) => {
           const next = !prev;
           saveSettingToDB("isWakeWordEnabled", next);
+          dispatchEvent({
+            type: "MIC_LEASE_CHANGED",
+            owner: next && state === "disconnected" ? "wake_recognizer" : "none",
+          });
           speakNotification(next ? "Wake-word active. Say Hey Mahr anytime." : "Wake-word listener paused.");
           return next;
         });
@@ -4103,6 +4523,8 @@ export default function App() {
           setShowSettings(true);
         }}
       />
+
+      <LiveVoiceActionSyncHud />
 
       <MahrModalsContainer
         isPluginActive={pluginManager.isPluginActive}
